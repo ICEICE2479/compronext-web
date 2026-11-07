@@ -828,10 +828,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
 
       // 3) โหมดเลื่อนตำแหน่งสิ่งของ (Move Drag)
-      const rect = renderer.domElement.getBoundingClientRect();
       const isOverDelete = Boolean(
         propsRef.current.checkDeleteZone?.(e.clientX, e.clientY) ||
-        e.clientX >= rect.right - 80 ||
         (typeof document !== "undefined" &&
           document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-catalog-sidebar='true'], [data-drop-delete-zone='true']"))
       );
@@ -994,11 +992,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
           (curApi.selBox.material as THREE.LineBasicMaterial).color.setHex(0x2563eb);
         }
 
-        const rect = renderer.domElement.getBoundingClientRect();
         const isOverDelete = Boolean(
           d.isOverDelete ||
           propsRef.current.checkDeleteZone?.(e.clientX, e.clientY) ||
-          e.clientX >= rect.right - 80 ||
           (typeof document !== "undefined" &&
             document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-catalog-sidebar='true'], [data-drop-delete-zone='true']"))
         );

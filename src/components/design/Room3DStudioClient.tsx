@@ -173,10 +173,10 @@ export function Room3DStudioClient() {
     if (catalogAsideRef.current) {
       const r = catalogAsideRef.current.getBoundingClientRect();
       if (
-        clientX >= r.left - 20 &&
-        clientX <= r.right + 20 &&
-        clientY >= r.top - 20 &&
-        clientY <= r.bottom + 20
+        clientX >= r.left - 6 &&
+        clientX <= r.right + 10 &&
+        clientY >= r.top &&
+        clientY <= r.bottom
       ) {
         return true;
       }
@@ -1012,39 +1012,6 @@ export function Room3DStudioClient() {
                 }}
                 checkDeleteZone={checkDeleteZone}
               />
-
-              {/* Right Drop-to-Delete Zone Overlay */}
-              {dragDeleteState.isDragging && (
-                <div
-                  className={`pointer-events-none absolute right-0 top-0 bottom-0 z-40 flex w-24 sm:w-32 flex-col items-center justify-center transition-all duration-200 border-l ${
-                    dragDeleteState.isOver
-                      ? "bg-rose-600/40 border-rose-500 shadow-[-16px_0_40px_rgba(244,63,94,0.45)] backdrop-blur-sm"
-                      : "bg-slate-900/50 border-white/10 opacity-80 backdrop-blur-[2px]"
-                  }`}
-                >
-                  <div
-                    className={`flex flex-col items-center gap-2 p-3 transition-transform duration-200 ${
-                      dragDeleteState.isOver ? "scale-110 text-rose-200" : "text-slate-300"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-all duration-200 ${
-                        dragDeleteState.isOver
-                          ? "bg-rose-500 text-white shadow-xl ring-4 ring-rose-400/50 animate-bounce"
-                          : "bg-white/10 text-slate-300 ring-1 ring-white/20"
-                      }`}
-                    >
-                      <Trash2 className="h-7 w-7" />
-                    </div>
-                    <span className="text-center font-display text-xs font-black tracking-wide drop-shadow-md">
-                      {dragDeleteState.isOver ? "ปล่อยเพื่อลบออกจากห้อง" : "ลากมาที่นี่เพื่อลบ"}
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      {dragDeleteState.isOver ? "ลบออกจากห้องทันที" : "ทิ้งลงคลังสินค้า"}
-                    </span>
-                  </div>
-                </div>
-              )}
 
               {/* Instruction pill */}
               <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
