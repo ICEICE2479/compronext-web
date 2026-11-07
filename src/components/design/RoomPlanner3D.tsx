@@ -105,37 +105,17 @@ function buildSelectionAngleGizmo(): SelectionAngleGizmo {
     side: THREE.DoubleSide,
     depthTest: false,
   });
-  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.42).rotateX(-Math.PI / 2), arrowMat);
-  shaft.position.set(0, 0.002, 0.78);
+  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.45).rotateX(-Math.PI / 2), arrowMat);
+  shaft.position.set(0, 0.002, 0.82);
   shaft.renderOrder = 9;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.095, 0.2, 3).rotateX(Math.PI / 2), arrowMat);
-  tip.position.set(0, 0.003, 1.07);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.24, 3).rotateX(Math.PI / 2), arrowMat);
+  tip.position.set(0, 0.003, 1.12);
   tip.renderOrder = 9;
-
-  // หัวปุ่มลูกบิดหมุนสีส้มทองที่ปลายลูกศรสำหรับเอาเมาส์คลิกจับหมุนได้ง่าย
-  const knobGeo = new THREE.SphereGeometry(0.14, 24, 24);
-  const knobMat = new THREE.MeshBasicMaterial({
-    color: "#f59e0b",
-    depthTest: false,
-  });
-  const handleKnob = new THREE.Mesh(knobGeo, knobMat);
-  handleKnob.position.set(0, 0.015, 1.12);
-  handleKnob.renderOrder = 12;
-  handleKnob.userData = { isRotateHandle: true };
-
-  // วงแหวนเรืองแสงรอบหัวลูกบิด
-  const knobHalo = new THREE.Mesh(
-    new THREE.RingGeometry(0.15, 0.22, 24).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: "#fef08a", transparent: true, opacity: 0.85, depthTest: false })
-  );
-  knobHalo.position.set(0, 0.016, 1.12);
-  knobHalo.renderOrder = 13;
-  knobHalo.userData = { isRotateHandle: true };
 
   shaft.userData = { isRotateHandle: true };
   tip.userData = { isRotateHandle: true };
   pointerPivot.userData = { isRotateHandle: true };
-  pointerPivot.add(shaft, tip, handleKnob, knobHalo);
+  pointerPivot.add(shaft, tip);
   ringWrap.add(pointerPivot);
 
   // วงแหวนโปร่งใสสำหรับจับคลิกหมุนด้วยเมาส์ได้สะดวกทุกมุมรอบสิ่งของ (กว้าง 0.70 ถึง 1.35)
