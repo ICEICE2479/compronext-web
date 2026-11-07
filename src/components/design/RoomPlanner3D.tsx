@@ -5,7 +5,16 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { fabricTex, plasterTex } from "./room3d-textures";
-import { dragTo, footprint, settleOnTop, type PlanItem, type RoomSize } from "@/lib/room-planner";
+import {
+   clampToRoom,
+  dragTo,
+  findNearestWallForItem,
+  getItemAxes,
+  normalizeRotDeg,
+  settleOnTop,
+  type PlanItem,
+  type RoomSize,
+} from "@/lib/room-planner";
 import { buildItem, CM, disposeGroup, makeMats } from "./room3d-models";
 import { calculateSunState, type SunSettings } from "@/lib/sun-simulation";
 
@@ -22,7 +31,138 @@ interface Props {
   night: boolean;
   sunSettings?: SunSettings;
   onSelect: (uid: string | null) => void;
-  onMove: (uid: string, x: number, z: number, y: number) => void;
+  onMove: (uid: string, x: number, z: number, y: number, rot?: number) => void;
+  onBatchMove?: (moves: Array<{ uid: string; x: number; z: number; y: number; rot: number }>) => void;
+}
+
+interface SelectionAngleGizmo {
+  group: THREE.Group;
+  ringWrap: THREE.Group;
+  pointerPivot: THREE.Group;
+  badge: THREE.Sprite;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  tex: THREE.CanvasTexture;
+  lastText: string;
+}
+
+function buildSelectionAngleGizmo(): SelectionAngleGizmo {
+  const group = new THREE.Group();
+  group.visible = false;
+
+  const ringWrap = new THREE.Group();
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(0.955, 72).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({
+      color: "#0ea5e9",
+      transparent: true,
+      opacity: 0.08,
+      side: THREE.DoubleSide,
+      depthTest: false,
+    })
+  );
+  disc.renderOrder = 7;
+
+  const outerRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.955, 1.0, 72).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({
+      color: "#38bdf8",
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthTest: false,
+    })
+  );
+  outerRing.renderOrder = 8;
+  ringWrap.add(disc, outerRing);
+
+  const tickMat = new THREE.MeshBasicMaterial({
+    color: "#7dd3fc",
+    transparent: true,
+    opacity: 0.72,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const isMajor = i % 2 === 0;
+    const tick = new THREE.Mesh(
+      new THREE.PlaneGeometry(isMajor ? 0.028 : 0.018, isMajor ? 0.11 : 0.065).rotateX(-Math.PI / 2),
+      tickMat
+    );
+    tick.position.set(Math.sin(a) * 0.91, 0.001, Math.cos(a) * 0.91);
+    tick.rotation.y = a;
+    tick.renderOrder = 8;
+    ringWrap.add(tick);
+  }
+
+  const pointerPivot = new THREE.Group();
+  const arrowMat = new THREE.MeshBasicMaterial({
+    color: "#fbbf24",
+    transparent: true,
+    opacity: 0.96,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
+  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.42).rotateX(-Math.PI / 2), arrowMat);
+  shaft.position.set(0, 0.002, 0.78);
+  shaft.renderOrder = 9;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.095, 0.2, 3).rotateX(Math.PI / 2), arrowMat);
+  tip.position.set(0, 0.003, 1.07);
+  tip.renderOrder = 9;
+  pointerPivot.add(shaft, tip);
+  ringWrap.add(pointerPivot);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 340;
+  canvas.height = 88;
+  const ctx = canvas.getContext("2d")!;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const badge = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })
+  );
+  badge.scale.set(0.82, 0.21, 1);
+  badge.renderOrder = 14;
+
+  group.add(ringWrap, badge);
+  return { group, ringWrap, pointerPivot, badge, canvas, ctx, tex, lastText: "" };
+}
+
+function updateSelectionAngleGizmo(gizmo: SelectionAngleGizmo, it: PlanItem | null | undefined) {
+  if (!it) {
+    gizmo.group.visible = false;
+    return;
+  }
+  gizmo.group.visible = true;
+  const radiusM = Math.max(0.28, Math.hypot(it.w, it.d) * 0.5 * CM + 0.12);
+  gizmo.ringWrap.position.set(it.x * CM, it.y * CM + 0.008, it.z * CM);
+  gizmo.ringWrap.scale.set(radiusM, 1, radiusM);
+  const norm = normalizeRotDeg(it.rot);
+  gizmo.pointerPivot.rotation.y = (-norm * Math.PI) / 180;
+
+  const degStr = Number.isInteger(norm) ? `${norm}°` : `${norm.toFixed(1)}°`;
+  const text = `↻ หมุน ${degStr}`;
+  if (gizmo.lastText !== text) {
+    gizmo.lastText = text;
+    const { ctx, canvas } = gizmo;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.9)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(6, 8, canvas.width - 12, canvas.height - 16, 36);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#fde68a";
+    ctx.font = "bold 36px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+    gizmo.tex.needsUpdate = true;
+  }
+  gizmo.badge.position.set(it.x * CM, (it.y + it.h) * CM + 0.24, it.z * CM);
 }
 
 /** ป้ายตัวเลขขนาดผนัง (sprite หันหาจอเสมอ) */
@@ -174,7 +314,10 @@ function shouldHideWallForCamera(
  * ห้อง 3D แบบไดโอรามา พร้อมระบบซ่อนกำแพงด้านหน้ากล้องอัตโนมัติ (Dynamic Camera-Facing Wall Cutaway)
  * รองรับห้องสี่เหลี่ยม ห้องตัว L ห้องตัว U และทรงหลายเหลี่ยมทุกแบบ หมุนมองจากมุมไหน กำแพงที่บังสายตาจะหลบลงอัตโนมัติ 360°
  */
-export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D({ room, items, selected, night, sunSettings, onSelect, onMove }, ref) {
+export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D(
+  { room, items, selected, night, sunSettings, onSelect, onMove, onBatchMove },
+  ref
+) {
   const mountRef = useRef<HTMLDivElement>(null);
   const api = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -190,13 +333,14 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     lights: { hemi: THREE.HemisphereLight; sun: THREE.DirectionalLight; win: THREE.PointLight };
     meshes: Map<string, { group: THREE.Group; key: string }>;
     selBox: THREE.Box3Helper;
+    selGizmo: SelectionAngleGizmo;
     fit: () => void;
     resetView: () => void;
   } | null>(null);
-  const propsRef = useRef({ room, items, onSelect, onMove });
+  const propsRef = useRef({ room, items, onSelect, onMove, onBatchMove });
   useEffect(() => {
-    propsRef.current = { room, items, onSelect, onMove };
-  }, [room, items, onSelect, onMove]);
+    propsRef.current = { room, items, onSelect, onMove, onBatchMove };
+  }, [room, items, onSelect, onMove, onBatchMove]);
 
   // ---------- ตั้งฉากครั้งเดียว ----------
   useEffect(() => {
@@ -268,7 +412,17 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     };
 
     // ประกาศก่อน frame() — ลูปเรนเดอร์อ่านค่านี้
-    let drag: { uid: string; dx: number; dz: number; y: number; moved: boolean; riders: PlanItem[] } | null = null;
+    let drag: {
+      uid: string;
+      dx: number;
+      dz: number;
+      y: number;
+      moved: boolean;
+      riders: PlanItem[];
+      activeWallKey: string | null;
+      curRot: number;
+      last?: { x: number; z: number; y: number; rot: number };
+    } | null = null;
     let raf = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
@@ -329,7 +483,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     };
     const selBox = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color("#2563eb"));
     selBox.visible = false;
-    scene.add(selBox);
+    const selGizmo = buildSelectionAngleGizmo();
+    scene.add(selBox, selGizmo.group);
     api.current = {
       renderer,
       scene,
@@ -344,6 +499,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       lights: { hemi, sun, win },
       meshes: new Map(),
       selBox,
+      selGizmo,
       fit,
       resetView,
     };
@@ -378,11 +534,27 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       if (!it) return;
       plane.constant = -it.y * CM;
       if (!ray.ray.intersectPlane(plane, hit)) return;
-      // ของที่วางอยู่บนชิ้นนี้ ย้ายตามไปด้วย
-      const riders = propsRef.current.items.filter(
-        (o) => o.uid !== it.uid && o.y > 0 && Math.abs(o.y - (it.y + it.h)) < 1 && Math.abs(o.x - it.x) * 2 < footprint(it).w && Math.abs(o.z - it.z) * 2 < footprint(it).d
-      );
-      drag = { uid, dx: it.x - hit.x / CM, dz: it.z - hit.z / CM, y: it.y, moved: false, riders };
+      // ของที่วางอยู่บนชิ้นนี้ ย้ายและหมุนตามไปด้วย
+      const itAxes = getItemAxes(it.rot);
+      const riders = propsRef.current.items.filter((o) => {
+        if (o.uid === it.uid || o.y <= 0 || Math.abs(o.y - (it.y + it.h)) > 2) return false;
+        const rx = o.x - it.x;
+        const rz = o.z - it.z;
+        const lx = Math.abs(rx * itAxes.ux + rz * itAxes.uz);
+        const lz = Math.abs(rx * itAxes.vx + rz * itAxes.vz);
+        return lx <= it.w * 0.55 && lz <= it.d * 0.55;
+      });
+      const initWall = findNearestWallForItem(it, propsRef.current.room, 28);
+      drag = {
+        uid,
+        dx: it.x - hit.x / CM,
+        dz: it.z - hit.z / CM,
+        y: it.y,
+        moved: false,
+        riders,
+        activeWallKey: initWall?.key ?? null,
+        curRot: it.rot,
+      };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
       propsRef.current.onSelect(uid);
@@ -391,39 +563,123 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       if (!drag) return;
       toNdc(e);
       if (!ray.ray.intersectPlane(plane, hit)) return;
-      const snap = (v: number) => Math.round(v / 5) * 5;
+      const snap = (v: number) => Math.round(v * 2) / 2;
       const base = propsRef.current.items.find((i) => i.uid === drag!.uid);
       if (!base) return;
-      const d0 = drag as typeof drag & { last?: { x: number; z: number; y: number } };
-      // เริ่มจากตำแหน่งล่าสุดที่วางได้ แล้วขยับไปหาเมาส์โดยไม่ทับของอื่น
-      const it = d0.last ? { ...base, x: d0.last.x, z: d0.last.z, y: d0.last.y } : base;
-      const next = dragTo(it, { x: snap(hit.x / CM + drag.dx), z: snap(hit.z / CM + drag.dz) }, propsRef.current.items, propsRef.current.room);
+
+      const rawX = snap(hit.x / CM + drag.dx);
+      const rawZ = snap(hit.z / CM + drag.dz);
+      const curRoom = propsRef.current.room;
+      const allItems = propsRef.current.items;
+
+      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง (ตรงหรือเฉียง) ปรับหมุนตามองศากำแพงอัตโนมัติ (กด Shift ค้างเพื่อล็อกมุมเดิม)
+      const isChairNearDesk =
+        base.category === "chair" &&
+        allItems.some(
+          (o) =>
+            o.uid !== base.uid &&
+            o.category === "desk" &&
+            Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
+        );
+      if (!e.shiftKey && !isChairNearDesk) {
+        const probe = { ...base, x: rawX, z: rawZ, rot: drag.curRot };
+        const nearWall = findNearestWallForItem(probe, curRoom, 28);
+        if (!nearWall) {
+          if (!findNearestWallForItem(probe, curRoom, 36)) {
+            drag.activeWallKey = null;
+          }
+        } else if (nearWall.key !== drag.activeWallKey) {
+          drag.curRot = nearWall.targetRot;
+          drag.activeWallKey = nearWall.key;
+        }
+      }
+
+      const riderIds = new Set(drag.riders.map((r) => r.uid));
+      const nonRiders = riderIds.size > 0 ? allItems.filter((o) => !riderIds.has(o.uid)) : allItems;
+
+      // เริ่มจากตำแหน่งล่าสุดที่วางได้ แล้วขยับไปหาเมาส์โดยไม่ทะลุกำแพงและไม่ทับของอื่น
+      const it = drag.last
+        ? { ...base, x: drag.last.x, z: drag.last.z, y: drag.last.y, rot: drag.curRot }
+        : { ...base, rot: drag.curRot };
+      const next = dragTo(it, { x: rawX, z: rawZ }, nonRiders, curRoom);
       drag.moved = true;
-      const m = api.current?.meshes.get(it.uid);
-      if (m) {
+
+      const curApi = api.current;
+      const m = curApi?.meshes.get(it.uid);
+      if (m && curApi) {
         m.group.position.x = next.x * CM;
         m.group.position.z = next.z * CM;
         m.group.userData.ty = next.y * CM;
+        m.group.rotation.y = (-next.rot * Math.PI) / 180;
         m.group.updateMatrixWorld(true);
-        api.current?.selBox.box.setFromObject(m.group).expandByScalar(0.02);
+        curApi.selBox.box.setFromObject(m.group).expandByScalar(0.02);
+        updateSelectionAngleGizmo(curApi.selGizmo, next);
       }
+
+      const dRad = ((next.rot - base.rot) * Math.PI) / 180;
+      const cosD = Math.cos(dRad);
+      const sinD = Math.sin(dRad);
       for (const r of drag.riders) {
-        const rm = api.current?.meshes.get(r.uid);
+        const rm = curApi?.meshes.get(r.uid);
         if (!rm) continue;
-        rm.group.position.x = (r.x + next.x - base.x) * CM;
-        rm.group.position.z = (r.z + next.z - base.z) * CM;
+        const rx = r.x - base.x;
+        const rz = r.z - base.z;
+        const rnx = next.x + rx * cosD - rz * sinD;
+        const rnz = next.z + rx * sinD + rz * cosD;
+        const rRot = normalizeRotDeg(r.rot + (next.rot - base.rot));
+        rm.group.position.x = rnx * CM;
+        rm.group.position.z = rnz * CM;
         rm.group.userData.ty = (r.y + next.y - base.y) * CM;
+        rm.group.rotation.y = (-rRot * Math.PI) / 180;
       }
-      (drag as typeof drag & { last?: { x: number; z: number; y: number } }).last = { x: next.x, z: next.z, y: next.y };
+      drag.last = { x: next.x, z: next.z, y: next.y, rot: next.rot };
     };
     const onUp = (e: PointerEvent) => {
-      const d = drag as (typeof drag & { last?: { x: number; z: number; y: number } }) | null;
+      const d = drag;
       if (d?.moved && d.last) {
+        const curRoom = propsRef.current.room;
         const base = propsRef.current.items.find((i) => i.uid === d.uid);
-        // ปล่อยบนของ → ขยับให้อยู่บนพื้นผิวเต็มตัว
-        const fin = base ? settleOnTop({ ...base, ...d.last }, propsRef.current.items) : { ...d.last };
-        propsRef.current.onMove(d.uid, fin.x, fin.z, fin.y);
-        if (base) for (const r of d.riders) propsRef.current.onMove(r.uid, r.x + fin.x - base.x, r.z + fin.z - base.z, r.y + fin.y - base.y);
+        // ปล่อยบนของ → ขยับให้อยู่บนพื้นผิวเต็มตัวและไม่ทะลุกำแพง
+        const fin = base
+          ? settleOnTop({ ...base, ...d.last }, propsRef.current.items, curRoom)
+          : { ...d.last };
+
+        if (base && d.riders.length > 0) {
+          const dRad = ((fin.rot - base.rot) * Math.PI) / 180;
+          const cosD = Math.cos(dRad);
+          const sinD = Math.sin(dRad);
+          const moves: Array<{ uid: string; x: number; z: number; y: number; rot: number }> = [
+            { uid: d.uid, x: fin.x, z: fin.z, y: fin.y, rot: fin.rot },
+          ];
+          for (const r of d.riders) {
+            const rx = r.x - base.x;
+            const rz = r.z - base.z;
+            const rClamped = clampToRoom(
+              {
+                ...r,
+                x: Math.round((fin.x + rx * cosD - rz * sinD) * 10) / 10,
+                z: Math.round((fin.z + rx * sinD + rz * cosD) * 10) / 10,
+                y: r.y + fin.y - base.y,
+                rot: normalizeRotDeg(r.rot + (fin.rot - base.rot)),
+              },
+              curRoom
+            );
+            moves.push({
+              uid: r.uid,
+              x: rClamped.x,
+              z: rClamped.z,
+              y: rClamped.y,
+              rot: rClamped.rot,
+            });
+          }
+          if (propsRef.current.onBatchMove) {
+            propsRef.current.onBatchMove(moves);
+          } else {
+            for (const mv of moves) propsRef.current.onMove(mv.uid, mv.x, mv.z, mv.y, mv.rot);
+          }
+        } else {
+          propsRef.current.onMove(d.uid, fin.x, fin.z, fin.y, fin.rot);
+        }
       }
       if (!d && downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5) propsRef.current.onSelect(null);
       drag = null;
@@ -444,6 +700,13 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       renderer.domElement.removeEventListener("pointerup", onUp);
       controls.dispose();
       for (const { group } of api.current?.meshes.values() ?? []) disposeGroup(group);
+      selGizmo.group.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose?.();
+        const mat = m.material as THREE.Material | undefined;
+        mat?.dispose?.();
+      });
+      selGizmo.tex.dispose();
       roomRoot.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
       envTex.dispose();
       pmrem.dispose();
@@ -1148,27 +1411,31 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
   }, [items, night]);
 
-  // ---------- กรอบสีฟ้ารอบชิ้นที่เลือก ----------
+  // ---------- กรอบสีฟ้า + วงแหวนเข็มทิศแสดงองศาสดรอบชิ้นที่เลือก ----------
   useEffect(() => {
     const a = api.current;
     if (!a) return;
     const rec = selected ? a.meshes.get(selected) : undefined;
+    const selItem = selected ? items.find((i) => i.uid === selected) : undefined;
     a.selBox.visible = !!rec;
     if (rec) {
       rec.group.updateMatrixWorld(true);
       a.selBox.box.setFromObject(rec.group).expandByScalar(0.02);
     }
+    updateSelectionAngleGizmo(a.selGizmo, rec && selItem ? selItem : null);
   }, [selected, items]);
 
   useImperativeHandle(ref, () => ({
     snapshot: async () => {
       const a = api.current;
       if (!a) return null;
-      // พื้นหลังทึบ (JPEG ไม่มีความโปร่งใส) + ซ่อนกรอบเลือก
+      // พื้นหลังทึบ (JPEG ไม่มีความโปร่งใส) + ซ่อนกรอบเลือกและวงแหวนบอกองศา
       const prevBg = a.scene.background;
       a.scene.background = new THREE.Color(night ? "#1c1820" : "#eef1f5");
       const selVis = a.selBox.visible;
+      const gizmoVis = a.selGizmo.group.visible;
       a.selBox.visible = false;
+      a.selGizmo.group.visible = false;
       a.renderer.render(a.scene, a.camera);
       const spots: Record<string, { x: number; y: number }> = {};
       const v = new THREE.Vector3();
@@ -1180,6 +1447,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const blob = await new Promise<Blob | null>((resolve) => a.renderer.domElement.toBlob((b) => resolve(b), "image/jpeg", 0.92));
       a.scene.background = prevBg;
       a.selBox.visible = selVis;
+      a.selGizmo.group.visible = gizmoVis;
       return blob ? { blob, spots } : null;
     },
     resetView: () => api.current?.resetView(),

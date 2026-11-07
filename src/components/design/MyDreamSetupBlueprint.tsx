@@ -54,10 +54,10 @@ import {
   snapPointToRoomWalls,
   resolveInteriorWallDrag,
   clampOpeningOnSegment,
-  buildAttachedExtensionPoly,
   unionRoomPolygons,
   subtractRoomPolygons,
-  resolveTriangleDrag,
+  mergePointPenExtension,
+  snapPointPenCursor,
 } from "@/lib/blueprint-geometry";
 
 export interface BlueprintDoor {
@@ -86,7 +86,7 @@ interface BlueprintHistoryItem {
   isBlank: boolean;
 }
 
-type PenDrawMode = "paint-add" | "paint-triangle" | "paint-erase" | "point-pen";
+type PenDrawMode = "paint-add" | "paint-erase" | "point-pen";
 
 interface MyDreamSetupBlueprintProps {
   room: RoomSize;
@@ -231,9 +231,9 @@ export function MyDreamSetupBlueprint({
   const [sunPanelOpen, setSunPanelOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
 
-  // สถานะการลากวาดบล็อกบนตาราง วาดครึ่งสามเหลี่ยม หรือลากกั้นกำแพงในห้องอัตโนมัติ
+  // สถานะการลากวาดบล็อกบนตาราง หรือลากกั้นกำแพงในห้องอัตโนมัติ
   const [boxDrag, setBoxDrag] = useState<{
-    mode: "add" | "triangle" | "erase";
+    mode: "add" | "erase";
     startGx: number;
     startGz: number;
     curGx: number;
@@ -1037,12 +1037,12 @@ export function MyDreamSetupBlueprint({
     [canvasPolyCm, interiorWalls, isBlankCanvas]
   );
 
-  // ตรวจว่าเส้นที่กำลังวาดในโหมดวาดเส้น (point-pen) แตะกับห้องหลักเพื่อเตรียมเชื่อมรวมเป็นห้องเดียวกันหรือไม่
-  const isDraftTouchingMainRoom = useMemo(() => {
-    if (isBlankCanvas || canvasPolyCm.length < 3 || draftPointsCm.length === 0 || isDraftInsideRoom) {
-      return false;
+  // ตรวจว่าเส้นที่กำลังวาดในโหมดวาดเส้น (point-pen) สามารถเชื่อมรวมเข้ากับห้องหลักได้หรือไม่ (รองรับทั้งครึ่งสามเหลี่ยม 2-3 จุด และรูปหลายเหลี่ยมเฉียง)
+  const draftMergeResult = useMemo(() => {
+    if (isBlankCanvas || canvasPolyCm.length < 3 || draftPointsCm.length < 2 || isDraftInsideRoom) {
+      return null;
     }
-    return draftPointsCm.some(([x, z]) => isPointInOrNearRoom(x, z, canvasPolyCm, 26));
+    return mergePointPenExtension(canvasPolyCm, draftPointsCm);
   }, [isBlankCanvas, canvasPolyCm, draftPointsCm, isDraftInsideRoom]);
 
   // ปิดเส้นผนังในโหมดวาดจุดต่อจุด (Point-to-Point):
@@ -1058,16 +1058,12 @@ export function MyDreamSetupBlueprint({
           return;
         }
 
-        if (pts.length >= 3) {
-          const extPoly = buildAttachedExtensionPoly(canvasPolyCm, pts);
-          if (extPoly.length >= 3 && !hasSelfIntersection(extPoly)) {
-            const merged =
-              unionRoomPolygons(canvasPolyCm, extPoly) || unionRoomPolygons(canvasPolyCm, pts);
-            if (merged && merged.connected) {
-              commitNewPoly(merged.poly);
-              setDraftPointsCm([]);
-              return;
-            }
+        if (pts.length >= 2) {
+          const mergedExt = mergePointPenExtension(canvasPolyCm, pts);
+          if (mergedExt) {
+            commitNewPoly(mergedExt.mergedPoly);
+            setDraftPointsCm([]);
+            return;
           }
         }
       }
@@ -1192,14 +1188,19 @@ export function MyDreamSetupBlueprint({
       return;
     }
 
-    // 2) โหมดปากกา -> วาดเส้นทีละจุด (Point-to-Point ละเอียดทุก 0.1 เมตร = 10 ซม.)
+    // 2) โหมดปากกา -> วาดเส้นทีละจุด (Point-to-Point ละเอียดทุก 0.1 เมตร + เชื่อมครึ่งสามเหลี่ยม/ผนังเฉียงเข้ากับห้องหลักอัตโนมัติ)
     if (activeTool === "pencil" && penMode === "point-pen") {
-      const [sx, sz] = !isBlankCanvas
-        ? snapPointToRoomWalls(pt.xCm, pt.zCm, canvasPolyCm, interiorWalls, 28)
-        : [
-            Math.max(0, Math.min(GRID_COLS * GRID_CELL_CM, Math.round(pt.xCm / 10) * 10)),
-            Math.max(0, Math.min(GRID_ROWS * GRID_CELL_CM, Math.round(pt.zCm / 10) * 10)),
-          ];
+      const prevPt = draftPointsCm.length > 0 ? draftPointsCm[draftPointsCm.length - 1] : null;
+      const snapInfo = snapPointPenCursor(
+        pt.xCm,
+        pt.zCm,
+        canvasPolyCm,
+        interiorWalls,
+        prevPt,
+        isBlankCanvas,
+        e.shiftKey
+      );
+      const [sx, sz] = snapInfo.pt;
 
       if (draftPointsCm.length >= 3) {
         const [fx, fz] = draftPointsCm[0];
@@ -1209,17 +1210,20 @@ export function MyDreamSetupBlueprint({
         }
       }
 
-      // กรณีเริ่มคลิกจากผนังห้องหลัก -> ลากออกไปนอกห้อง (เช่น วาดครึ่งสามเหลี่ยม) -> คลิกกลับมาแตะผนังห้องหลักอีกครั้ง: เชื่อมรวมเข้ากับห้องหลักทันที!
+      // กรณีเริ่มคลิกจากผนัง/ในห้องหลัก -> ลากออกไปนอกห้อง (เช่น วาดครึ่งสามเหลี่ยม) -> คลิกกลับมาแตะผนังห้องหลักอีกครั้ง: เชื่อมรวมเข้ากับห้องหลักทันที!
       if (!isBlankCanvas && canvasPolyCm.length >= 3 && draftPointsCm.length >= 2) {
         const [fx, fz] = draftPointsCm[0];
-        const startOnWall = minDistToPolyBoundary(fx, fz, canvasPolyCm).distCm <= 28;
-        const endOnWall = minDistToPolyBoundary(sx, sz, canvasPolyCm).distCm <= 28;
+        const startNearWall = minDistToPolyBoundary(fx, fz, canvasPolyCm).distCm <= 28;
+        const endNearWall = minDistToPolyBoundary(sx, sz, canvasPolyCm).distCm <= 28;
         const hasExteriorMid = draftPointsCm
           .slice(1)
           .some(([mx, mz]) => !isPointInOrNearRoom(mx, mz, canvasPolyCm, 14));
-        if (startOnWall && endOnWall && hasExteriorMid && Math.hypot(sx - fx, sz - fz) >= 35) {
-          finishPointPenPolygon([...draftPointsCm, [sx, sz]], true);
-          return;
+        if (startNearWall && endNearWall && hasExteriorMid && Math.hypot(sx - fx, sz - fz) >= 35) {
+          const nextPts: Pt2[] = [...draftPointsCm, [sx, sz]];
+          if (mergePointPenExtension(canvasPolyCm, nextPts)) {
+            finishPointPenPolygon(nextPts, true);
+            return;
+          }
         }
       }
 
@@ -1236,22 +1240,14 @@ export function MyDreamSetupBlueprint({
       return;
     }
 
-    // 3) โหมดปากกา -> ลากวาดห้อง/ต่อเติม (+), ลากวาดครึ่งสามเหลี่ยม (◢), ตัดเว้า (-), หรือลากกั้นกำแพงในห้องอัตโนมัติ!
-    if (
-      activeTool === "pencil" &&
-      (penMode === "paint-add" || penMode === "paint-triangle" || penMode === "paint-erase")
-    ) {
+    // 3) โหมดปากกา -> ลากวาดห้อง/ต่อเติม (+), ตัดเว้า (-), หรือลากกั้นกำแพงในห้องอัตโนมัติ!
+    if (activeTool === "pencil" && (penMode === "paint-add" || penMode === "paint-erase")) {
       const gx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(pt.xCm / GRID_CELL_CM)));
       const gz = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(pt.zCm / GRID_CELL_CM)));
       if (pt.xCm < -25 || pt.xCm > GRID_COLS * GRID_CELL_CM + 25 || pt.zCm < -25 || pt.zCm > GRID_ROWS * GRID_CELL_CM + 25) {
         return;
       }
-      const dragMode: "add" | "triangle" | "erase" =
-        penMode === "paint-erase" || e.altKey
-          ? "erase"
-          : penMode === "paint-triangle"
-          ? "triangle"
-          : "add";
+      const dragMode: "add" | "erase" = penMode === "paint-erase" || e.altKey ? "erase" : "add";
       setSelectedElement(null);
       setSelectedInteriorWallId(null);
       setEditingWallIndex(null);
@@ -1503,32 +1499,6 @@ export function MyDreamSetupBlueprint({
             setDraggingCompass(false);
             return;
           }
-        }
-
-        // กรณีโหมดวาดครึ่งสามเหลี่ยม (◢ สามเหลี่ยม): เชื่อมรวมเข้ากับห้องหลักอัตโนมัติเมื่อแตะขอบห้อง!
-        if (boxDrag.mode === "triangle") {
-          const tri = resolveTriangleDrag(
-            boxDrag.startRawCm,
-            boxDrag.curRawCm,
-            canvasPolyCm,
-            isBlankCanvas,
-            boxDrag.shiftKey
-          );
-          if (tri.isValid) {
-            if (!isBlankCanvas && canvasPolyCm.length >= 3) {
-              const merged = unionRoomPolygons(canvasPolyCm, tri.pts);
-              if (merged && merged.connected) {
-                commitNewPoly(merged.poly);
-              }
-            } else if (tri.wCm >= 100 && tri.dCm >= 100) {
-              commitNewPoly(tri.pts);
-            }
-          }
-          setBoxDrag(null);
-          setHandleDrag(null);
-          setDraggingOpening(null);
-          setDraggingCompass(false);
-          return;
         }
 
         const minGx = Math.min(boxDrag.startGx, boxDrag.curGx);
@@ -1826,26 +1796,75 @@ export function MyDreamSetupBlueprint({
     return res.isInteriorWall ? res : null;
   }, [boxDrag, isBlankCanvas, canvasPolyCm, interiorWalls]);
 
-  // ตัวอย่างครึ่งสามเหลี่ยมขณะคลิกลาก (Half-Triangle Drag Preview — หันด้านฉากประกบเชื่อมห้องหลักอัตโนมัติ)
-  const triangleDragPreview = useMemo(() => {
-    if (!boxDrag || boxDrag.mode !== "triangle") return null;
-    const tri = resolveTriangleDrag(
-      boxDrag.startRawCm,
-      boxDrag.curRawCm,
+  // ข้อมูลพิกัดเมาส์และตัวอย่างเงาสีเขียวเชื่อมครึ่งสามเหลี่ยม/ผนังเฉียงสดๆ ในโหมด "วาดเส้น" (Point-to-Point)
+  const pointPenCursorSnap = useMemo(() => {
+    if (activeTool !== "pencil" || penMode !== "point-pen" || !cursorCm) return null;
+    const prevPt = draftPointsCm.length > 0 ? draftPointsCm[draftPointsCm.length - 1] : null;
+    return snapPointPenCursor(
+      cursorCm[0],
+      cursorCm[1],
       canvasPolyCm,
+      interiorWalls,
+      prevPt,
       isBlankCanvas,
-      boxDrag.shiftKey
+      false
     );
-    const willConnect =
-      isBlankCanvas || canvasPolyCm.length < 3
-        ? tri.wCm >= 100 && tri.dCm >= 100
-        : tri.isValid && Boolean(unionRoomPolygons(canvasPolyCm, tri.pts)?.connected);
-    return { ...tri, willConnect };
-  }, [boxDrag, canvasPolyCm, isBlankCanvas]);
+  }, [activeTool, penMode, cursorCm, draftPointsCm, canvasPolyCm, interiorWalls, isBlankCanvas]);
 
-  // พิกัด SVG ของกล่องลากวาด (Box Drag Preview — ซ่อนอัตโนมัติเมื่อกำลังวาดกำแพงในห้องหรือวาดสามเหลี่ยม)
+  const pointPenMergePreview = useMemo(() => {
+    if (
+      activeTool !== "pencil" ||
+      penMode !== "point-pen" ||
+      isBlankCanvas ||
+      canvasPolyCm.length < 3 ||
+      draftPointsCm.length === 0
+    ) {
+      return null;
+    }
+    if (pointPenCursorSnap) {
+      const [sx, sz] = pointPenCursorSnap.pt;
+      const last = draftPointsCm[draftPointsCm.length - 1];
+      const nextPts: Pt2[] =
+        Math.hypot(sx - last[0], sz - last[1]) >= 15
+          ? draftPointsCm.length >= 3 &&
+            Math.hypot(sx - draftPointsCm[0][0], sz - draftPointsCm[0][1]) <= 35
+            ? draftPointsCm
+            : [...draftPointsCm, [sx, sz]]
+          : draftPointsCm;
+
+      if (nextPts.length >= 3) {
+        const allIn = nextPts.every(([x, z]) => isPointInOrNearRoom(x, z, canvasPolyCm, 20));
+        if (!allIn) {
+          const liveMerge = mergePointPenExtension(canvasPolyCm, nextPts);
+          if (liveMerge) {
+            return {
+              ...liveMerge,
+              readyOnClick:
+                pointPenCursorSnap.onMainWall ||
+                (draftPointsCm.length >= 3 &&
+                  Math.hypot(sx - draftPointsCm[0][0], sz - draftPointsCm[0][1]) <= 35),
+            };
+          }
+        }
+      }
+    }
+    if (draftMergeResult) {
+      return { ...draftMergeResult, readyOnClick: false };
+    }
+    return null;
+  }, [
+    activeTool,
+    penMode,
+    isBlankCanvas,
+    canvasPolyCm,
+    draftPointsCm,
+    pointPenCursorSnap,
+    draftMergeResult,
+  ]);
+
+  // พิกัด SVG ของกล่องลากวาด (Box Drag Preview — ซ่อนอัตโนมัติเมื่อกำลังวาดกำแพงในห้อง)
   const boxDragPreview = useMemo(() => {
-    if (!boxDrag || boxDrag.mode === "triangle" || interiorWallDragPreview) return null;
+    if (!boxDrag || interiorWallDragPreview) return null;
     const minGx = Math.min(boxDrag.startGx, boxDrag.curGx);
     const maxGx = Math.max(boxDrag.startGx, boxDrag.curGx);
     const minGz = Math.min(boxDrag.startGz, boxDrag.curGz);
@@ -2200,30 +2219,6 @@ export function MyDreamSetupBlueprint({
                 <button
                   type="button"
                   onClick={() => {
-                    setPenMode("paint-triangle");
-                    setDraftPointsCm([]);
-                  }}
-                  title="คลิกลากวาดครึ่งสามเหลี่ยมต่อเชื่อมกับตัวห้องหลักได้ทุกด้าน (กด Shift ค้างเพื่อสลับมุมฉาก)"
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                    penMode === "paint-triangle"
-                      ? "bg-amber-400 text-slate-950 shadow-sm"
-                      : "text-white/90 hover:bg-white/10"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    className="h-3.5 w-3.5 shrink-0"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <polygon points="2.5,2.5 13.5,13.5 2.5,13.5" />
-                  </svg>
-                  สามเหลี่ยม
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
                     setPenMode("paint-erase");
                     setDraftPointsCm([]);
                   }}
@@ -2344,6 +2339,15 @@ export function MyDreamSetupBlueprint({
                   <Check className="h-3.5 w-3.5" />
                   สร้างกำแพงในห้อง ({draftPointsCm.length - 1})
                 </button>
+              ) : penMode === "point-pen" && draftMergeResult ? (
+                <button
+                  type="button"
+                  onClick={() => finishPointPenPolygon(draftPointsCm, true)}
+                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  เชื่อมรวมกับห้องหลัก ({draftPointsCm.length})
+                </button>
               ) : (
                 penMode === "point-pen" &&
                 draftPointsCm.length >= 3 && (
@@ -2353,9 +2357,7 @@ export function MyDreamSetupBlueprint({
                     className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
                   >
                     <Check className="h-3.5 w-3.5" />
-                    {isDraftTouchingMainRoom
-                      ? `เชื่อมรวมกับห้องหลัก (${draftPointsCm.length})`
-                      : `เชื่อมปิดห้อง (${draftPointsCm.length})`}
+                    เชื่อมปิดห้อง ({draftPointsCm.length})
                   </button>
                 )
               )}
@@ -3645,67 +3647,6 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* ตัวอย่างครึ่งสามเหลี่ยมขณะคลิกลาก (Half-Triangle Drag Preview) */}
-          {triangleDragPreview && (
-            <g pointerEvents="none">
-              {(() => {
-                const svgPts = triangleDragPreview.pts.map(([x, z]) => cmToSvg(x, z));
-                const cx = (svgPts[0][0] + svgPts[1][0] + svgPts[2][0]) / 3;
-                const cy = (svgPts[0][1] + svgPts[1][1] + svgPts[2][1]) / 3;
-                const wM = (triangleDragPreview.wCm / 100).toFixed(2);
-                const dM = (triangleDragPreview.dCm / 100).toFixed(2);
-                const ok = triangleDragPreview.willConnect;
-                const labelText = ok
-                  ? `เชื่อมสามเหลี่ยม ${wM}×${dM}m · Shift กลับมุม`
-                  : !isBlankCanvas && canvasPolyCm.length >= 3 && triangleDragPreview.isValid
-                  ? `ลากชิดผนังห้องหลักเพื่อเชื่อม (${wM}×${dM}m)`
-                  : `สามเหลี่ยม ${wM}×${dM}m · Shift กลับมุม`;
-                return (
-                  <>
-                    <polygon
-                      points={svgPts.map((p) => p.join(",")).join(" ")}
-                      fill={ok ? "rgba(16, 185, 129, 0.28)" : "rgba(253, 224, 71, 0.25)"}
-                      stroke={ok ? "#34d399" : "#fde047"}
-                      strokeWidth={4}
-                      strokeLinejoin="round"
-                      strokeDasharray="8 5"
-                    />
-                    {svgPts.map(([px, py], i) => (
-                      <circle
-                        key={`tri-pt-${i}`}
-                        cx={px}
-                        cy={py}
-                        r={5.5}
-                        fill={ok ? "#10b981" : "#f59e0b"}
-                        stroke="#ffffff"
-                        strokeWidth={2}
-                      />
-                    ))}
-                    <rect
-                      x={cx - 130}
-                      y={cy - 13}
-                      width={260}
-                      height={26}
-                      rx={8}
-                      fill="rgba(15, 23, 42, 0.92)"
-                      stroke={ok ? "rgba(52, 211, 153, 0.7)" : "rgba(253, 224, 71, 0.65)"}
-                    />
-                    <text
-                      x={cx}
-                      y={cy + 0.5}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill={ok ? "#6ee7b7" : "#fde047"}
-                      className="font-mono text-[10.5px] font-bold"
-                    >
-                      {labelText}
-                    </text>
-                  </>
-                );
-              })()}
-            </g>
-          )}
-
           {/* กรอบแสดงขนาดสดขณะคลิกลากวาดบล็อกห้อง (Grid Box Paint / Erase Preview) */}
           {boxDragPreview && (
             <g pointerEvents="none">
@@ -3746,9 +3687,44 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* เส้นกำลังวาดในโหมดคลิกจุดต่อจุด (Point-to-Point Wall Pen — คลิกขวาเพื่อลบเส้นที่กำลังวาดได้ทันที) */}
+          {/* จุดช่วยเล็งดูดติดผนัง/มุมห้องหลักก่อนคลิกจุดแรกในโหมดวาดเส้น */}
+          {activeTool === "pencil" &&
+            penMode === "point-pen" &&
+            draftPointsCm.length === 0 &&
+            pointPenCursorSnap && (
+              <g pointerEvents="none">
+                {(() => {
+                  const [sx, sy] = cmToSvg(pointPenCursorSnap.pt[0], pointPenCursorSnap.pt[1]);
+                  return (
+                    <circle
+                      cx={sx}
+                      cy={sy}
+                      r={pointPenCursorSnap.onMainWall ? 7.5 : 5}
+                      fill={pointPenCursorSnap.onMainWall ? "#10b981" : "rgba(253, 224, 71, 0.85)"}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                    />
+                  );
+                })()}
+              </g>
+            )}
+
+          {/* เส้นกำลังวาด + เงาเชื่อมครึ่งสามเหลี่ยม/ส่วนต่อเติมสดในโหมดวาดเส้น (Point-to-Point Wall Pen) */}
           {activeTool === "pencil" && penMode === "point-pen" && draftPointsCm.length > 0 && (
             <g pointerEvents="none">
+              {pointPenMergePreview && (
+                <polygon
+                  points={pointPenMergePreview.extPoly
+                    .map(([px, pz]) => cmToSvg(px, pz).join(","))
+                    .join(" ")}
+                  fill="rgba(16, 185, 129, 0.28)"
+                  stroke="#34d399"
+                  strokeWidth={3.5}
+                  strokeLinejoin="round"
+                  strokeDasharray="7 5"
+                />
+              )}
+
               <polyline
                 points={draftPointsCm.map(([x, z]) => cmToSvg(x, z).join(",")).join(" ")}
                 fill="none"
@@ -3757,40 +3733,73 @@ export function MyDreamSetupBlueprint({
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
-              {cursorCm && (() => {
+              {pointPenCursorSnap && (() => {
                 const last = draftPointsCm[draftPointsCm.length - 1];
-                const [sxCm, szCm] = !isBlankCanvas
-                  ? snapPointToRoomWalls(cursorCm[0], cursorCm[1], canvasPolyCm, interiorWalls, 18)
-                  : [Math.round(cursorCm[0] / 10) * 10, Math.round(cursorCm[1] / 10) * 10];
+                const [sxCm, szCm] = pointPenCursorSnap.pt;
                 const [x1, y1] = cmToSvg(last[0], last[1]);
                 const [x2, y2] = cmToSvg(sxCm, szCm);
                 const distM = (Math.hypot(sxCm - last[0], szCm - last[1]) / 100).toFixed(2);
-                const badgeText = `${distM}m · คลิกขวาลบเส้น`;
+                const readyMerge = Boolean(pointPenMergePreview?.readyOnClick);
+                const badgeText = readyMerge
+                  ? `${distM}m · คลิกเชื่อมรวมกับห้องหลัก`
+                  : `${distM}m · คลิกขวาลบเส้น`;
+                const badgeW = readyMerge ? 188 : 132;
                 return (
                   <g>
+                    {pointPenCursorSnap.alignXFrom && (
+                      <line
+                        x1={cmToSvg(pointPenCursorSnap.alignXFrom[0], pointPenCursorSnap.alignXFrom[1])[0]}
+                        y1={cmToSvg(pointPenCursorSnap.alignXFrom[0], pointPenCursorSnap.alignXFrom[1])[1]}
+                        x2={x2}
+                        y2={y2}
+                        stroke="#38bdf8"
+                        strokeWidth={1.8}
+                        strokeDasharray="4 4"
+                      />
+                    )}
+                    {pointPenCursorSnap.alignZFrom && (
+                      <line
+                        x1={cmToSvg(pointPenCursorSnap.alignZFrom[0], pointPenCursorSnap.alignZFrom[1])[0]}
+                        y1={cmToSvg(pointPenCursorSnap.alignZFrom[0], pointPenCursorSnap.alignZFrom[1])[1]}
+                        x2={x2}
+                        y2={y2}
+                        stroke="#38bdf8"
+                        strokeWidth={1.8}
+                        strokeDasharray="4 4"
+                      />
+                    )}
                     <line
                       x1={x1}
                       y1={y1}
                       x2={x2}
                       y2={y2}
-                      stroke="#ffffff"
+                      stroke={readyMerge ? "#34d399" : "#ffffff"}
                       strokeWidth={4}
                       strokeDasharray="8 6"
                     />
+                    <circle
+                      cx={x2}
+                      cy={y2}
+                      r={pointPenCursorSnap.onMainWall ? 8 : 5.5}
+                      fill={pointPenCursorSnap.onMainWall ? "#10b981" : "#fde047"}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                    />
                     <rect
-                      x={(x1 + x2) / 2 - 64}
-                      y={(y1 + y2) / 2 - 11}
-                      width={128}
-                      height={21}
+                      x={(x1 + x2) / 2 - badgeW / 2}
+                      y={(y1 + y2) / 2 - 11.5}
+                      width={badgeW}
+                      height={22}
                       rx={6}
-                      fill="rgba(15,23,42,0.9)"
+                      fill="rgba(15,23,42,0.92)"
+                      stroke={readyMerge ? "rgba(52, 211, 153, 0.75)" : "none"}
                     />
                     <text
                       x={(x1 + x2) / 2}
                       y={(y1 + y2) / 2}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill="#fde047"
+                      fill={readyMerge ? "#6ee7b7" : "#fde047"}
                       className="font-mono text-[10.5px] font-bold"
                     >
                       {badgeText}

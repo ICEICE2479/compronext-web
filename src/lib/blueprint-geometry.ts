@@ -891,66 +891,114 @@ export function snapPolyToTargetBoundary(polyB: Pt2[], polyA: Pt2[], tolCm = 22)
 
 /**
  * กรณีลูกค้าใช้โหมดวาดเส้น (Point-to-Point) คลิกเริ่มบนผนังห้องหลัก -> ลากออกไปนอกห้อง (เช่น วาดครึ่งสามเหลี่ยม) -> คลิกจบกลับบนผนังห้องหลัก
- * ฟังก์ชันนี้จะปิดรูปหลายเหลี่ยมตามแนวขอบห้องหลักอัตโนมัติ (รองรับทั้งบนผนังด้านเดียวกันและอ้อมมุมห้อง)
+ * คำนวณทางเดินปิดรูปตามเส้นรอบรูปจริงของห้องหลักทั้ง 2 ฝั่งแบบไร้รอยต่อ (รองรับทั้งบนผนังด้านเดียวกัน มุมชนมุม และอ้อมมุมห้อง)
  */
-export function buildAttachedExtensionPoly(mainPoly: Pt2[], pts: Pt2[]): Pt2[] {
-  if (pts.length < 3 || mainPoly.length < 3) return pts;
-  const hStart = minDistToPolyBoundary(pts[0][0], pts[0][1], mainPoly);
-  const hEnd = minDistToPolyBoundary(pts[pts.length - 1][0], pts[pts.length - 1][1], mainPoly);
-  if (hStart.distCm > 26 || hEnd.distCm > 26) return pts;
-
-  let closed: Pt2[] = pts;
-  if (hStart.edgeIndex !== hEnd.edgeIndex) {
-    const n = mainPoly.length;
-    // ทางเดินที่ 1: เดินไปข้างหน้าตามจุดมุมของห้องหลักจาก hEnd ไปหา hStart
-    const chainFwd: Pt2[] = [];
-    let idx = (hEnd.edgeIndex + 1) % n;
-    let distFwd = Math.hypot(mainPoly[idx][0] - hEnd.projX, mainPoly[idx][1] - hEnd.projZ);
-    let cur = mainPoly[idx];
-    let safety = 0;
-    while (idx !== (hStart.edgeIndex + 1) % n && safety++ <= n) {
-      chainFwd.push(mainPoly[idx]);
-      const nxtIdx = (idx + 1) % n;
-      if (nxtIdx === (hStart.edgeIndex + 1) % n) break;
-      distFwd += Math.hypot(mainPoly[nxtIdx][0] - cur[0], mainPoly[nxtIdx][1] - cur[1]);
-      idx = nxtIdx;
-      cur = mainPoly[idx];
-    }
-    distFwd += Math.hypot(hStart.projX - cur[0], hStart.projZ - cur[1]);
-
-    // ทางเดินที่ 2: เดินย้อนกลับตามจุดมุมของห้องหลักจาก hEnd ไปหา hStart
-    const chainBwd: Pt2[] = [];
-    let bIdx = hEnd.edgeIndex;
-    let distBwd = Math.hypot(mainPoly[bIdx][0] - hEnd.projX, mainPoly[bIdx][1] - hEnd.projZ);
-    let bCur = mainPoly[bIdx];
-    safety = 0;
-    while (bIdx !== hStart.edgeIndex && safety++ <= n) {
-      chainBwd.push(mainPoly[bIdx]);
-      const prvIdx = (bIdx - 1 + n) % n;
-      distBwd += Math.hypot(mainPoly[prvIdx][0] - bCur[0], mainPoly[prvIdx][1] - bCur[1]);
-      bIdx = prvIdx;
-      bCur = mainPoly[bIdx];
-    }
-    distBwd += Math.hypot(hStart.projX - bCur[0], hStart.projZ - bCur[1]);
-
-    closed = distFwd <= distBwd ? [...pts, ...chainFwd] : [...pts, ...chainBwd];
-  }
-
-  // ตัดจุดซ้ำติดกัน
+function dedupClosedLoop(raw: Pt2[]): Pt2[] {
   const dedup: Pt2[] = [];
-  for (const p of closed) {
+  for (const p of raw) {
     const prev = dedup[dedup.length - 1];
-    if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) >= 5) {
-      dedup.push(p);
+    if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) >= 4) {
+      dedup.push([Math.round(p[0]), Math.round(p[1])]);
     }
   }
-  if (
+  while (
     dedup.length > 2 &&
-    Math.hypot(dedup[0][0] - dedup[dedup.length - 1][0], dedup[0][1] - dedup[dedup.length - 1][1]) < 5
+    Math.hypot(dedup[0][0] - dedup[dedup.length - 1][0], dedup[0][1] - dedup[dedup.length - 1][1]) < 4
   ) {
     dedup.pop();
   }
   return dedup;
+}
+
+function boundaryArcCoord(x: number, z: number, poly: Pt2[]): { s: number; total: number; distCm: number; proj: Pt2 } {
+  const n = poly.length;
+  const cum: number[] = [0];
+  for (let i = 0; i < n; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % n];
+    cum.push(cum[i] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+  }
+  const total = cum[n] || 1;
+  let bestDist = Infinity;
+  let bestS = 0;
+  let bestProj: Pt2 = [x, z];
+  for (let i = 0; i < n; i++) {
+    const [x1, z1] = poly[i];
+    const [x2, z2] = poly[(i + 1) % n];
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const len = cum[i + 1] - cum[i];
+    if (len < 1e-6) continue;
+    const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / (len * len)));
+    const px = x1 + dx * t;
+    const pz = z1 + dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (d < bestDist) {
+      bestDist = d;
+      bestS = (cum[i] + t * len) % total;
+      bestProj = [Math.round(px), Math.round(pz)];
+    }
+  }
+  return { s: bestS, total, distCm: bestDist, proj: bestProj };
+}
+
+export function buildAttachedExtensionCandidates(mainPoly: Pt2[], pts: Pt2[]): Pt2[][] {
+  if (pts.length < 3 || mainPoly.length < 3) return [pts];
+  const aStart = boundaryArcCoord(pts[0][0], pts[0][1], mainPoly);
+  const aEnd = boundaryArcCoord(pts[pts.length - 1][0], pts[pts.length - 1][1], mainPoly);
+  if (aStart.distCm > 28 || aEnd.distCm > 28) {
+    return [dedupClosedLoop(pts)];
+  }
+
+  const n = mainPoly.length;
+  const vArc: number[] = [0];
+  for (let i = 0; i < n - 1; i++) {
+    const a = mainPoly[i];
+    const b = mainPoly[i + 1];
+    vArc.push(vArc[i] + Math.hypot(b[0] - a[0], b[1] - a[1]));
+  }
+  const total = aStart.total;
+  const spanFwd = (((aStart.s - aEnd.s) % total) + total) % total;
+  const spanBwd = (((aEnd.s - aStart.s) % total) + total) % total;
+
+  // ทางเดินไปข้างหน้าตามเส้นรอบรูป (จาก aEnd -> aStart)
+  const vertsFwd: Array<{ pt: Pt2; d: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const d = (((vArc[i] - aEnd.s) % total) + total) % total;
+    if (d > 4 && d < spanFwd - 4) {
+      vertsFwd.push({ pt: mainPoly[i], d });
+    }
+  }
+  vertsFwd.sort((p, q) => p.d - q.d);
+
+  // ทางเดินย้อนกลับตามเส้นรอบรูป (จาก aEnd -> aStart)
+  const vertsBwd: Array<{ pt: Pt2; d: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const d = (((aEnd.s - vArc[i]) % total) + total) % total;
+    if (d > 4 && d < spanBwd - 4) {
+      vertsBwd.push({ pt: mainPoly[i], d });
+    }
+  }
+  vertsBwd.sort((p, q) => p.d - q.d);
+
+  const snappedPts: Pt2[] = pts.map((p, idx) =>
+    idx === 0 ? aStart.proj : idx === pts.length - 1 ? aEnd.proj : p
+  );
+  const candFwd = dedupClosedLoop([...snappedPts, ...vertsFwd.map((v) => v.pt)]);
+  const candBwd = dedupClosedLoop([...snappedPts, ...vertsBwd.map((v) => v.pt)]);
+  const candDirect = dedupClosedLoop(snappedPts);
+
+  const ordered =
+    spanFwd <= spanBwd ? [candFwd, candBwd, candDirect] : [candBwd, candFwd, candDirect];
+  return ordered.filter((c) => c.length >= 3);
+}
+
+export function buildAttachedExtensionPoly(mainPoly: Pt2[], pts: Pt2[]): Pt2[] {
+  const cands = buildAttachedExtensionCandidates(mainPoly, pts);
+  for (const c of cands) {
+    if (!hasSelfIntersection(c) && Math.abs(signedArea(c)) >= 1200) return c;
+  }
+  return cands[0] ?? pts;
 }
 
 /**
@@ -1180,177 +1228,112 @@ export function subtractRoomPolygons(mainPoly: Pt2[], cutPoly: Pt2[]): { poly: P
 }
 
 /**
- * คำนวณรูปครึ่งสามเหลี่ยม (สามเหลี่ยมมุมฉาก) ขณะลากเมาส์:
- * - หันด้านตั้งฉากเข้าประกบติดผนังห้องหลักให้อัตโนมัติ (ไม่ว่าจะวาดฝั่งขวา ซ้าย บน หรือล่างของห้องหลัก)
- * - กด Shift ค้างเพื่อสลับมุมฉากกลับด้านได้ทันที
+ * ประมวลผลการเชื่อมเส้นจากโหมด "วาดเส้น" (Point-to-Point) เข้ากับตัวห้องหลักโดยตรง:
+ * - รองรับวาดครึ่งสามเหลี่ยม/คางหมูจากผนังห้องหลัก -> ออกไปข้างนอก -> กลับเข้าผนังห้องหลัก (3+ คลิก)
+ * - รองรับวาด 2 จุด (เริ่มจากผนังห้องหลัก -> ลากเฉียงออกไปนอกห้อง) แล้วตั้งฉากกลับเข้าผนังห้องหลักอัตโนมัติเมื่อกด Enter/ปุ่มเชื่อม
+ * - รองรับวาดรูปปิดลำดับจุดใดก็ได้ที่แตะหรือซ้อนกับห้องหลัก
  */
-export function resolveTriangleDrag(
-  startRawCm: Pt2,
-  curRawCm: Pt2,
+export function mergePointPenExtension(
   mainPoly: Pt2[],
+  pts: Pt2[]
+): { extPoly: Pt2[]; mergedPoly: Pt2[] } | null {
+  if (mainPoly.length < 3 || pts.length < 2) return null;
+
+  const candidateSets: Pt2[][] = [];
+
+  if (pts.length === 2) {
+    // กรณีคลิก 2 จุด (จุดบนผนังห้องหลัก -> จุดปลายเฉียงด้านนอก หรือกลับกัน) -> สร้างครึ่งสามเหลี่ยมตั้งฉากกลับเข้าผนังห้องหลักให้อัตโนมัติ
+    const d0 = minDistToPolyBoundary(pts[0][0], pts[0][1], mainPoly);
+    const d1 = minDistToPolyBoundary(pts[1][0], pts[1][1], mainPoly);
+    if (d0.distCm <= 28 && !isPointInOrNearRoom(pts[1][0], pts[1][1], mainPoly, 18) && d1.distCm >= 35) {
+      const foot: Pt2 = [Math.round(d1.projX), Math.round(d1.projZ)];
+      if (Math.hypot(foot[0] - pts[0][0], foot[1] - pts[0][1]) >= 35) {
+        candidateSets.push(...buildAttachedExtensionCandidates(mainPoly, [pts[0], pts[1], foot]));
+      }
+    } else if (d1.distCm <= 28 && !isPointInOrNearRoom(pts[0][0], pts[0][1], mainPoly, 18) && d0.distCm >= 35) {
+      const foot: Pt2 = [Math.round(d0.projX), Math.round(d0.projZ)];
+      if (Math.hypot(foot[0] - pts[1][0], foot[1] - pts[1][1]) >= 35) {
+        candidateSets.push(...buildAttachedExtensionCandidates(mainPoly, [foot, pts[0], pts[1]]));
+      }
+    }
+  } else {
+    candidateSets.push(...buildAttachedExtensionCandidates(mainPoly, pts));
+  }
+
+  for (const cand of candidateSets) {
+    if (cand.length < 3 || hasSelfIntersection(cand) || Math.abs(signedArea(cand)) < 1200) continue;
+    const merged = unionRoomPolygons(mainPoly, cand);
+    if (merged && merged.connected) {
+      return { extPoly: cand, mergedPoly: merged.poly };
+    }
+  }
+  return null;
+}
+
+/**
+ * ดูดพิกัดเมาส์ในโหมด "วาดเส้น" (Point-to-Point):
+ * - ถ้าใกล้ผนังหรือมุมห้องหลัก (<= 28 ซม.) -> ดูดติดผนัง/มุมห้องหลักทันทีเพื่อให้เชื่อมห้องได้แนบสนิท 100%
+ * - ถ้าอยู่นอกห้อง -> ปัดละเอียดทุก 0.1 ม. (10 ซม.) พร้อมเส้นประช่วยเล็งให้ตรงแนวระนาบมุมห้องหลักอัตโนมัติ
+ */
+export function snapPointPenCursor(
+  rawX: number,
+  rawZ: number,
+  mainPoly: Pt2[],
+  interiorWalls: CanvasInteriorWall[],
+  prevPt: Pt2 | null,
   isBlankCanvas: boolean,
-  flipCorner = false
+  disableAlign = false
 ): {
-  pts: [Pt2, Pt2, Pt2];
-  wCm: number;
-  dCm: number;
-  areaM2: string;
-  isValid: boolean;
+  pt: Pt2;
+  onMainWall: boolean;
+  alignXFrom?: Pt2;
+  alignZFrom?: Pt2;
 } {
   const maxX = GRID_COLS * GRID_CELL_CM;
   const maxZ = GRID_ROWS * GRID_CELL_CM;
 
-  let x1 = Math.max(0, Math.min(maxX, Math.round(startRawCm[0] / 10) * 10));
-  let z1 = Math.max(0, Math.min(maxZ, Math.round(startRawCm[1] / 10) * 10));
-  let x2 = Math.max(0, Math.min(maxX, Math.round(curRawCm[0] / 10) * 10));
-  let z2 = Math.max(0, Math.min(maxZ, Math.round(curRawCm[1] / 10) * 10));
-
   if (!isBlankCanvas && mainPoly.length >= 3) {
-    const startHit = minDistToPolyBoundary(startRawCm[0], startRawCm[1], mainPoly);
-    if (startHit.distCm <= 50) {
-      const sStart = snapPointToRoomWalls(startRawCm[0], startRawCm[1], mainPoly, [], 50);
-      x1 = sStart[0];
-      z1 = sStart[1];
-    } else {
-      const endHit = minDistToPolyBoundary(curRawCm[0], curRawCm[1], mainPoly);
-      if (endHit.distCm <= 50) {
-        const sEnd = snapPointToRoomWalls(curRawCm[0], curRawCm[1], mainPoly, [], 50);
-        x2 = sEnd[0];
-        z2 = sEnd[1];
-      }
-    }
-
-    // ดูดแนวพิกัดปลายเมาส์ให้เสมอกับแนวผนัง/มุมของห้องหลักพอดีเป๊ะ (เช่น ฐานล่างหรือขอบบนตรงกันเป็นเส้นเดียว)
     for (const [vx, vz] of mainPoly) {
-      if (Math.abs(x2 - x1) >= 40 && Math.abs(x2 - vx) <= 22) x2 = vx;
-      if (Math.abs(z2 - z1) >= 40 && Math.abs(z2 - vz) <= 22) z2 = vz;
+      if (Math.hypot(rawX - vx, rawZ - vz) <= 28) {
+        return { pt: [vx, vz], onMainWall: true };
+      }
+    }
+    const wallHit = minDistToPolyBoundary(rawX, rawZ, mainPoly);
+    if (wallHit.distCm <= 26) {
+      const snapped = snapPointToRoomWalls(rawX, rawZ, mainPoly, interiorWalls, 26);
+      return { pt: snapped, onMainWall: true };
+    }
+    if (isPointInOrNearRoom(rawX, rawZ, mainPoly, 18)) {
+      const snapped = snapPointToRoomWalls(rawX, rawZ, mainPoly, interiorWalls, 22);
+      return { pt: snapped, onMainWall: false };
     }
   }
 
-  const minX = Math.min(x1, x2);
-  const maxX2 = Math.max(x1, x2);
-  const minZ = Math.min(z1, z2);
-  const maxZ2 = Math.max(z1, z2);
-  const wCm = maxX2 - minX;
-  const dCm = maxZ2 - minZ;
+  let sx = Math.max(0, Math.min(maxX, Math.round(rawX / 10) * 10));
+  let sz = Math.max(0, Math.min(maxZ, Math.round(rawZ / 10) * 10));
+  let alignXFrom: Pt2 | undefined;
+  let alignZFrom: Pt2 | undefined;
 
-  let pts: [Pt2, Pt2, Pt2];
-
-  if (!isBlankCanvas && mainPoly.length >= 3 && wCm >= 20 && dCm >= 20) {
-    const sampleTouch = (ax: number, az: number, bx: number, bz: number) => {
-      let score = 0;
-      for (const t of [0.15, 0.35, 0.5, 0.65, 0.85]) {
-        const px = ax + (bx - ax) * t;
-        const pz = az + (bz - az) * t;
-        if (isPointInOrNearRoom(px, pz, mainPoly, 20)) score++;
+  if (!disableAlign) {
+    const refs: Pt2[] = [...(!isBlankCanvas ? mainPoly : []), ...(prevPt ? [prevPt] : [])];
+    let bestDx = 17;
+    let bestDz = 17;
+    for (const [rx, rz] of refs) {
+      const dx = Math.abs(sx - rx);
+      if (dx <= 15 && dx < bestDx && Math.hypot(sx - rx, sz - rz) >= 35) {
+        bestDx = dx;
+        sx = rx;
+        alignXFrom = [rx, rz];
       }
-      return score;
-    };
-
-    const leftTouch = sampleTouch(minX, minZ, minX, maxZ2);
-    const rightTouch = sampleTouch(maxX2, minZ, maxX2, maxZ2);
-    const topTouch = sampleTouch(minX, minZ, maxX2, minZ);
-    const bottomTouch = sampleTouch(minX, maxZ2, maxX2, maxZ2);
-    const maxTouch = Math.max(leftTouch, rightTouch, topTouch, bottomTouch);
-
-    if (maxTouch > 0) {
-      if (leftTouch === maxTouch) {
-        // วาดฝั่งขวาของห้องหลัก -> ให้ด้านซ้ายตั้งฉากแนบติดผนังห้องหลัก
-        const useBottom = flipCorner ? !(z2 >= z1) : z2 >= z1;
-        pts = useBottom
-          ? [
-              [minX, minZ],
-              [maxX2, maxZ2],
-              [minX, maxZ2],
-            ]
-          : [
-              [minX, minZ],
-              [maxX2, minZ],
-              [minX, maxZ2],
-            ];
-      } else if (rightTouch === maxTouch) {
-        // วาดฝั่งซ้ายของห้องหลัก -> ให้ด้านขวาตั้งฉากแนบติดผนังห้องหลัก
-        const useBottom = flipCorner ? !(z2 >= z1) : z2 >= z1;
-        pts = useBottom
-          ? [
-              [maxX2, minZ],
-              [maxX2, maxZ2],
-              [minX, maxZ2],
-            ]
-          : [
-              [minX, minZ],
-              [maxX2, minZ],
-              [maxX2, maxZ2],
-            ];
-      } else if (topTouch === maxTouch) {
-        // วาดฝั่งล่างของห้องหลัก -> ให้ด้านบนแนบติดผนังห้องหลัก
-        const useRight = flipCorner ? !(x2 >= x1) : x2 >= x1;
-        pts = useRight
-          ? [
-              [minX, minZ],
-              [maxX2, minZ],
-              [maxX2, maxZ2],
-            ]
-          : [
-              [minX, minZ],
-              [maxX2, minZ],
-              [minX, maxZ2],
-            ];
-      } else {
-        // วาดฝั่งบนของห้องหลัก -> ให้ด้านล่างแนบติดผนังห้องหลัก
-        const useRight = flipCorner ? !(x2 >= x1) : x2 >= x1;
-        pts = useRight
-          ? [
-              [maxX2, minZ],
-              [maxX2, maxZ2],
-              [minX, maxZ2],
-            ]
-          : [
-              [minX, minZ],
-              [maxX2, maxZ2],
-              [minX, maxZ2],
-            ];
+      const dz = Math.abs(sz - rz);
+      if (dz <= 15 && dz < bestDz && Math.hypot(sx - rx, sz - rz) >= 35) {
+        bestDz = dz;
+        sz = rz;
+        alignZFrom = [rx, rz];
       }
-    } else {
-      pts = flipCorner
-        ? [
-            [x1, z1],
-            [x2, z1],
-            [x2, z2],
-          ]
-        : [
-            [x1, z1],
-            [x2, z2],
-            [x1, z2],
-          ];
     }
-  } else {
-    pts = flipCorner
-      ? [
-          [x1, z1],
-          [x2, z1],
-          [x2, z2],
-        ]
-      : [
-          [x1, z1],
-          [x2, z2],
-          [x1, z2],
-        ];
   }
 
-  if (signedArea(pts) < 0) {
-    pts = [pts[0], pts[2], pts[1]];
-  }
-
-  const areaM2 = ((wCm * dCm) / 20000).toFixed(1);
-  return {
-    pts,
-    wCm,
-    dCm,
-    areaM2,
-    isValid: wCm >= 50 && dCm >= 50,
-  };
+  return { pt: [sx, sz], onMainWall: false, alignXFrom, alignZFrom };
 }
-
-
 
