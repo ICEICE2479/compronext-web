@@ -544,7 +544,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         const lz = Math.abs(rx * itAxes.vx + rz * itAxes.vz);
         return lx <= it.w * 0.55 && lz <= it.d * 0.55;
       });
-      const initWall = findNearestWallForItem(it, propsRef.current.room, 12);
+      const initProbe = clampToRoom({ ...it }, propsRef.current.room);
+      const initWall = findNearestWallForItem(initProbe, propsRef.current.room, 14);
       drag = {
         uid,
         dx: it.x - hit.x / CM,
@@ -572,7 +573,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const curRoom = propsRef.current.room;
       const allItems = propsRef.current.items;
 
-      // เมื่อลากสิ่งของเข้าไปชิด/ติดกำแพงห้องจริง (ระยะประชิด <= 12 ซม.) ถึงค่อยปรับหมุนตามกำแพง
+      // เมื่อลากสิ่งของเข้าไปชิด/ติดกำแพงห้องจริง (ระยะประชิด <= 14 ซม.) ถึงค่อยปรับหมุนตามกำแพง
+      // ใช้ clampToRoom ครอบ probe เพื่อให้ตรวจจับกำแพงได้แม่นยำ 100% แม้จะขยับเมาส์เร็วมากหรือเคอร์เซอร์หลุดนอกห้อง
       // *ยกเว้น* ถ้ากด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
       const isChairNearDesk =
         base.category === "chair" &&
@@ -583,11 +585,11 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
         );
       if (!e.shiftKey && !isChairNearDesk) {
-        const probe = { ...base, x: rawX, z: rawZ, rot: drag.curRot };
-        const nearWall = findNearestWallForItem(probe, curRoom, 12);
+        const probe = clampToRoom({ ...base, x: rawX, z: rawZ, rot: drag.curRot }, curRoom);
+        const nearWall = findNearestWallForItem(probe, curRoom, 14);
         if (!nearWall) {
-          // ปลดล็อกการเกาะกำแพงเมื่อดึงสิ่งของออกมาห่างกำแพงเกิน 22 ซม.
-          if (!findNearestWallForItem(probe, curRoom, 22)) {
+          // ปลดล็อกการเกาะกำแพงเมื่อดึงสิ่งของออกมาห่างกำแพงเกิน 24 ซม.
+          if (!findNearestWallForItem(probe, curRoom, 24)) {
             drag.activeWallKey = null;
           }
         } else if (nearWall.key !== drag.activeWallKey) {

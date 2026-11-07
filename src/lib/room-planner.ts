@@ -596,7 +596,7 @@ export function inRoom(it: PlanItem, room: RoomSize): boolean {
 export function findNearestWallForItem(
   it: Pick<PlanItem, "x" | "z" | "w" | "d" | "rot" | "category">,
   room: RoomSize,
-  maxGapCm = 12
+  maxGapCm = 14
 ): { key: string; targetRot: number; gapCm: number } | null {
   if (it.category === "door") return null;
   const { outer, interior } = getRoomWallSegments(room);
