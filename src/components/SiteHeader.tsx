@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  Box,
   ChevronDown,
   Cpu,
   Heart,
@@ -51,6 +52,7 @@ import { isLargeText, setLargeText, subscribeText } from "@/lib/text-size";
 const NAV_ITEMS = [
   { href: "/rooms", label: "ไอเดียห้อง", icon: LayoutGrid },
   { href: "/design", label: "AI จัดห้อง", icon: Sparkles },
+  { href: "/room-3d", label: "จัดห้อง 3D", icon: Box },
   { href: "/builder", label: "จัดสเปกคอม 3D", icon: Cpu },
   { href: "/monitors", label: "เลือกจอ", icon: Monitor },
   { href: "/compare", label: "เปรียบเทียบสเปก", icon: Scale },

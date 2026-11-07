@@ -48,9 +48,11 @@ const ROOM_LINKS = [
 ];
 
 const TOOL_LINKS = [
+  { href: "/design", label: "AI จัดห้องจากรูปถ่าย" },
+  { href: "/room-3d", label: "จัดห้อง 3D (My Dream Setup)" },
+  { href: "/builder", label: "จัดสเปกคอม 3D & ทดสอบ FPS เกม" },
   { href: "/cart", label: "ตะกร้าสินค้า" },
   { href: "/stores", label: "ร้านค้า & รีวิว" },
-  { href: "/builder", label: "จัดสเปกคอม 3D & ทดสอบ FPS เกม" },
   { href: "/monitors", label: "เลือกจอคอมตามสายงาน (Hz / PPI)" },
   { href: "/compare", label: "ตารางเปรียบเทียบสเปกสินค้า" },
 ];
