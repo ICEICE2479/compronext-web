@@ -259,6 +259,11 @@ export function MyDreamSetupBlueprint({
 
   // สถานะการหมุนวงเข็มทิศบนกระดาษ
   const [draggingCompass, setDraggingCompass] = useState(false);
+  const sunOrientationRef = useRef(sun.orientationDeg);
+  useEffect(() => {
+    sunOrientationRef.current = sun.orientationDeg;
+  }, [sun.orientationDeg]);
+  const compassDragRef = useRef<{ prevAngleRad: number } | null>(null);
 
   // Hover state (ใช้ React state แทน CSS transform: scale บน SVG เพื่อป้องกันอาการจุดสีส้มสั่น/กระพริบ 100%)
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
@@ -1270,15 +1275,24 @@ export function MyDreamSetupBlueprint({
 
     const onMouseMove = (e: MouseEvent) => {
       // A. หมุนเข็มทิศแบบละเอียดทีละ 0.1° (0.0° - 359.9°)
-      if (draggingCompass) {
+      if (draggingCompass && compassDragRef.current) {
         const dialEl = compassDialRef.current;
         if (dialEl) {
           const rect = dialEl.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
-          const angleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
-          const rawDeg = (((angleRad * 180) / Math.PI) % 360 + 360) % 360;
-          setOrientationDeg01(rawDeg);
+          const curAngleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+          let stepRad = curAngleRad - compassDragRef.current.prevAngleRad;
+          while (stepRad > Math.PI) stepRad -= 2 * Math.PI;
+          while (stepRad <= -Math.PI) stepRad += 2 * Math.PI;
+          compassDragRef.current.prevAngleRad = curAngleRad;
+
+          const stepDeg = (stepRad * 180) / Math.PI;
+          // ลากเมาส์ตามเข็มนาฬิกา (stepDeg > 0) -> หน้าปัดเข็มทิศหมุนตามเข็มนาฬิกาไปตามเมาส์ 1:1
+          // เนื่องจากหน้าปัดแสดงผลด้วย rotate(-sun.orientationDeg) ดังนั้นค่า orientationDeg จะลดลงตาม stepDeg
+          const newOrientation = (((sunOrientationRef.current - stepDeg) % 360) + 360) % 360;
+          sunOrientationRef.current = newOrientation;
+          setOrientationDeg01(newOrientation);
         }
         return;
       }
@@ -1497,6 +1511,7 @@ export function MyDreamSetupBlueprint({
             setHandleDrag(null);
             setDraggingOpening(null);
             setDraggingCompass(false);
+            compassDragRef.current = null;
             return;
           }
         }
@@ -1539,6 +1554,7 @@ export function MyDreamSetupBlueprint({
       setHandleDrag(null);
       setDraggingOpening(null);
       setDraggingCompass(false);
+      compassDragRef.current = null;
     };
 
     window.addEventListener("mousemove", onMouseMove);
@@ -2713,6 +2729,14 @@ export function MyDreamSetupBlueprint({
             className="h-[68px] w-[68px] cursor-grab active:cursor-grabbing select-none"
             onMouseDown={(e) => {
               e.stopPropagation();
+              const dialEl = compassDialRef.current;
+              if (dialEl) {
+                const rect = dialEl.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const angleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+                compassDragRef.current = { prevAngleRad: angleRad };
+              }
               setDraggingCompass(true);
             }}
             onWheel={(e) => {

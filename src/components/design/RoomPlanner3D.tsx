@@ -735,7 +735,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         if (!ray.ray.intersectPlane(plane, hit)) return;
 
         const curAngleRad = Math.atan2(hit.x - rotDrag.centerX, hit.z - rotDrag.centerZ);
-        const deltaRad = curAngleRad - rotDrag.initPointerAngleRad;
+        const deltaRad = rotDrag.initPointerAngleRad - curAngleRad;
         const deltaDeg = (deltaRad * 180) / Math.PI;
         let newRot = normalizeRotDeg(rotDrag.initRot + deltaDeg);
         if (e.shiftKey) {
