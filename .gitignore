@@ -42,3 +42,4 @@ compronext-settings.json
 Claude outputs/
 *.zip
 
+.vercel

@@ -301,6 +301,7 @@ export function Room3DStudioClient() {
       price: prod.price,
       dimensions: prod.dimensions,
       colors: prod.colors,
+      imageUrl: prod.imageUrl,
     });
 
     setItems((prev) => {

@@ -1817,7 +1817,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     const seen = new Set<string>();
     for (const it of items) {
       seen.add(it.uid);
-      const key = `${it.category}|${it.w}|${it.d}|${it.h}|${it.color}|${night}`;
+      const key = `${it.category}|${it.name || ""}|${it.w}|${it.d}|${it.h}|${it.color}|${night}`;
       let rec = a.meshes.get(it.uid);
       if (!rec || rec.key !== key) {
         if (rec) {

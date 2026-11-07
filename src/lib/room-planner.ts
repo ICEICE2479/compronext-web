@@ -71,6 +71,7 @@ export interface PlanItem {
   rot: number;
   color: string;
   price: number;
+  imageUrl?: string | null;
 }
 
 /** ปรับค่ามุมหมุนให้อยู่ในช่วง 0 – 359.9 องศา (ความละเอียด 0.1°) */
@@ -153,6 +154,7 @@ export function itemFromProduct(p: {
   price?: number;
   dimensions?: { width: number | null; depth: number | null; height: number | null; unit?: string } | null;
   colors?: string[];
+  imageUrl?: string | null;
 }): PlanItem {
   const def = DEFAULT_DIMS[p.category] ?? DEFAULT_DIMS.other;
   const k = p.dimensions?.unit === "mm" ? 0.1 : p.dimensions?.unit === "m" ? 100 : 1;
@@ -184,6 +186,7 @@ export function itemFromProduct(p: {
     rot: 0,
     color: colorHex ?? COLOR[p.category] ?? "#a8b0ba",
     price: p.price ?? 0,
+    imageUrl: p.imageUrl ?? null,
   };
 }
 
