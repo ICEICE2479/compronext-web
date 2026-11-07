@@ -596,7 +596,7 @@ export function inRoom(it: PlanItem, room: RoomSize): boolean {
 export function findNearestWallForItem(
   it: Pick<PlanItem, "x" | "z" | "w" | "d" | "rot" | "category">,
   room: RoomSize,
-  maxGapCm = 32
+  maxGapCm = 12
 ): { key: string; targetRot: number; gapCm: number } | null {
   if (it.category === "door") return null;
   const { outer, interior } = getRoomWallSegments(room);
@@ -632,20 +632,19 @@ export function findNearestWallForItem(
     const currentObbRadius =
       hw * Math.abs(axes.ux * inx + axes.uz * inz) + hd * Math.abs(axes.vx * inx + axes.vz * inz);
     const currentGap = distToSeg - wallHalf - currentObbRadius;
-    const flatGap = distToSeg - wallHalf - hd;
 
     // องศาฐานของกำแพง: ด้านหลังสิ่งของแนบกำแพง ด้านหน้า (+Z) หันเข้าในห้อง
     const wallBaseRot = normalizeRotDeg((Math.atan2(-inx, inz) * 180) / Math.PI);
 
-    // เข้าข่ายสแนปเมื่อขอบสิ่งของหรือระยะประชิดอยู่ในระยะ maxGapCm
-    const effectiveGap = Math.min(currentGap, flatGap);
+    // ปรับให้สแนปเมื่อขอบสิ่งของเข้าใกล้กำแพงในระยะประชิดจริง (ชิด/ติดกำแพงจริง ไม่สแนปตอนลอยอยู่กลางห้อง)
+    const effectiveGap = Math.max(0, currentGap);
     if (effectiveGap > maxGapCm) continue;
 
     if (!best || distToSeg < best.distCenter) {
       best = {
         key: seg.key,
         targetRot: wallBaseRot,
-        gapCm: Math.round(Math.max(0, effectiveGap) * 10) / 10,
+        gapCm: Math.round(effectiveGap * 10) / 10,
         distCenter: distToSeg,
       };
     }

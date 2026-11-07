@@ -544,7 +544,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         const lz = Math.abs(rx * itAxes.vx + rz * itAxes.vz);
         return lx <= it.w * 0.55 && lz <= it.d * 0.55;
       });
-      const initWall = findNearestWallForItem(it, propsRef.current.room, 28);
+      const initWall = findNearestWallForItem(it, propsRef.current.room, 12);
       drag = {
         uid,
         dx: it.x - hit.x / CM,
@@ -572,7 +572,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const curRoom = propsRef.current.room;
       const allItems = propsRef.current.items;
 
-      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง ปรับหมุนตามกำแพงอัตโนมัติ (รองรับทั้งแบบขนานและแบบตั้งฉากทำตัวกั้นห้อง)
+      // เมื่อลากสิ่งของเข้าไปชิด/ติดกำแพงห้องจริง (ระยะประชิด <= 12 ซม.) ถึงค่อยปรับหมุนตามกำแพง
       // *ยกเว้น* ถ้ากด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
       const isChairNearDesk =
         base.category === "chair" &&
@@ -584,9 +584,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         );
       if (!e.shiftKey && !isChairNearDesk) {
         const probe = { ...base, x: rawX, z: rawZ, rot: drag.curRot };
-        const nearWall = findNearestWallForItem(probe, curRoom, 30);
+        const nearWall = findNearestWallForItem(probe, curRoom, 12);
         if (!nearWall) {
-          if (!findNearestWallForItem(probe, curRoom, 42)) {
+          // ปลดล็อกการเกาะกำแพงเมื่อดึงสิ่งของออกมาห่างกำแพงเกิน 22 ซม.
+          if (!findNearestWallForItem(probe, curRoom, 22)) {
             drag.activeWallKey = null;
           }
         } else if (nearWall.key !== drag.activeWallKey) {
