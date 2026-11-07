@@ -439,9 +439,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       y: number;
       moved: boolean;
       riders: PlanItem[];
+      startWallKey: string | null;
       activeWallKey: string | null;
       curRot: number;
-      preserveRot?: boolean;
+      hasCustomRotOnStartWall: boolean;
       last?: { x: number; z: number; y: number; rot: number };
     } | null = null;
     let rotDrag: {
@@ -676,9 +677,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         ? Math.abs((((normalizeRotDeg(it.rot) - initWall.targetRot + 180) % 360 + 360) % 360) - 180)
         : 0;
 
-      // ถ้าสิ่งของปัจจุบันมีองศาที่แตกต่างจากองศากำแพงเกิน 5° แสดงว่าเป็นองศาที่ผู้ใช้ตั้งใจหมุนไว้เอง (เช่น กั้นห้อง, หมุนเข้ามุม)
-      // หรือหากผู้ใช้ได้ตั้งองศาไว้ ไม่ให้กำแพงดูดหมุนกลับไปเองเด็ดขาด ("ไม่ยึดติดหรือหมุนไปเอง")
-      const isCustomRot = initWall ? angleDiff > 5 : it.rot !== 0;
+      // ถ้าสิ่งของปัจจุบันมีองศาที่แตกต่างจากองศากำแพงเดิมเกิน 5° แสดงว่าเป็นองศาที่ตั้งใจหมุนไว้สำหรับกำแพงด้านนี้ (เช่น กั้นห้อง, เข้ามุม)
+      const hasCustomRotOnStartWall = initWall ? angleDiff > 5 : false;
 
       drag = {
         uid,
@@ -687,9 +687,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         y: it.y,
         moved: false,
         riders: getRiders(it),
+        startWallKey: initWall?.key ?? null,
         activeWallKey: initWall?.key ?? null,
         curRot: it.rot,
-        preserveRot: isCustomRot,
+        hasCustomRotOnStartWall,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
@@ -800,7 +801,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             o.category === "desk" &&
             Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
         );
-      if (!drag.preserveRot && !e.shiftKey && !isChairNearDesk) {
+      if (!e.shiftKey && !isChairNearDesk) {
         const probe = clampToRoom({ ...base, x: rawX, z: rawZ, rot: drag.curRot }, curRoom);
         const nearWall = findNearestWallForItem(probe, curRoom, 14);
         if (!nearWall) {
@@ -808,9 +809,18 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
           if (!findNearestWallForItem(probe, curRoom, 24)) {
             drag.activeWallKey = null;
           }
-        } else if (nearWall.key !== drag.activeWallKey) {
-          drag.curRot = nearWall.targetRot;
-          drag.activeWallKey = nearWall.key;
+        } else {
+          const isSameWall = drag.startWallKey !== null && nearWall.key === drag.startWallKey;
+          if (isSameWall && drag.hasCustomRotOnStartWall) {
+            // ถ้าเป็นกำแพงด้านเดิมในจุดที่มันหันอยู่ตอนกดสิ่งของนั้น จะขยับได้โดยไม่ปรับมุมเอง
+            drag.activeWallKey = nearWall.key;
+          } else if (nearWall.key !== drag.activeWallKey) {
+            // แต่ถ้าขยับไปอีกกำแพงหนึ่ง หรือลากมาจากกลางห้อง มันถึงจะค่อยปรับหมุนตามกำแพงใหม่
+            drag.curRot = nearWall.targetRot;
+            drag.activeWallKey = nearWall.key;
+            drag.startWallKey = nearWall.key;
+            drag.hasCustomRotOnStartWall = false;
+          }
         }
       }
 
@@ -968,8 +978,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         e.stopPropagation();
         const delta = e.shiftKey ? -45 : 45;
         drag.curRot = normalizeRotDeg(drag.curRot + delta);
-        drag.activeWallKey = null;
-        drag.preserveRot = true;
+        drag.hasCustomRotOnStartWall = true;
+        if (drag.activeWallKey) {
+          drag.startWallKey = drag.activeWallKey;
+        }
 
         const curRoom = propsRef.current.room;
         const allItems = propsRef.current.items;
