@@ -79,6 +79,11 @@ function floorTexture(room: RoomSize) {
 }
 
 interface DynamicWallSeg {
+  edgeIndex: number;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
   mx: number;
   mz: number;
   nx: number;
@@ -90,9 +95,71 @@ interface DynamicWallSeg {
   cutGroup: THREE.Group;
 }
 
+const SAMPLES_WHEN_UP = [0.04, 0.16, 0.3, 0.5, 0.7, 0.84, 0.96];
+const SAMPLES_WHEN_DOWN = [0.006, 0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 0.92, 0.994];
+
+/**
+ * ตรวจสอบว่ากำแพงด้านนี้ควรซ่อนหลบลงหรือไม่เมื่อมองจากกล้อง (camX, camZ):
+ * 1) กำแพงหันด้านนอกเข้าหากล้อง หรือทำมุมเฉียดแนวสายตา (dot > threshold)
+ * 2) สำหรับห้องตัว L / ตัว U / ทรงหลายเหลี่ยม: หากแนวสายตาจากกล้องพุ่งทะลุกำแพงนี้ไปเจอพื้นที่ห้องส่วนอื่นที่อยู่ด้านหลัง (แปลว่ากำแพงนี้ตั้งขวางบังห้องอีกโซนอยู่) ให้ซ่อนกำแพงนี้ลงอัตโนมัติ!
+ */
+function shouldHideWallForCamera(
+  seg: DynamicWallSeg,
+  camX: number,
+  camZ: number,
+  polyM: Array<[number, number]>,
+  currentlyFull: boolean
+): boolean {
+  const dotThreshold = currentlyFull ? -0.14 : -0.22;
+  for (const t of [0.1, 0.5, 0.9]) {
+    const px = seg.x1 + (seg.x2 - seg.x1) * t;
+    const pz = seg.z1 + (seg.z2 - seg.z1) * t;
+    const dwx = camX - px;
+    const dwz = camZ - pz;
+    const dLen = Math.hypot(dwx, dwz) || 1;
+    const dot = (dwx * seg.nx + dwz * seg.nz) / dLen;
+    if (dot > dotThreshold) return true;
+  }
+
+  // ตรวจการบดบังพื้นที่ห้องโซนอื่นด้านหลังกำแพง (สำคัญสำหรับห้องตัว L, ตัว U และทรงเว้ามุมทุกแบบ)
+  const n = polyM.length;
+  if (n > 3) {
+    const samples = currentlyFull ? SAMPLES_WHEN_UP : SAMPLES_WHEN_DOWN;
+    const vMargin = currentlyFull ? 0.002 : 0.001;
+    for (const t of samples) {
+      const px = seg.x1 + (seg.x2 - seg.x1) * t;
+      const pz = seg.z1 + (seg.z2 - seg.z1) * t;
+      const rx = px - camX;
+      const rz = pz - camZ;
+
+      for (let j = 0; j < n; j++) {
+        if (j === seg.edgeIndex) continue;
+        const [ax, az] = polyM[j];
+        const [bx, bz] = polyM[(j + 1) % n];
+        const sx = bx - ax;
+        const sz = bz - az;
+        const denom = rx * sz - rz * sx;
+        if (Math.abs(denom) < 1e-7) continue;
+
+        const apx = ax - px;
+        const apz = az - pz;
+        const u = (apx * sz - apz * sx) / denom;
+        if (u <= 0.008) continue;
+
+        const v = (apx * rz - apz * rx) / denom;
+        if (v >= vMargin && v <= 1 - vMargin) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 /**
  * ห้อง 3D แบบไดโอรามา พร้อมระบบซ่อนกำแพงด้านหน้ากล้องอัตโนมัติ (Dynamic Camera-Facing Wall Cutaway)
- * หมุนไปทางไหน กำแพงฝั่งหน้ากล้องและมุมที่กำลังจะหมุนไปถึงจะเลื่อนหลบลงให้เห็นในห้องชัดเจนทุกทิศ 360°
+ * รองรับห้องสี่เหลี่ยม ห้องตัว L ห้องตัว U และทรงหลายเหลี่ยมทุกแบบ หมุนมองจากมุมไหน กำแพงที่บังสายตาจะหลบลงอัตโนมัติ 360°
  */
 export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D({ room, items, selected, night, sunSettings, onSelect, onMove }, ref) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -104,6 +171,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     itemsRoot: THREE.Group;
     roomRoot: THREE.Group;
     wallSegments: DynamicWallSeg[];
+    wallPolyM: Array<[number, number]>;
+    roomHeightM: number;
+    heightSprite: THREE.Sprite | null;
     lights: { hemi: THREE.HemisphereLight; sun: THREE.DirectionalLight; win: THREE.PointLight };
     meshes: Map<string, { group: THREE.Group; key: string }>;
     selBox: THREE.Box3Helper;
@@ -198,21 +268,19 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
       controls.update();
 
-      // ซ่อนกำแพงตรงหน้ากล้องและมุมที่กำลังจะหมุนไปถึงอัตโนมัติแบบนุ่มนวล (360° Dynamic Wall Cutaway)
-      const segs = api.current?.wallSegments;
-      if (segs && segs.length > 0) {
+      // ซ่อนกำแพงด้านหน้ากล้องและกำแพงภายในที่ขวางสายตา (รวมถึงห้องตัว L / ตัว U / ซอกเว้า) อัตโนมัติแบบนุ่มนวล 360°
+      const curApi = api.current;
+      const segs = curApi?.wallSegments;
+      if (curApi && segs && segs.length > 0) {
         const camX = camera.position.x;
         const camZ = camera.position.z;
+        const polyM = curApi.wallPolyM;
+        let anchorSeg: DynamicWallSeg | null = null;
+
         for (const seg of segs) {
-          const dwx = camX - seg.mx;
-          const dwz = camZ - seg.mz;
-          const dLen = Math.hypot(dwx, dwz) || 1;
-          const dot = (dwx * seg.nx + dwz * seg.nz) / dLen;
-          if (seg.targetFull && dot > -0.14) {
-            seg.targetFull = false;
-          } else if (!seg.targetFull && dot < -0.22) {
-            seg.targetFull = true;
-          }
+          const hide = shouldHideWallForCamera(seg, camX, camZ, polyM, seg.targetFull);
+          seg.targetFull = !hide;
+
           const goal = seg.targetFull ? 1 : 0;
           if (Math.abs(seg.factor - goal) > 0.002) {
             seg.factor += (goal - seg.factor) * 0.24;
@@ -227,6 +295,20 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
           const showFullDecor = seg.factor > 0.62;
           seg.decorGroup.visible = showFullDecor;
           seg.cutGroup.visible = !showFullDecor;
+
+          if (!anchorSeg && seg.factor > 0.75) {
+            anchorSeg = seg;
+          }
+        }
+
+        // ย้ายป้าย "สูง X ม." ไปเกาะกับกำแพงฝั่งหลังที่ตั้งอยู่เสมอ ไม่ให้ลอยค้างกลางอากาศเมื่อกำแพงหน้าหลบลง
+        if (curApi.heightSprite) {
+          if (anchorSeg) {
+            curApi.heightSprite.visible = true;
+            curApi.heightSprite.position.set(anchorSeg.x1, curApi.roomHeightM + 0.16, anchorSeg.z1);
+          } else {
+            curApi.heightSprite.visible = false;
+          }
         }
       }
 
@@ -235,7 +317,23 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     const selBox = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color("#2563eb"));
     selBox.visible = false;
     scene.add(selBox);
-    api.current = { renderer, scene, camera, controls, itemsRoot, roomRoot, wallSegments: [], lights: { hemi, sun, win }, meshes: new Map(), selBox, fit, resetView };
+    api.current = {
+      renderer,
+      scene,
+      camera,
+      controls,
+      itemsRoot,
+      roomRoot,
+      wallSegments: [],
+      wallPolyM: [],
+      roomHeightM: 2.6,
+      heightSprite: null,
+      lights: { hemi, sun, win },
+      meshes: new Map(),
+      selBox,
+      fit,
+      resetView,
+    };
     fit();
     resetView();
     frame();
@@ -484,6 +582,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     const curbH = 0.1;
     const upperH = Math.max(0.1, H - curbH);
     const camPos = a.camera.position;
+    const polyM: Array<[number, number]> = poly.map(([px, pz]) => [px * CM, pz * CM]);
+    a.wallPolyM = polyM;
+    a.roomHeightM = H;
+    a.heightSprite = null;
 
     const walls = poly.map(([x1, z1], i) => {
       const [x2, z2] = poly[(i + 1) % poly.length];
@@ -493,8 +595,12 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const nx = ez;
       const nz = -ex; // ทิศออกนอกห้อง
       const len = lenCm * CM;
-      const mx = x1 * CM + (ex * len) / 2;
-      const mz = z1 * CM + (ez * len) / 2;
+      const x1M = x1 * CM;
+      const z1M = z1 * CM;
+      const x2M = x2 * CM;
+      const z2M = z2 * CM;
+      const mx = x1M + (ex * len) / 2;
+      const mz = z1M + (ez * len) / 2;
       const rot = Math.atan2(-ez, ex);
 
       // 1) ขอบฐานเตี้ยติดพื้น 10 ซม. (อยู่ตลอดเพื่อให้เห็นแนวขอบห้องชัดแม้กำแพงหลบลง)
@@ -536,29 +642,30 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         decorGroup.add(l);
       }
 
-      const dwx = camPos.x - mx;
-      const dwz = camPos.z - mz;
-      const dLen = Math.hypot(dwx, dwz) || 1;
-      const dot = (dwx * nx + dwz * nz) / dLen;
-      const initFull = dot <= -0.18;
-      const initFactor = initFull ? 1 : 0;
-
-      upperPivot.visible = initFull;
-      upperPivot.scale.y = initFull ? 1 : 0.01;
-      decorGroup.visible = initFull;
-      cutGroup.visible = !initFull;
-
       const seg: DynamicWallSeg = {
+        edgeIndex: i,
+        x1: x1M,
+        z1: z1M,
+        x2: x2M,
+        z2: z2M,
         mx,
         mz,
         nx,
         nz,
-        factor: initFactor,
-        targetFull: initFull,
+        factor: 1,
+        targetFull: true,
         upperPivot,
         decorGroup,
         cutGroup,
       };
+      const initHide = shouldHideWallForCamera(seg, camPos.x, camPos.z, polyM, true);
+      seg.targetFull = !initHide;
+      seg.factor = initHide ? 0 : 1;
+
+      upperPivot.visible = !initHide;
+      upperPivot.scale.y = !initHide ? 1 : 0.01;
+      decorGroup.visible = !initHide;
+      cutGroup.visible = initHide;
       a.wallSegments.push(seg);
 
       if (isCustomShape && lenCm >= 30) {
@@ -568,13 +675,15 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         a.roomRoot.add(lb);
       }
 
-      return { x1: x1 * CM, z1: z1 * CM, len, cm: lenCm, ex, ez, nx, nz, seg };
+      return { x1: x1M, z1: z1M, len, cm: lenCm, ex, ez, nx, nz, seg };
     });
 
     if (isCustomShape) {
       const lh = labelSprite(`สูง ${m(room.h)}`, night);
       lh.scale.multiplyScalar(lk);
-      lh.position.set(poly[0][0] * CM, H + 0.15, poly[0][1] * CM);
+      const firstUp = a.wallSegments.find((s) => s.targetFull) || a.wallSegments[0];
+      lh.position.set(firstUp ? firstUp.x1 : 0, H + 0.16, firstUp ? firstUp.z1 : 0);
+      a.heightSprite = lh;
       a.roomRoot.add(lh);
     } else {
       const lw = labelSprite(m(room.w), night);
@@ -582,7 +691,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const ld = labelSprite(m(room.d), night);
       ld.position.set(W + 0.35, 0.05, D / 2);
       const lh = labelSprite(`สูง ${m(room.h)}`, night);
-      lh.position.set(-0.05, H + 0.15, 0);
+      const firstUp = a.wallSegments.find((s) => s.targetFull) || a.wallSegments[0];
+      lh.position.set(firstUp ? firstUp.x1 : -0.05, H + 0.16, firstUp ? firstUp.z1 : 0);
+      a.heightSprite = lh;
       a.roomRoot.add(lw, ld, lh);
     }
 

@@ -391,13 +391,34 @@ export function hasSelfIntersection(poly: Pt2[]): boolean {
   return false;
 }
 
-/** เลื่อนผนังด้าน edgeIndex ตามเมาส์ (รักษามุมฉากของผนังแนวนอน/แนวตั้ง) */
+/** เลื่อนรูปหลายเหลี่ยมให้อยู่ภายในขอบกระดาษแปลนห้องโดยไม่เปลี่ยนขนาดจริงของผนัง */
+export function recenterPolyInGrid(poly: Pt2[]): Pt2[] {
+  const maxX = GRID_COLS * GRID_CELL_CM;
+  const maxZ = GRID_ROWS * GRID_CELL_CM;
+  const minPx = Math.min(...poly.map((p) => p[0]));
+  const maxPx = Math.max(...poly.map((p) => p[0]));
+  const minPz = Math.min(...poly.map((p) => p[1]));
+  const maxPz = Math.max(...poly.map((p) => p[1]));
+
+  let shiftX = 0;
+  let shiftZ = 0;
+  if (minPx < 20) shiftX = 20 - minPx;
+  else if (maxPx > maxX - 20) shiftX = maxX - 20 - maxPx;
+
+  if (minPz < 20) shiftZ = 20 - minPz;
+  else if (maxPz > maxZ - 20) shiftZ = maxZ - 20 - maxPz;
+
+  if (shiftX === 0 && shiftZ === 0) return poly;
+  return poly.map(([x, z]) => [Math.round(x + shiftX), Math.round(z + shiftZ)]);
+}
+
+/** เลื่อนผนังด้าน edgeIndex ตามเมาส์ (รองรับความละเอียดระดับ 0.1 เมตร = 10 ซม.) */
 export function movePolygonEdge(
   basePoly: Pt2[],
   edgeIndex: number,
   deltaXCm: number,
   deltaZCm: number,
-  snapCm = 25
+  snapCm = 10
 ): Pt2[] | null {
   const n = basePoly.length;
   if (n < 3) return null;
@@ -432,13 +453,87 @@ export function movePolygonEdge(
     next[i2] = [clampX(x2 + info.nx * snapped), clampZ(z2 + info.nz * snapped)];
   }
 
-  // ตรวจความยาวแต่ละด้านไม่ให้หดสั้นกว่า 50 ซม. และไม่พันกันเอง
+  // ตรวจความยาวแต่ละด้านไม่ให้หดสั้นกว่า 40 ซม. (0.4 ม.) และไม่พันกันเอง
   for (let i = 0; i < n; i++) {
     const p = next[i];
     const q = next[(i + 1) % n];
-    if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 50) return null;
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 40) return null;
   }
-  if (hasSelfIntersection(next) || signedArea(next) < 10000) return null;
+  if (hasSelfIntersection(next) || signedArea(next) < 2500) return null;
   return next;
+}
+
+/**
+ * กำหนดความยาวผนังด้าน edgeIndex ด้วยตัวเลขโดยตรง (เช่น 3.1 ม., 2.7 ม., 4.35 ม.)
+ * รักษามุมฉากของห้องสี่เหลี่ยม ห้องตัว L ห้องตัว U และซอกมุมอัตโนมัติ
+ */
+export function setPolygonEdgeLength(
+  basePoly: Pt2[],
+  edgeIndex: number,
+  targetLenCm: number
+): Pt2[] | null {
+  const n = basePoly.length;
+  if (n < 3) return null;
+  const clampedTarget = Math.max(40, Math.min(1300, Math.round(targetLenCm)));
+  const i1 = ((edgeIndex % n) + n) % n;
+  const i2 = (i1 + 1) % n;
+  const iPrev = (i1 - 1 + n) % n;
+
+  const info = getEdgeInfo(basePoly, i1);
+  const dL = clampedTarget - info.lengthCm;
+  if (Math.abs(dL) < 0.5) return basePoly;
+
+  const maxSpanX = GRID_COLS * GRID_CELL_CM - 20;
+  const maxSpanZ = GRID_ROWS * GRID_CELL_CM - 20;
+
+  const validateCandidate = (cand: Pt2[]): Pt2[] | null => {
+    for (let i = 0; i < n; i++) {
+      const p = cand[i];
+      const q = cand[(i + 1) % n];
+      if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 40) return null;
+    }
+    if (hasSelfIntersection(cand) || signedArea(cand) < 2500) return null;
+    const minX = Math.min(...cand.map((p) => p[0]));
+    const maxX = Math.max(...cand.map((p) => p[0]));
+    const minZ = Math.min(...cand.map((p) => p[1]));
+    const maxZ = Math.max(...cand.map((p) => p[1]));
+    if (maxX - minX > maxSpanX || maxZ - minZ > maxSpanZ) return null;
+    if (Math.abs(getEdgeInfo(cand, i1).lengthCm - clampedTarget) > 1.8) return null;
+    return recenterPolyInGrid(cand);
+  };
+
+  const dx = Math.round(info.ex * dL);
+  const dz = Math.round(info.ez * dL);
+
+  // วิธีที่ 1: เลื่อนผนังด้านถัดไปที่ตั้งฉากกันออกไปตามแนวผนังนี้ (รักษามุมฉาก 90° เป๊ะ)
+  const infoNext = getEdgeInfo(basePoly, i2);
+  if (Math.abs(info.ex * infoNext.ex + info.ez * infoNext.ez) < 0.25) {
+    const cand1 = basePoly.map(([x, z]) => [x, z] as Pt2);
+    const i3 = (i2 + 1) % n;
+    cand1[i2] = [cand1[i2][0] + dx, cand1[i2][1] + dz];
+    cand1[i3] = [cand1[i3][0] + dx, cand1[i3][1] + dz];
+    const ok1 = validateCandidate(cand1);
+    if (ok1) return ok1;
+  }
+
+  // วิธีที่ 2: หากด้านถัดไปติดมุมเว้าตัว L/U ให้เลื่อนผนังด้านก่อนหน้าที่ตั้งฉากกันไปทางตรงข้ามแทน
+  const infoPrev = getEdgeInfo(basePoly, iPrev);
+  if (Math.abs(info.ex * infoPrev.ex + info.ez * infoPrev.ez) < 0.25) {
+    const cand2 = basePoly.map(([x, z]) => [x, z] as Pt2);
+    cand2[iPrev] = [cand2[iPrev][0] - dx, cand2[iPrev][1] - dz];
+    cand2[i1] = [cand2[i1][0] - dx, cand2[i1][1] - dz];
+    const ok2 = validateCandidate(cand2);
+    if (ok2) return ok2;
+  }
+
+  // วิธีที่ 3: กรณีผนังเฉียงอิสระ เลื่อนจุดปลายผนังตามแนวเส้นตรงของผนังโดยตรง
+  const cand3 = basePoly.map(([x, z]) => [x, z] as Pt2);
+  cand3[i2] = [cand3[i2][0] + dx, cand3[i2][1] + dz];
+  const ok3 = validateCandidate(cand3);
+  if (ok3) return ok3;
+
+  const cand4 = basePoly.map(([x, z]) => [x, z] as Pt2);
+  cand4[i1] = [cand4[i1][0] - dx, cand4[i1][1] - dz];
+  return validateCandidate(cand4);
 }
 

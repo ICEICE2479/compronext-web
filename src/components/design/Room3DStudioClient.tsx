@@ -131,6 +131,9 @@ export function Room3DStudioClient() {
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [night, setNight] = useState(false);
   const [sunSettings, setSunSettings] = useState<SunSettings>(DEFAULT_SUN_SETTINGS);
+  const [compass3DInput, setCompass3DInput] = useState<string>(
+    Number(DEFAULT_SUN_SETTINGS.orientationDeg.toFixed(1)).toFixed(1)
+  );
   const [sun3DPanelOpen, setSun3DPanelOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const productsMap = useRef<Map<string, FoundProduct>>(new Map());
@@ -206,6 +209,7 @@ export function Room3DStudioClient() {
       setDoors(nextDoors);
       setWindows(nextWindows);
       setSunSettings(nextSunSettings);
+      setCompass3DInput(Number(nextSunSettings.orientationDeg.toFixed(1)).toFixed(1));
       setNight(nextSunSettings.timeHour >= 19 || nextSunSettings.timeHour < 6);
     },
     []
@@ -216,6 +220,7 @@ export function Room3DStudioClient() {
     setSunSettings((prev) => {
       const next = updater(prev);
       setNight(next.timeHour >= 19 || next.timeHour < 6);
+      setCompass3DInput(Number(next.orientationDeg.toFixed(1)).toFixed(1));
       setRoom((r) => ({
         ...r,
         orientation: next.orientationDeg,
@@ -224,6 +229,14 @@ export function Room3DStudioClient() {
       return next;
     });
   }, []);
+
+  const setStudioOrientation01 = useCallback(
+    (rawDeg: number) => {
+      const normalized = (Math.round((((rawDeg % 360) + 360) % 360) * 10) / 10) % 360;
+      updateSunInStudio((prev) => ({ ...prev, orientationDeg: normalized }));
+    },
+    [updateSunInStudio]
+  );
 
   // Live solar & indoor/outdoor temperature analysis
   const sunAnalysis = useMemo(() => {
@@ -469,7 +482,8 @@ export function Room3DStudioClient() {
               </button>
 
               <span className="text-xs font-medium text-ink-500 hidden md:inline">
-                {(room.w / 100).toFixed(1)} × {(room.d / 100).toFixed(1)} ม. · สูง {(room.h / 100).toFixed(1)} ม.
+                {Number((room.w / 100).toFixed(2))} × {Number((room.d / 100).toFixed(2))} ม. · สูง{" "}
+                {Number((room.h / 100).toFixed(2))} ม.
               </span>
             </div>
 
@@ -493,7 +507,8 @@ export function Room3DStudioClient() {
                     {Math.round((sunSettings.timeHour % 1) * 60)
                       .toString()
                       .padStart(2, "0")}{" "}
-                    · {degToCardinal(sunSettings.orientationDeg).cardinal} · ~{sunAnalysis.roomTempC}°C
+                    · {degToCardinal(sunSettings.orientationDeg).cardinal}{" "}
+                    {Number(sunSettings.orientationDeg.toFixed(1))}° · ~{sunAnalysis.roomTempC}°C
                   </span>
                   <ChevronDown className={`h-3 w-3 transition-transform ${sun3DPanelOpen ? "rotate-180" : ""}`} />
                 </button>
@@ -517,7 +532,8 @@ export function Room3DStudioClient() {
                           <Compass className="h-3.5 w-3.5 text-info" /> ทิศห้อง
                         </span>
                         <span className="font-mono font-bold text-info">
-                          {degToCardinal(sunSettings.orientationDeg).label} ({sunSettings.orientationDeg}°)
+                          {degToCardinal(sunSettings.orientationDeg).label} (
+                          {sunSettings.orientationDeg.toFixed(1)}°)
                         </span>
                       </div>
                       <div className="grid grid-cols-4 gap-1">
@@ -534,11 +550,9 @@ export function Room3DStudioClient() {
                           <button
                             key={deg}
                             type="button"
-                            onClick={() =>
-                              updateSunInStudio((prev) => ({ ...prev, orientationDeg: deg }))
-                            }
+                            onClick={() => setStudioOrientation01(deg)}
                             className={`rounded-lg py-1 text-[11px] font-semibold transition ${
-                              (Math.round(sunSettings.orientationDeg / 45) * 45) % 360 === deg
+                              Math.abs(((sunSettings.orientationDeg - deg + 540) % 360) - 180) < 22
                                 ? "bg-info text-white"
                                 : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                             }`}
@@ -546,6 +560,73 @@ export function Room3DStudioClient() {
                             {label}
                           </button>
                         ))}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={359.9}
+                        step={0.1}
+                        value={sunSettings.orientationDeg}
+                        onChange={(e) => setStudioOrientation01(parseFloat(e.target.value))}
+                        className="w-full accent-info cursor-pointer"
+                      />
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="text-[11px] text-ink-500">พิมพ์องศาละเอียด (0.1°)</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setStudioOrientation01(sunSettings.orientationDeg - 0.1)}
+                            className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-200"
+                          >
+                            -0.1°
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            max={359.9}
+                            step={0.1}
+                            value={compass3DInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCompass3DInput(val);
+                              const parsed = parseFloat(val);
+                              if (Number.isFinite(parsed) && !val.endsWith(".")) {
+                                const normalized =
+                                  (Math.round((((parsed % 360) + 360) % 360) * 10) / 10) % 360;
+                                setSunSettings((prev) => {
+                                  const next = { ...prev, orientationDeg: normalized };
+                                  setRoom((r) => ({
+                                    ...r,
+                                    orientation: normalized,
+                                    sunSettings: next,
+                                  }));
+                                  return next;
+                                });
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseFloat(compass3DInput);
+                              if (Number.isFinite(parsed)) {
+                                setStudioOrientation01(parsed);
+                              } else {
+                                setCompass3DInput(
+                                  Number(sunSettings.orientationDeg.toFixed(1)).toFixed(1)
+                                );
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            }}
+                            className="w-16 rounded-md border border-ink-200 bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-bold text-info focus:border-info focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setStudioOrientation01(sunSettings.orientationDeg + 0.1)}
+                            className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-200"
+                          >
+                            +0.1°
+                          </button>
+                        </div>
                       </div>
                     </div>
 

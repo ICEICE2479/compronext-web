@@ -21,6 +21,7 @@ import {
   Check,
   Maximize2,
   Minimize2,
+  Ruler,
 } from "lucide-react";
 import type { RoomSize } from "@/lib/room-planner";
 import { signedArea, type Pt2 } from "@/lib/room-shape";
@@ -48,6 +49,7 @@ import {
   getEdgeInfo,
   findClosestWallEdge,
   movePolygonEdge,
+  setPolygonEdgeLength,
   hasSelfIntersection,
 } from "@/lib/blueprint-geometry";
 
@@ -90,8 +92,6 @@ interface MyDreamSetupBlueprintProps {
 
 const VB_W = 1140;
 const VB_H = 680;
-const COMPASS_CX = VB_W - 60;
-const COMPASS_CY = 68;
 
 /** ไอคอนรูปหน้าต่างพร้อมขอบธรณีหน้าต่างและเส้นแบ่งกระจก (แทนไอคอนสี่เหลี่ยมแยก 4 อันเดิม) */
 function WindowPaneIcon({ className = "h-5 w-5" }: { className?: string }) {
@@ -164,8 +164,11 @@ export function MyDreamSetupBlueprint({
   const [draftPointsCm, setDraftPointsCm] = useState<Pt2[]>([]);
   const [cursorCm, setCursorCm] = useState<Pt2 | null>(null);
 
-  // ความสูงเพดาน (ซม.)
+  // ความสูงเพดาน (ซม.) + ช่องพิมพ์ตัวเลขความสูงเพดานละเอียด 0.1 ม.
   const [heightCm, setHeightCm] = useState(room.h || 260);
+  const [heightInput, setHeightInput] = useState(() =>
+    String(Number(((room.h || 260) / 100).toFixed(2)))
+  );
 
   // ประตูและหน้าต่าง
   const [doors, setDoors] = useState<BlueprintDoor[]>(initialDoors);
@@ -177,8 +180,15 @@ export function MyDreamSetupBlueprint({
     id: string;
   } | null>(null);
 
-  // ทิศทางเข็มทิศ & แสงอาทิตย์ตามเวลา + เมนูทรงห้องสำเร็จรูป
+  // ผนังที่กำลังคลิกพิมพ์ตัวเลขความยาว (ละเอียดระดับ 0.1 เมตร / 0.01 เมตร)
+  const [editingWallIndex, setEditingWallIndex] = useState<number | null>(null);
+  const [wallLenInput, setWallLenInput] = useState("");
+
+  // ทิศทางเข็มทิศ (ละเอียด 0.1°) & แสงอาทิตย์ตามเวลา + เมนูทรงห้องสำเร็จรูป
   const [sun, setSun] = useState<SunSettings>(room.sunSettings || initialSunSettings);
+  const [compassInput, setCompassInput] = useState(() =>
+    String(Number(((room.sunSettings || initialSunSettings).orientationDeg || 0).toFixed(1)))
+  );
   const [sunPanelOpen, setSunPanelOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
 
@@ -211,6 +221,32 @@ export function MyDreamSetupBlueprint({
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const compassDialRef = useRef<SVGSVGElement>(null);
+
+  // ตั้งค่าองศาเข็มทิศแบบละเอียด 0.1° (0.0° - 359.9°)
+  const setOrientationDeg01 = useCallback((rawDeg: number) => {
+    const normalized = Math.round(((((rawDeg % 360) + 360) % 360) * 10)) / 10 % 360;
+    setSun((prev) => ({ ...prev, orientationDeg: normalized }));
+    setCompassInput(normalized.toFixed(1));
+  }, []);
+
+  const handleCompassInputChange = (val: string) => {
+    setCompassInput(val);
+    const parsed = parseFloat(val);
+    if (Number.isFinite(parsed) && !val.endsWith(".")) {
+      const normalized = Math.round(((((parsed % 360) + 360) % 360) * 10)) / 10 % 360;
+      setSun((prev) => ({ ...prev, orientationDeg: normalized }));
+    }
+  };
+
+  const commitCompassInput = () => {
+    const parsed = parseFloat(compassInput);
+    if (Number.isFinite(parsed)) {
+      setOrientationDeg01(parsed);
+    } else {
+      setCompassInput(Number(sun.orientationDeg.toFixed(1)).toFixed(1));
+    }
+  };
 
   // เก็บ ref ของ callback เพื่อไม่ให้เกิด infinite render loop กับ parent
   const onChangeRef = useRef(onChange);
@@ -341,9 +377,46 @@ export function MyDreamSetupBlueprint({
     return (Math.abs(signedArea(canvasPolyCm)) / 10000).toFixed(1);
   }, [canvasPolyCm, isBlankCanvas]);
 
-  const widthM = (widthCm / 100).toFixed(2);
-  const depthM = (depthCm / 100).toFixed(2);
-  const heightM = (heightCm / 100).toFixed(2);
+  const widthM = String(Number((widthCm / 100).toFixed(2)));
+  const depthM = String(Number((depthCm / 100).toFixed(2)));
+
+  // เปิดกล่องแก้ไขความยาวผนังด้านที่เลือก (หน่วย เมตร ละเอียดระดับ 0.1 ม.)
+  const openWallEditor = useCallback(
+    (edgeIdx: number) => {
+      if (isBlankCanvas || canvasPolyCm.length < 3) return;
+      const safeIdx = ((edgeIdx % canvasPolyCm.length) + canvasPolyCm.length) % canvasPolyCm.length;
+      const info = getEdgeInfo(canvasPolyCm, safeIdx);
+      setSelectedElement(null);
+      setEditingWallIndex(safeIdx);
+      setWallLenInput(String(Number((info.lengthCm / 100).toFixed(2))));
+    },
+    [canvasPolyCm, isBlankCanvas]
+  );
+
+  const applyWallLengthMeters = useCallback(
+    (edgeIdx: number, meters: number) => {
+      if (!Number.isFinite(meters) || meters < 0.4 || meters > 13) return false;
+      const targetCm = Math.round(meters * 100);
+      const nextPoly = setPolygonEdgeLength(canvasPolyCm, edgeIdx, targetCm);
+      if (!nextPoly) return false;
+      commitNewPoly(nextPoly);
+      const updated = getEdgeInfo(nextPoly, edgeIdx);
+      setWallLenInput(String(Number((updated.lengthCm / 100).toFixed(2))));
+      return true;
+    },
+    [canvasPolyCm, commitNewPoly]
+  );
+
+  const nudgeWallLengthMeters = useCallback(
+    (deltaM: number) => {
+      if (editingWallIndex === null || canvasPolyCm.length < 3) return;
+      const safeIdx = editingWallIndex % canvasPolyCm.length;
+      const curM = getEdgeInfo(canvasPolyCm, safeIdx).lengthCm / 100;
+      const nextM = Math.max(0.4, Math.min(13, Math.round((curM + deltaM) * 10) / 10));
+      applyWallLengthMeters(safeIdx, nextM);
+    },
+    [editingWallIndex, canvasPolyCm, applyWallLengthMeters]
+  );
 
   // แปลงพิกัดเมาส์เป็นพิกัด SVG และ ซม. (ใช้ getScreenCTM เพื่อให้แม่นยำ 100% ทุกขนาดจอและโหมดเต็มจอ)
   const clientToSvgAndCm = useCallback((clientX: number, clientY: number) => {
@@ -455,6 +528,7 @@ export function MyDreamSetupBlueprint({
       ];
     }
     setDraftPointsCm([]);
+    setEditingWallIndex(null);
     commitNewPoly(pts);
   };
 
@@ -466,6 +540,7 @@ export function MyDreamSetupBlueprint({
     setIsBlankCanvas(true);
     setDraftPointsCm([]);
     setSelectedElement(null);
+    setEditingWallIndex(null);
     setActiveTool("pencil");
     if (penMode === "paint-erase") setPenMode("paint-add");
   };
@@ -477,10 +552,13 @@ export function MyDreamSetupBlueprint({
     setIsBlankCanvas(false);
     setDraftPointsCm([]);
     setHeightCm(260);
+    setHeightInput("2.6");
     setDoors([{ id: `d-${Date.now()}`, edgeIndex: 1, wall: "right", pos: 0.7, width: 80 }]);
     setWindows([{ id: `w-${Date.now()}`, edgeIndex: 0, wall: "top", pos: 0.4, width: 120 }]);
     setSun(DEFAULT_SUN_SETTINGS);
+    setCompassInput("0.0");
     setSelectedElement(null);
+    setEditingWallIndex(null);
   };
 
   // ปิดเส้นผนังในโหมดวาดจุดต่อจุด (Point-to-Point)
@@ -537,9 +615,9 @@ export function MyDreamSetupBlueprint({
       return;
     }
 
-    // 2) โหมดปากกา -> วาดเส้นทีละจุด (Point-to-Point)
+    // 2) โหมดปากกา -> วาดเส้นทีละจุด (Point-to-Point ละเอียดทุก 0.1 เมตร = 10 ซม.)
     if (activeTool === "pencil" && penMode === "point-pen") {
-      const snapCm = 25;
+      const snapCm = 10;
       const maxX = GRID_COLS * GRID_CELL_CM;
       const maxZ = GRID_ROWS * GRID_CELL_CM;
       const sx = Math.max(0, Math.min(maxX, Math.round(pt.xCm / snapCm) * snapCm));
@@ -554,6 +632,7 @@ export function MyDreamSetupBlueprint({
       }
       setDraftPointsCm((prev) => [...prev, [sx, sz]]);
       setSelectedElement(null);
+      setEditingWallIndex(null);
       return;
     }
 
@@ -566,6 +645,7 @@ export function MyDreamSetupBlueprint({
       }
       const erase = penMode === "paint-erase" || e.altKey || e.button === 2;
       setSelectedElement(null);
+      setEditingWallIndex(null);
       setBoxDrag({
         mode: erase ? "erase" : "add",
         startGx: gx,
@@ -581,16 +661,22 @@ export function MyDreamSetupBlueprint({
     if (!boxDrag && !handleDrag && !draggingOpening && !draggingCompass) return;
 
     const onMouseMove = (e: MouseEvent) => {
-      const pt = clientToSvgAndCm(e.clientX, e.clientY);
-      if (!pt) return;
-
-      // A. หมุนเข็มทิศ
+      // A. หมุนเข็มทิศแบบละเอียดทีละ 0.1° (0.0° - 359.9°)
       if (draggingCompass) {
-        const angleRad = Math.atan2(pt.sx - COMPASS_CX, -(pt.sy - COMPASS_CY));
-        const deg = Math.round((((angleRad * 180) / Math.PI) % 360 + 360) % 360 / 5) * 5 % 360;
-        setSun((prev) => ({ ...prev, orientationDeg: deg }));
+        const dialEl = compassDialRef.current;
+        if (dialEl) {
+          const rect = dialEl.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const angleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+          const rawDeg = (((angleRad * 180) / Math.PI) % 360 + 360) % 360;
+          setOrientationDeg01(rawDeg);
+        }
         return;
       }
+
+      const pt = clientToSvgAndCm(e.clientX, e.clientY);
+      if (!pt) return;
 
       // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง
       if (draggingOpening && canvasPolyCm.length >= 3) {
@@ -630,26 +716,30 @@ export function MyDreamSetupBlueprint({
         return;
       }
 
-      // D. ลากจุดมุมห้อง (Vertex) หรือขอบผนัง (Wall Edge)
+      // D. ลากจุดมุมห้อง (Vertex) หรือขอบผนัง (Wall Edge) ละเอียดทีละ 0.1 เมตร (10 ซม.)
       if (handleDrag) {
         const dxCm = pt.xCm - handleDrag.startMouseCm[0];
         const dzCm = pt.zCm - handleDrag.startMouseCm[1];
 
         if (handleDrag.kind === "edge") {
-          const moved = movePolygonEdge(handleDrag.basePoly, handleDrag.index, dxCm, dzCm, 25);
+          const moved = movePolygonEdge(handleDrag.basePoly, handleDrag.index, dxCm, dzCm, 10);
           if (moved) {
             setCanvasPolyCm((prev) => {
               reattachOpeningsToPoly(prev, moved);
               return moved;
             });
+            if (editingWallIndex !== null && editingWallIndex < moved.length) {
+              const info = getEdgeInfo(moved, editingWallIndex);
+              setWallLenInput(String(Number((info.lengthCm / 100).toFixed(2))));
+            }
           }
         } else {
           const idx = handleDrag.index;
           const base = handleDrag.basePoly;
           const maxX = GRID_COLS * GRID_CELL_CM;
           const maxZ = GRID_ROWS * GRID_CELL_CM;
-          const nx = Math.max(0, Math.min(maxX, Math.round((base[idx][0] + dxCm) / 25) * 25));
-          const nz = Math.max(0, Math.min(maxZ, Math.round((base[idx][1] + dzCm) / 25) * 25));
+          const nx = Math.max(0, Math.min(maxX, Math.round((base[idx][0] + dxCm) / 10) * 10));
+          const nz = Math.max(0, Math.min(maxZ, Math.round((base[idx][1] + dzCm) / 10) * 10));
 
           // ถ้ารูปเป็นสี่เหลี่ยมผืนผ้า 4 มุม ให้ยืดมุมแบบสี่เหลี่ยมเพื่อให้ใช้งานง่ายไม่เบี้ยว
           const normBase = normalizeCanvasPolygon(base);
@@ -659,7 +749,7 @@ export function MyDreamSetupBlueprint({
             const maxX2 = Math.max(nx, opp[0]);
             const minZ = Math.min(nz, opp[1]);
             const maxZ2 = Math.max(nz, opp[1]);
-            if (maxX2 - minX >= 150 && maxZ2 - minZ >= 150) {
+            if (maxX2 - minX >= 100 && maxZ2 - minZ >= 100) {
               const rectPoly: Pt2[] = [
                 [minX, minZ],
                 [maxX2, minZ],
@@ -670,19 +760,27 @@ export function MyDreamSetupBlueprint({
                 reattachOpeningsToPoly(prev, rectPoly);
                 return rectPoly;
               });
+              if (editingWallIndex !== null && editingWallIndex < rectPoly.length) {
+                const info = getEdgeInfo(rectPoly, editingWallIndex);
+                setWallLenInput(String(Number((info.lengthCm / 100).toFixed(2))));
+              }
             }
           } else {
             const next = base.map((p, i) => (i === idx ? ([nx, nz] as Pt2) : ([p[0], p[1]] as Pt2)));
             const validLengths = next.every((p, i) => {
               const q = next[(i + 1) % next.length];
-              return Math.hypot(q[0] - p[0], q[1] - p[1]) >= 50;
+              return Math.hypot(q[0] - p[0], q[1] - p[1]) >= 40;
             });
-            if (validLengths && !hasSelfIntersection(next) && Math.abs(signedArea(next)) >= 10000) {
+            if (validLengths && !hasSelfIntersection(next) && Math.abs(signedArea(next)) >= 2500) {
               const fixed = signedArea(next) < 0 ? [...next].reverse() : next;
               setCanvasPolyCm((prev) => {
                 reattachOpeningsToPoly(prev, fixed);
                 return fixed;
               });
+              if (editingWallIndex !== null && editingWallIndex < fixed.length) {
+                const info = getEdgeInfo(fixed, editingWallIndex);
+                setWallLenInput(String(Number((info.lengthCm / 100).toFixed(2))));
+              }
             }
           }
         }
@@ -770,6 +868,8 @@ export function MyDreamSetupBlueprint({
     clientToSvgAndCm,
     commitNewPoly,
     reattachOpeningsToPoly,
+    setOrientationDeg01,
+    editingWallIndex,
   ]);
 
   // ลบ/คัดลอก/เปลี่ยนความกว้างหน้าต่างหรือประตูที่เลือก
@@ -891,6 +991,11 @@ export function MyDreamSetupBlueprint({
     .toString()
     .padStart(2, "0")}`;
 
+  const editingWallInfo =
+    editingWallIndex !== null && !isBlankCanvas && editingWallIndex < canvasPolyCm.length
+      ? getEdgeInfo(canvasPolyCm, editingWallIndex)
+      : null;
+
   return (
     <div
       className={`relative flex flex-col overflow-hidden bg-gradient-to-b from-[#2f76eb] to-[#2563eb] select-none w-full text-white ${
@@ -921,19 +1026,38 @@ export function MyDreamSetupBlueprint({
               <span className="font-mono font-bold text-amber-300">({areaM2} ตร.ม.)</span>
             )}
             <span className="text-white/25">|</span>
-            <label className="flex items-center gap-1 cursor-pointer">
+            <label className="flex items-center gap-1" title="พิมพ์ความสูงเพดานละเอียดระดับ 0.1 เมตร (1.8 - 6.0 ม.)">
               <span className="text-blue-100 hidden sm:inline">เพดาน</span>
-              <select
-                value={heightCm}
-                onChange={(e) => setHeightCm(Number(e.target.value))}
-                className="bg-transparent font-mono font-bold text-white focus:outline-none cursor-pointer"
-              >
-                {[220, 240, 260, 280, 300, 320, 350, 400].map((h) => (
-                  <option key={h} value={h} className="bg-slate-900 text-white">
-                    {(h / 100).toFixed(2)} ม.
-                  </option>
-                ))}
-              </select>
+              <input
+                type="number"
+                min="1.8"
+                max="6.0"
+                step="0.1"
+                value={heightInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setHeightInput(val);
+                  const parsed = parseFloat(val);
+                  if (Number.isFinite(parsed) && parsed >= 1.8 && parsed <= 6.0) {
+                    setHeightCm(Math.round(parsed * 100));
+                  }
+                }}
+                onBlur={() => {
+                  const parsed = parseFloat(heightInput);
+                  if (Number.isFinite(parsed)) {
+                    const clamped = Math.max(1.8, Math.min(6.0, Math.round(parsed * 100) / 100));
+                    setHeightCm(Math.round(clamped * 100));
+                    setHeightInput(String(Number(clamped.toFixed(2))));
+                  } else {
+                    setHeightInput(String(Number((heightCm / 100).toFixed(2))));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                className="w-11 rounded border border-white/20 bg-white/10 px-1 py-0.5 text-center font-mono text-xs font-bold text-white focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <span className="text-blue-100">ม.</span>
             </label>
           </div>
         </div>
@@ -1002,6 +1126,93 @@ export function MyDreamSetupBlueprint({
                 onClick={() => setSelectedElement(null)}
                 title="ยกเลิกการเลือก"
                 className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white/80"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : editingWallInfo && editingWallIndex !== null ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-300/60 bg-slate-950/75 px-2.5 py-1 text-white shadow-sm">
+              <span className="inline-flex items-center gap-1 border-r border-white/15 pr-2 text-[11px] font-bold text-amber-300">
+                <Ruler className="h-3.5 w-3.5" />
+                ผนัง #{editingWallIndex + 1} (
+                {degToCardinal((editingWallInfo.outwardBaseDeg + sun.orientationDeg) % 360).cardinal}
+                )
+              </span>
+
+              <button
+                type="button"
+                onClick={() => nudgeWallLengthMeters(-0.1)}
+                title="ลดความยาวผนัง 0.1 เมตร"
+                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+              >
+                -0.1
+              </button>
+
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0.4"
+                  max="13"
+                  step="0.1"
+                  value={wallLenInput}
+                  onChange={(e) => setWallLenInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const val = parseFloat(wallLenInput);
+                      if (Number.isFinite(val)) applyWallLengthMeters(editingWallIndex, val);
+                    } else if (e.key === "Escape") {
+                      setEditingWallIndex(null);
+                    }
+                  }}
+                  className="w-14 rounded-md border border-amber-300/60 bg-slate-900 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <span className="text-[11px] text-slate-300">ม.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => nudgeWallLengthMeters(0.1)}
+                title="เพิ่มความยาวผนัง 0.1 เมตร"
+                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+              >
+                +0.1
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const val = parseFloat(wallLenInput);
+                  if (Number.isFinite(val)) applyWallLengthMeters(editingWallIndex, val);
+                }}
+                className="inline-flex items-center gap-0.5 rounded-md bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300"
+              >
+                <Check className="h-3 w-3" />
+                ตกลง
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const val = parseFloat(wallLenInput);
+                  let baseLen = canvasPolyCm.length;
+                  if (Number.isFinite(val)) {
+                    applyWallLengthMeters(editingWallIndex, val);
+                  }
+                  if (baseLen >= 3) {
+                    openWallEditor((editingWallIndex + 1) % baseLen);
+                  }
+                }}
+                title="ไปแก้ไขผนังด้านถัดไป"
+                className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/20"
+              >
+                ผนังถัดไป ↻
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditingWallIndex(null)}
+                title="ปิดช่องใส่ตัวเลขผนัง"
+                className="rounded-md bg-white/10 p-1 text-white/80 hover:bg-white/20"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1115,6 +1326,18 @@ export function MyDreamSetupBlueprint({
                 )}
               </div>
 
+              {!isBlankCanvas && canvasPolyCm.length >= 3 && (
+                <button
+                  type="button"
+                  onClick={() => openWallEditor(0)}
+                  title="คลิกเพื่อพิมพ์ตัวเลขความยาวผนังแต่ละด้านแบบละเอียด 0.1 เมตร (หรือคลิกที่ป้ายตัวเลขบนผนังโดยตรง)"
+                  className="inline-flex items-center gap-1 rounded-xl border border-white/15 bg-slate-950/35 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-950/55 transition"
+                >
+                  <Ruler className="h-3.5 w-3.5 text-amber-300" />
+                  <span>ใส่ตัวเลขผนัง</span>
+                </button>
+              )}
+
               {polyHistory.length > 0 && (
                 <button
                   type="button"
@@ -1172,7 +1395,9 @@ export function MyDreamSetupBlueprint({
               }`}
             >
               <Compass className="h-3.5 w-3.5" />
-              <span className="font-mono">{degToCardinal(sun.orientationDeg).cardinal}</span>
+              <span className="font-mono">
+                {degToCardinal(sun.orientationDeg).cardinal} {Number(sun.orientationDeg.toFixed(1))}°
+              </span>
               <span className="opacity-40">·</span>
               <Sun className="h-3.5 w-3.5 text-amber-300" />
               <span className="font-mono">{formattedTime}</span>
@@ -1195,12 +1420,12 @@ export function MyDreamSetupBlueprint({
                   </button>
                 </div>
 
-                {/* 1. ทิศห้อง */}
+                {/* 1. ทิศห้อง (ละเอียดระดับ 0.1°) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-300">ผนังด้านบนหันทิศ</span>
                     <span className="font-mono font-bold text-amber-300">
-                      {degToCardinal(sun.orientationDeg).label} ({sun.orientationDeg}°)
+                      {degToCardinal(sun.orientationDeg).label} ({sun.orientationDeg.toFixed(1)}°)
                     </span>
                   </div>
                   <div className="grid grid-cols-4 gap-1">
@@ -1217,7 +1442,7 @@ export function MyDreamSetupBlueprint({
                       <button
                         key={deg}
                         type="button"
-                        onClick={() => setSun((prev) => ({ ...prev, orientationDeg: deg }))}
+                        onClick={() => setOrientationDeg01(deg)}
                         className={`rounded-lg py-1 text-[11px] font-semibold transition ${
                           Math.abs(((sun.orientationDeg - deg + 540) % 360) - 180) < 22
                             ? "bg-amber-400 text-slate-950 font-bold"
@@ -1231,14 +1456,47 @@ export function MyDreamSetupBlueprint({
                   <input
                     type="range"
                     min="0"
-                    max="359"
-                    step="5"
+                    max="359.9"
+                    step="0.1"
                     value={sun.orientationDeg}
-                    onChange={(e) =>
-                      setSun((prev) => ({ ...prev, orientationDeg: Number(e.target.value) }))
-                    }
+                    onChange={(e) => setOrientationDeg01(Number(e.target.value))}
                     className="w-full accent-amber-400"
                   />
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <span className="text-[11px] text-slate-400">พิมพ์องศาละเอียด (0.1°)</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setOrientationDeg01(sun.orientationDeg - 0.1)}
+                        className="rounded-md bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                      >
+                        -0.1°
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        max="359.9"
+                        step="0.1"
+                        value={compassInput}
+                        onChange={(e) => handleCompassInputChange(e.target.value)}
+                        onBlur={commitCompassInput}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitCompassInput();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        className="w-16 rounded-md border border-white/20 bg-slate-950 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setOrientationDeg01(sun.orientationDeg + 0.1)}
+                        className="rounded-md bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                      >
+                        +0.1°
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 2. เวลาแสงเข้า */}
@@ -1429,6 +1687,107 @@ export function MyDreamSetupBlueprint({
           </button>
         </div>
 
+        {/* เข็มทิศแบบหมุนได้ 0.1° + ช่องพิมพ์ตัวเลขด้านล่างเข็มทิศโดยตรง (มุมขวาบน) */}
+        <div
+          className="absolute right-3 sm:right-4 top-3 z-20 flex flex-col items-center rounded-2xl border border-white/20 bg-slate-900/65 px-2 py-2 shadow-xl backdrop-blur-md"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <svg
+            ref={compassDialRef}
+            viewBox="0 0 80 80"
+            className="h-[68px] w-[68px] cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              setDraggingCompass(true);
+            }}
+            onWheel={(e) => {
+              e.preventDefault();
+              setOrientationDeg01(sun.orientationDeg + (e.deltaY < 0 ? 0.1 : -0.1));
+            }}
+          >
+            <circle
+              cx={40}
+              cy={40}
+              r={32}
+              fill="rgba(15, 23, 42, 0.78)"
+              stroke="rgba(255,255,255,0.35)"
+              strokeWidth={1.5}
+            />
+            {/* จุดแสดงทิศแสงอาทิตย์/ดวงจันทร์บนขอบเข็มทิศ */}
+            <circle
+              cx={40 + sunState.sunDirX * 32}
+              cy={40 + sunState.sunDirZ * 32}
+              r={5}
+              fill={sunState.isNight ? "#818cf8" : "#fbbf24"}
+              stroke="#ffffff"
+              strokeWidth={1.4}
+              pointerEvents="none"
+            />
+            <g transform={`translate(40, 40) rotate(${-sun.orientationDeg})`}>
+              <polygon points="0,-20 4.5,0 -4.5,0" fill="#ef4444" />
+              <polygon points="0,20 4.5,0 -4.5,0" fill="#e2e8f0" />
+              <text x={0} y={-22} textAnchor="middle" fill="#fca5a5" className="font-mono text-[8.5px] font-black">
+                N
+              </text>
+              <text x={24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
+                E
+              </text>
+              <text x={0} y={28} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
+                S
+              </text>
+              <text x={-24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
+                W
+              </text>
+            </g>
+            <circle cx={40} cy={40} r={3} fill="#fbbf24" />
+          </svg>
+
+          <span className="mt-0.5 font-mono text-[10px] font-bold text-amber-300">
+            ทิศ {degToCardinal(sun.orientationDeg).cardinal}
+          </span>
+
+          {/* ช่องเขียนตัวเลขด้านล่างเข็มทิศ ปรับละเอียดทีละ 0.1° */}
+          <div
+            className="mt-1 flex items-center gap-0.5 rounded-lg border border-white/20 bg-slate-950/80 px-1 py-0.5"
+            title="หมุนเข็มทิศด้านบน หรือพิมพ์ตัวเลของศาละเอียด 0.1° ลงในช่องนี้ได้ทันที"
+          >
+            <button
+              type="button"
+              onClick={() => setOrientationDeg01(sun.orientationDeg - 0.1)}
+              className="flex h-5 w-4 items-center justify-center rounded text-[11px] font-bold text-slate-300 hover:bg-white/15 hover:text-white"
+              aria-label="ลดมุมเข็มทิศ 0.1 องศา"
+            >
+              -
+            </button>
+            <input
+              type="number"
+              min="0"
+              max="359.9"
+              step="0.1"
+              aria-label="องศาเข็มทิศ"
+              value={compassInput}
+              onChange={(e) => handleCompassInputChange(e.target.value)}
+              onBlur={commitCompassInput}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitCompassInput();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className="w-11 bg-transparent text-center font-mono text-[11px] font-bold text-white focus:text-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="font-mono text-[10px] text-white/75">°</span>
+            <button
+              type="button"
+              onClick={() => setOrientationDeg01(sun.orientationDeg + 0.1)}
+              className="flex h-5 w-4 items-center justify-center rounded text-[11px] font-bold text-slate-300 hover:bg-white/15 hover:text-white"
+              aria-label="เพิ่มมุมเข็มทิศ 0.1 องศา"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
         {/* ปุ่มถังขยะมุมขวาล่าง */}
         <button
           type="button"
@@ -1599,7 +1958,7 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* วาดตัวห้อง (Polygon ผนังสีขาวหนาขอบมน) */}
+          {/* วาดตัวห้อง (Polygon ผนังสีขาวหนาขอบมน + คลิกตัวเลขความยาวผนังเพื่อพิมพ์ค่าละเอียด 0.1 ม.) */}
           {!isBlankCanvas && canvasPolyCm.length >= 3 && (
             <g>
               <polygon
@@ -1614,33 +1973,78 @@ export function MyDreamSetupBlueprint({
                 pointerEvents="none"
               />
 
-              {/* ป้ายความยาวผนังแต่ละด้าน + ทิศของผนัง (โปร่งเบาสบายตา ไม่เบียดเส้นผนัง) */}
+              {/* ไฮไลต์สีเหลืองทองบนเส้นผนังด้านที่กำลังพิมพ์ตัวเลขแก้ไข */}
+              {editingWallInfo && editingWallIndex !== null && (() => {
+                const [wx1, wy1] = cmToSvg(editingWallInfo.x1, editingWallInfo.z1);
+                const [wx2, wy2] = cmToSvg(editingWallInfo.x2, editingWallInfo.z2);
+                return (
+                  <line
+                    x1={wx1}
+                    y1={wy1}
+                    x2={wx2}
+                    y2={wy2}
+                    stroke="#fbbf24"
+                    strokeWidth={13}
+                    strokeLinecap="round"
+                    pointerEvents="none"
+                  />
+                );
+              })()}
+
+              {/* ป้ายความยาวผนังแต่ละด้าน + ทิศของผนัง (คลิกที่ป้ายเพื่อพิมพ์ตัวเลขความยาว 0.1 ม. ได้ทันที) */}
               {canvasPolyCm.map((_, i) => {
                 const info = getEdgeInfo(canvasPolyCm, i);
-                if (info.lengthCm < 50) return null;
+                if (info.lengthCm < 40) return null;
                 const midX = (info.x1 + info.x2) / 2 + info.nx * 44;
                 const midZ = (info.z1 + info.z2) / 2 + info.nz * 44;
                 const [lx, ly] = cmToSvg(midX, midZ);
                 const wallCard = degToCardinal((info.outwardBaseDeg + sun.orientationDeg) % 360);
-                const lenText = `${(info.lengthCm / 100).toFixed(2).replace(/\.?0+$/, "")}m · ${wallCard.cardinal}`;
+                const lenText = `${Number((info.lengthCm / 100).toFixed(2))}m · ${wallCard.cardinal}`;
+                const isEditingThis = editingWallIndex === i;
+                const isHovDim = hoveredHandle === `dim-${i}`;
 
                 return (
-                  <g key={`dim-${i}`} pointerEvents="none">
+                  <g
+                    key={`dim-${i}`}
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredHandle(`dim-${i}`)}
+                    onMouseLeave={() => setHoveredHandle(null)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openWallEditor(i);
+                    }}
+                  >
+                    <title>คลิกเพื่อพิมพ์ความยาวผนังด้านนี้ (ละเอียดระดับ 0.1 เมตร)</title>
                     <rect
-                      x={lx - 32}
-                      y={ly - 8.5}
-                      width={64}
-                      height={17}
-                      rx={8.5}
-                      fill="rgba(15, 23, 42, 0.45)"
+                      x={lx - 39}
+                      y={ly - 10}
+                      width={78}
+                      height={20}
+                      rx={10}
+                      fill={
+                        isEditingThis
+                          ? "#fbbf24"
+                          : isHovDim
+                          ? "rgba(15, 23, 42, 0.88)"
+                          : "rgba(15, 23, 42, 0.58)"
+                      }
+                      stroke={
+                        isEditingThis
+                          ? "#ffffff"
+                          : isHovDim
+                          ? "#fbbf24"
+                          : "rgba(255,255,255,0.22)"
+                      }
+                      strokeWidth={isEditingThis || isHovDim ? 1.5 : 1}
                     />
                     <text
                       x={lx}
                       y={ly + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill="#f1f5f9"
-                      className="font-mono text-[9.5px] font-semibold"
+                      fill={isEditingThis ? "#0f172a" : isHovDim ? "#fde047" : "#f8fafc"}
+                      className="font-mono text-[9.5px] font-bold pointer-events-none"
                     >
                       {lenText}
                     </text>
@@ -1973,8 +2377,8 @@ export function MyDreamSetupBlueprint({
               />
               {cursorCm && (() => {
                 const last = draftPointsCm[draftPointsCm.length - 1];
-                const sxCm = Math.round(cursorCm[0] / 25) * 25;
-                const szCm = Math.round(cursorCm[1] / 25) * 25;
+                const sxCm = Math.round(cursorCm[0] / 10) * 10;
+                const szCm = Math.round(cursorCm[1] / 10) * 10;
                 const [x1, y1] = cmToSvg(last[0], last[1]);
                 const [x2, y2] = cmToSvg(sxCm, szCm);
                 const distM = (Math.hypot(sxCm - last[0], szCm - last[1]) / 100).toFixed(2);
@@ -2020,60 +2424,6 @@ export function MyDreamSetupBlueprint({
               })}
             </g>
           )}
-
-          {/* วงแหวนเข็มทิศ & ทิศดวงอาทิตย์ขนาดกะทัดรัดมุมขวาบน (ไม่เกะกะหรือบังตัวห้อง) */}
-          <g
-            className="cursor-grab active:cursor-grabbing"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              setDraggingCompass(true);
-            }}
-          >
-            <circle
-              cx={COMPASS_CX}
-              cy={COMPASS_CY}
-              r={32}
-              fill="rgba(15, 23, 42, 0.65)"
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth={1.5}
-            />
-            {/* จุดแสดงทิศแสงอาทิตย์/ดวงจันทร์บนขอบเข็มทิศ */}
-            <circle
-              cx={COMPASS_CX + sunState.sunDirX * 32}
-              cy={COMPASS_CY + sunState.sunDirZ * 32}
-              r={5.5}
-              fill={sunState.isNight ? "#818cf8" : "#fbbf24"}
-              stroke="#ffffff"
-              strokeWidth={1.5}
-              pointerEvents="none"
-            />
-            <g transform={`translate(${COMPASS_CX}, ${COMPASS_CY}) rotate(${-sun.orientationDeg})`}>
-              <polygon points="0,-20 4.5,0 -4.5,0" fill="#ef4444" />
-              <polygon points="0,20 4.5,0 -4.5,0" fill="#e2e8f0" />
-              <text x={0} y={-22} textAnchor="middle" fill="#fca5a5" className="font-mono text-[8.5px] font-black">
-                N
-              </text>
-              <text x={24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
-                E
-              </text>
-              <text x={0} y={28} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
-                S
-              </text>
-              <text x={-24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
-                W
-              </text>
-            </g>
-            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={3} fill="#fbbf24" />
-            <text
-              x={COMPASS_CX}
-              y={COMPASS_CY + 44}
-              textAnchor="middle"
-              fill="rgba(255,255,255,0.85)"
-              className="font-mono text-[9px] font-semibold pointer-events-none"
-            >
-              {degToCardinal(sun.orientationDeg).cardinal} ({sun.orientationDeg}°)
-            </text>
-          </g>
         </svg>
       </div>
     </div>
