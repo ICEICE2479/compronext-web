@@ -1235,14 +1235,6 @@ export function Room3DStudioClient() {
                     <p className="mt-4 font-display text-lg font-black tracking-wide drop-shadow-md">
                       {dragDeleteState.isOver ? "ปล่อยเพื่อลบออกจากห้อง!" : "ลากสินค้ามาวางที่นี่เพื่อลบ"}
                     </p>
-                    <p className="mt-1 text-xs font-semibold opacity-90 max-w-[260px]">
-                      {dragDeleteState.isOver
-                        ? "ปล่อยเมาส์เพื่อนำสินค้านี้ออกจากห้องทันที"
-                        : "ลากสินค้ามาวางบนคลังสินค้าด้านขวานี้เพื่อลบ"}
-                    </p>
-                    <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-[11px] font-medium backdrop-blur">
-                      <span>↩️</span> กดย้อนกลับ (Ctrl+Z) ได้ตลอด
-                    </span>
                   </div>
                 )}
                 <div className="border-b border-ink-100 p-3 space-y-2.5">
