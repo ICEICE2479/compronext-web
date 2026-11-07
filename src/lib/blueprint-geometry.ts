@@ -874,4 +874,483 @@ export function clampOpeningOnSegment(params: {
   };
 }
 
+/** ดูดจุดมุมของรูปที่วาดใหม่ให้แนบสนิทกับเส้นขอบและมุมของห้องหลัก (ช่วยให้รูปสามเหลี่ยม/หลายเหลี่ยมเชื่อมเป็นห้องเดียวกัน 100%) */
+export function snapPolyToTargetBoundary(polyB: Pt2[], polyA: Pt2[], tolCm = 22): Pt2[] {
+  if (polyA.length < 3) return polyB;
+  return polyB.map(([x, z]) => {
+    for (const [vx, vz] of polyA) {
+      if (Math.hypot(x - vx, z - vz) <= tolCm) return [vx, vz] as Pt2;
+    }
+    const hit = minDistToPolyBoundary(x, z, polyA);
+    if (hit.distCm <= tolCm) {
+      return [Math.round(hit.projX), Math.round(hit.projZ)] as Pt2;
+    }
+    return [x, z] as Pt2;
+  });
+}
+
+/**
+ * กรณีลูกค้าใช้โหมดวาดเส้น (Point-to-Point) คลิกเริ่มบนผนังห้องหลัก -> ลากออกไปนอกห้อง (เช่น วาดครึ่งสามเหลี่ยม) -> คลิกจบกลับบนผนังห้องหลัก
+ * ฟังก์ชันนี้จะปิดรูปหลายเหลี่ยมตามแนวขอบห้องหลักอัตโนมัติ (รองรับทั้งบนผนังด้านเดียวกันและอ้อมมุมห้อง)
+ */
+export function buildAttachedExtensionPoly(mainPoly: Pt2[], pts: Pt2[]): Pt2[] {
+  if (pts.length < 3 || mainPoly.length < 3) return pts;
+  const hStart = minDistToPolyBoundary(pts[0][0], pts[0][1], mainPoly);
+  const hEnd = minDistToPolyBoundary(pts[pts.length - 1][0], pts[pts.length - 1][1], mainPoly);
+  if (hStart.distCm > 26 || hEnd.distCm > 26) return pts;
+
+  let closed: Pt2[] = pts;
+  if (hStart.edgeIndex !== hEnd.edgeIndex) {
+    const n = mainPoly.length;
+    // ทางเดินที่ 1: เดินไปข้างหน้าตามจุดมุมของห้องหลักจาก hEnd ไปหา hStart
+    const chainFwd: Pt2[] = [];
+    let idx = (hEnd.edgeIndex + 1) % n;
+    let distFwd = Math.hypot(mainPoly[idx][0] - hEnd.projX, mainPoly[idx][1] - hEnd.projZ);
+    let cur = mainPoly[idx];
+    let safety = 0;
+    while (idx !== (hStart.edgeIndex + 1) % n && safety++ <= n) {
+      chainFwd.push(mainPoly[idx]);
+      const nxtIdx = (idx + 1) % n;
+      if (nxtIdx === (hStart.edgeIndex + 1) % n) break;
+      distFwd += Math.hypot(mainPoly[nxtIdx][0] - cur[0], mainPoly[nxtIdx][1] - cur[1]);
+      idx = nxtIdx;
+      cur = mainPoly[idx];
+    }
+    distFwd += Math.hypot(hStart.projX - cur[0], hStart.projZ - cur[1]);
+
+    // ทางเดินที่ 2: เดินย้อนกลับตามจุดมุมของห้องหลักจาก hEnd ไปหา hStart
+    const chainBwd: Pt2[] = [];
+    let bIdx = hEnd.edgeIndex;
+    let distBwd = Math.hypot(mainPoly[bIdx][0] - hEnd.projX, mainPoly[bIdx][1] - hEnd.projZ);
+    let bCur = mainPoly[bIdx];
+    safety = 0;
+    while (bIdx !== hStart.edgeIndex && safety++ <= n) {
+      chainBwd.push(mainPoly[bIdx]);
+      const prvIdx = (bIdx - 1 + n) % n;
+      distBwd += Math.hypot(mainPoly[prvIdx][0] - bCur[0], mainPoly[prvIdx][1] - bCur[1]);
+      bIdx = prvIdx;
+      bCur = mainPoly[bIdx];
+    }
+    distBwd += Math.hypot(hStart.projX - bCur[0], hStart.projZ - bCur[1]);
+
+    closed = distFwd <= distBwd ? [...pts, ...chainFwd] : [...pts, ...chainBwd];
+  }
+
+  // ตัดจุดซ้ำติดกัน
+  const dedup: Pt2[] = [];
+  for (const p of closed) {
+    const prev = dedup[dedup.length - 1];
+    if (!prev || Math.hypot(p[0] - prev[0], p[1] - prev[1]) >= 5) {
+      dedup.push(p);
+    }
+  }
+  if (
+    dedup.length > 2 &&
+    Math.hypot(dedup[0][0] - dedup[dedup.length - 1][0], dedup[0][1] - dedup[dedup.length - 1][1]) < 5
+  ) {
+    dedup.pop();
+  }
+  return dedup;
+}
+
+/**
+ * เครื่องยนต์รวม/ตัดรูปหลายเหลี่ยม 2 มิติแบบแม่นยำ (Exact Planar Polygon Union & Difference)
+ * รองรับการเชื่อมครึ่งสามเหลี่ยม ผนังเฉียง ห้องตัว L/U และการตัดเว้าโดยไม่เสียรูปทรงผนังเฉียงเดิม
+ */
+function booleanRoomPolygons(
+  rawA: Pt2[],
+  rawB: Pt2[],
+  op: "union" | "diff"
+): { poly: Pt2[]; connected: boolean } | null {
+  if (rawA.length < 3 || rawB.length < 3) return null;
+  const A: Pt2[] = (signedArea(rawA) < 0 ? [...rawA].reverse() : [...rawA]).map(([x, z]) => [x, z]);
+  let B: Pt2[] = (signedArea(rawB) < 0 ? [...rawB].reverse() : [...rawB]).map(([x, z]) => [x, z]);
+
+  if (op === "union") {
+    B = snapPolyToTargetBoundary(B, A, 22);
+    if (Math.abs(signedArea(B)) < 1200) return null;
+    if (signedArea(B) < 0) B = [...B].reverse();
+  }
+
+  const segs: Array<{ p: Pt2; q: Pt2 }> = [];
+  for (let i = 0; i < A.length; i++) {
+    segs.push({ p: A[i], q: A[(i + 1) % A.length] });
+  }
+  const Bdir = op === "diff" ? [...B].reverse() : B;
+  for (let i = 0; i < Bdir.length; i++) {
+    segs.push({ p: Bdir[i], q: Bdir[(i + 1) % Bdir.length] });
+  }
+
+  const splitTs: number[][] = segs.map(() => [0, 1]);
+  const addT = (idx: number, t: number) => {
+    if (t > 1e-5 && t < 1 - 1e-5) splitTs[idx].push(t);
+  };
+
+  for (let i = 0; i < segs.length; i++) {
+    const { p: p1, q: p2 } = segs[i];
+    const dx1 = p2[0] - p1[0];
+    const dz1 = p2[1] - p1[1];
+    const len1Sq = dx1 * dx1 + dz1 * dz1;
+    if (len1Sq < 1e-4) continue;
+
+    for (let j = i + 1; j < segs.length; j++) {
+      const { p: p3, q: p4 } = segs[j];
+      const dx2 = p4[0] - p3[0];
+      const dz2 = p4[1] - p3[1];
+      const len2Sq = dx2 * dx2 + dz2 * dz2;
+      if (len2Sq < 1e-4) continue;
+
+      const cross = dx1 * dz2 - dz1 * dx2;
+      if (Math.abs(cross) > 1e-4) {
+        const qpx = p3[0] - p1[0];
+        const qpz = p3[1] - p1[1];
+        const t = (qpx * dz2 - qpz * dx2) / cross;
+        const u = (qpx * dz1 - qpz * dx1) / cross;
+        if (t >= -1e-4 && t <= 1 + 1e-4 && u >= -1e-4 && u <= 1 + 1e-4) {
+          addT(i, Math.max(0, Math.min(1, t)));
+          addT(j, Math.max(0, Math.min(1, u)));
+        }
+      }
+
+      for (const pt of [p3, p4]) {
+        const t = ((pt[0] - p1[0]) * dx1 + (pt[1] - p1[1]) * dz1) / len1Sq;
+        if (t > 1e-4 && t < 1 - 1e-4) {
+          const px = p1[0] + dx1 * t;
+          const pz = p1[1] + dz1 * t;
+          if (Math.hypot(pt[0] - px, pt[1] - pz) <= 0.25) addT(i, t);
+        }
+      }
+      for (const pt of [p1, p2]) {
+        const u = ((pt[0] - p3[0]) * dx2 + (pt[1] - p3[1]) * dz2) / len2Sq;
+        if (u > 1e-4 && u < 1 - 1e-4) {
+          const px = p3[0] + dx2 * u;
+          const pz = p3[1] + dz2 * u;
+          if (Math.hypot(pt[0] - px, pt[1] - pz) <= 0.25) addT(j, u);
+        }
+      }
+    }
+  }
+
+  const verts: Pt2[] = [];
+  const getVid = (x: number, z: number): number => {
+    for (let i = 0; i < verts.length; i++) {
+      if (Math.hypot(verts[i][0] - x, verts[i][1] - z) <= 0.35) return i;
+    }
+    verts.push([x, z]);
+    return verts.length - 1;
+  };
+
+  const inResult = (x: number, z: number): boolean => {
+    const inA = pointInShape(x, z, A);
+    const inB = pointInShape(x, z, B);
+    return op === "union" ? inA || inB : inA && !inB;
+  };
+
+  const dirEdges = new Map<string, { u: number; v: number; angle: number }>();
+  let sharedInteriorSubEdges = 0;
+
+  for (let i = 0; i < segs.length; i++) {
+    const ts = splitTs[i].sort((a, b) => a - b);
+    const uniq = [ts[0]];
+    for (let k = 1; k < ts.length; k++) {
+      if (ts[k] - uniq[uniq.length - 1] > 1e-4) uniq.push(ts[k]);
+    }
+    const { p, q } = segs[i];
+    for (let k = 0; k < uniq.length - 1; k++) {
+      const t0 = uniq[k];
+      const t1 = uniq[k + 1];
+      const x1 = p[0] + (q[0] - p[0]) * t0;
+      const z1 = p[1] + (q[1] - p[1]) * t0;
+      const x2 = p[0] + (q[0] - p[0]) * t1;
+      const z2 = p[1] + (q[1] - p[1]) * t1;
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.8) continue;
+      const u = getVid(x1, z1);
+      const v = getVid(x2, z2);
+      if (u === v) continue;
+
+      const mx = (x1 + x2) * 0.5;
+      const mz = (z1 + z2) * 0.5;
+      const ex = (x2 - x1) / len;
+      const ez = (z2 - z1) / len;
+      const eps = 0.25;
+      const insideIn = inResult(mx - ez * eps, mz + ex * eps);
+      const insideOut = inResult(mx + ez * eps, mz - ex * eps);
+      if (insideIn && !insideOut) {
+        dirEdges.set(`${u}->${v}`, { u, v, angle: Math.atan2(z2 - z1, x2 - x1) });
+      } else if (insideIn && insideOut) {
+        sharedInteriorSubEdges++;
+      }
+    }
+  }
+
+  const adj = new Map<number, Array<{ u: number; v: number; angle: number }>>();
+  for (const e of dirEdges.values()) {
+    const list = adj.get(e.u) ?? [];
+    list.push(e);
+    adj.set(e.u, list);
+  }
+
+  const used = new Set<string>();
+  const loops: Pt2[][] = [];
+
+  for (const e0 of dirEdges.values()) {
+    const k0 = `${e0.u}->${e0.v}`;
+    if (used.has(k0)) continue;
+    const loop: Pt2[] = [];
+    let cur: { u: number; v: number; angle: number } | undefined = e0;
+    let guard = 0;
+    while (cur && guard++ < 600) {
+      const k = `${cur.u}->${cur.v}`;
+      if (used.has(k)) break;
+      used.add(k);
+      loop.push(verts[cur.u]);
+      if (cur.v === e0.u) {
+        loops.push(loop);
+        break;
+      }
+      const outs: Array<{ u: number; v: number; angle: number }> = (adj.get(cur.v) ?? []).filter(
+        (nx) => !used.has(`${nx.u}->${nx.v}`)
+      );
+      if (outs.length === 0) break;
+      const backAngle = Math.atan2(
+        verts[cur.u][1] - verts[cur.v][1],
+        verts[cur.u][0] - verts[cur.v][0]
+      );
+      outs.sort((a, b) => {
+        const da = (((a.angle - backAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const db = (((b.angle - backAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        return da - db;
+      });
+      cur = outs[0];
+    }
+  }
+
+  const validLoops = loops.filter((l) => l.length >= 3 && signedArea(l) >= 2500);
+  if (validLoops.length === 0) return null;
+  validLoops.sort((a, b) => signedArea(b) - signedArea(a));
+  let best = validLoops[0];
+
+  // รวมจุดที่เรียงเป็นเส้นตรงเดียวกันเพื่อให้ผนังเรียบตรงสวยงาม (เช่น ฐานล่างที่ต่อจากห้องหลักไปหาปลายสามเหลี่ยม)
+  let changed = true;
+  while (changed && best.length > 3) {
+    changed = false;
+    const next: Pt2[] = [];
+    for (let i = 0; i < best.length; i++) {
+      const prev = best[(i - 1 + best.length) % best.length];
+      const pt = best[i];
+      const nxt = best[(i + 1) % best.length];
+      const v1x = pt[0] - prev[0];
+      const v1z = pt[1] - prev[1];
+      const v2x = nxt[0] - pt[0];
+      const v2z = nxt[1] - pt[1];
+      const l1 = Math.hypot(v1x, v1z);
+      const l2 = Math.hypot(v2x, v2z);
+      if (l1 < 10 || l2 < 10) {
+        changed = true;
+        continue;
+      }
+      const sinA = Math.abs((v1x * v2z - v1z * v2x) / (l1 * l2));
+      const dot = (v1x * v2x + v1z * v2z) / (l1 * l2);
+      if (sinA < 0.015 && dot > 0) {
+        changed = true;
+        continue;
+      }
+      next.push([Math.round(pt[0]), Math.round(pt[1])]);
+    }
+    if (next.length >= 3) best = next;
+    else break;
+  }
+
+  if (best.length < 3 || hasSelfIntersection(best)) return null;
+  const connected = op === "diff" ? true : validLoops.length === 1 && sharedInteriorSubEdges > 0;
+  return { poly: recenterPolyInGrid(best), connected };
+}
+
+export function unionRoomPolygons(
+  mainPoly: Pt2[],
+  addPoly: Pt2[]
+): { poly: Pt2[]; connected: boolean } | null {
+  return booleanRoomPolygons(mainPoly, addPoly, "union");
+}
+
+export function subtractRoomPolygons(mainPoly: Pt2[], cutPoly: Pt2[]): { poly: Pt2[] } | null {
+  const res = booleanRoomPolygons(mainPoly, cutPoly, "diff");
+  return res ? { poly: res.poly } : null;
+}
+
+/**
+ * คำนวณรูปครึ่งสามเหลี่ยม (สามเหลี่ยมมุมฉาก) ขณะลากเมาส์:
+ * - หันด้านตั้งฉากเข้าประกบติดผนังห้องหลักให้อัตโนมัติ (ไม่ว่าจะวาดฝั่งขวา ซ้าย บน หรือล่างของห้องหลัก)
+ * - กด Shift ค้างเพื่อสลับมุมฉากกลับด้านได้ทันที
+ */
+export function resolveTriangleDrag(
+  startRawCm: Pt2,
+  curRawCm: Pt2,
+  mainPoly: Pt2[],
+  isBlankCanvas: boolean,
+  flipCorner = false
+): {
+  pts: [Pt2, Pt2, Pt2];
+  wCm: number;
+  dCm: number;
+  areaM2: string;
+  isValid: boolean;
+} {
+  const maxX = GRID_COLS * GRID_CELL_CM;
+  const maxZ = GRID_ROWS * GRID_CELL_CM;
+
+  let x1 = Math.max(0, Math.min(maxX, Math.round(startRawCm[0] / 10) * 10));
+  let z1 = Math.max(0, Math.min(maxZ, Math.round(startRawCm[1] / 10) * 10));
+  let x2 = Math.max(0, Math.min(maxX, Math.round(curRawCm[0] / 10) * 10));
+  let z2 = Math.max(0, Math.min(maxZ, Math.round(curRawCm[1] / 10) * 10));
+
+  if (!isBlankCanvas && mainPoly.length >= 3) {
+    const startHit = minDistToPolyBoundary(startRawCm[0], startRawCm[1], mainPoly);
+    if (startHit.distCm <= 50) {
+      const sStart = snapPointToRoomWalls(startRawCm[0], startRawCm[1], mainPoly, [], 50);
+      x1 = sStart[0];
+      z1 = sStart[1];
+    } else {
+      const endHit = minDistToPolyBoundary(curRawCm[0], curRawCm[1], mainPoly);
+      if (endHit.distCm <= 50) {
+        const sEnd = snapPointToRoomWalls(curRawCm[0], curRawCm[1], mainPoly, [], 50);
+        x2 = sEnd[0];
+        z2 = sEnd[1];
+      }
+    }
+
+    // ดูดแนวพิกัดปลายเมาส์ให้เสมอกับแนวผนัง/มุมของห้องหลักพอดีเป๊ะ (เช่น ฐานล่างหรือขอบบนตรงกันเป็นเส้นเดียว)
+    for (const [vx, vz] of mainPoly) {
+      if (Math.abs(x2 - x1) >= 40 && Math.abs(x2 - vx) <= 22) x2 = vx;
+      if (Math.abs(z2 - z1) >= 40 && Math.abs(z2 - vz) <= 22) z2 = vz;
+    }
+  }
+
+  const minX = Math.min(x1, x2);
+  const maxX2 = Math.max(x1, x2);
+  const minZ = Math.min(z1, z2);
+  const maxZ2 = Math.max(z1, z2);
+  const wCm = maxX2 - minX;
+  const dCm = maxZ2 - minZ;
+
+  let pts: [Pt2, Pt2, Pt2];
+
+  if (!isBlankCanvas && mainPoly.length >= 3 && wCm >= 20 && dCm >= 20) {
+    const sampleTouch = (ax: number, az: number, bx: number, bz: number) => {
+      let score = 0;
+      for (const t of [0.15, 0.35, 0.5, 0.65, 0.85]) {
+        const px = ax + (bx - ax) * t;
+        const pz = az + (bz - az) * t;
+        if (isPointInOrNearRoom(px, pz, mainPoly, 20)) score++;
+      }
+      return score;
+    };
+
+    const leftTouch = sampleTouch(minX, minZ, minX, maxZ2);
+    const rightTouch = sampleTouch(maxX2, minZ, maxX2, maxZ2);
+    const topTouch = sampleTouch(minX, minZ, maxX2, minZ);
+    const bottomTouch = sampleTouch(minX, maxZ2, maxX2, maxZ2);
+    const maxTouch = Math.max(leftTouch, rightTouch, topTouch, bottomTouch);
+
+    if (maxTouch > 0) {
+      if (leftTouch === maxTouch) {
+        // วาดฝั่งขวาของห้องหลัก -> ให้ด้านซ้ายตั้งฉากแนบติดผนังห้องหลัก
+        const useBottom = flipCorner ? !(z2 >= z1) : z2 >= z1;
+        pts = useBottom
+          ? [
+              [minX, minZ],
+              [maxX2, maxZ2],
+              [minX, maxZ2],
+            ]
+          : [
+              [minX, minZ],
+              [maxX2, minZ],
+              [minX, maxZ2],
+            ];
+      } else if (rightTouch === maxTouch) {
+        // วาดฝั่งซ้ายของห้องหลัก -> ให้ด้านขวาตั้งฉากแนบติดผนังห้องหลัก
+        const useBottom = flipCorner ? !(z2 >= z1) : z2 >= z1;
+        pts = useBottom
+          ? [
+              [maxX2, minZ],
+              [maxX2, maxZ2],
+              [minX, maxZ2],
+            ]
+          : [
+              [minX, minZ],
+              [maxX2, minZ],
+              [maxX2, maxZ2],
+            ];
+      } else if (topTouch === maxTouch) {
+        // วาดฝั่งล่างของห้องหลัก -> ให้ด้านบนแนบติดผนังห้องหลัก
+        const useRight = flipCorner ? !(x2 >= x1) : x2 >= x1;
+        pts = useRight
+          ? [
+              [minX, minZ],
+              [maxX2, minZ],
+              [maxX2, maxZ2],
+            ]
+          : [
+              [minX, minZ],
+              [maxX2, minZ],
+              [minX, maxZ2],
+            ];
+      } else {
+        // วาดฝั่งบนของห้องหลัก -> ให้ด้านล่างแนบติดผนังห้องหลัก
+        const useRight = flipCorner ? !(x2 >= x1) : x2 >= x1;
+        pts = useRight
+          ? [
+              [maxX2, minZ],
+              [maxX2, maxZ2],
+              [minX, maxZ2],
+            ]
+          : [
+              [minX, minZ],
+              [maxX2, maxZ2],
+              [minX, maxZ2],
+            ];
+      }
+    } else {
+      pts = flipCorner
+        ? [
+            [x1, z1],
+            [x2, z1],
+            [x2, z2],
+          ]
+        : [
+            [x1, z1],
+            [x2, z2],
+            [x1, z2],
+          ];
+    }
+  } else {
+    pts = flipCorner
+      ? [
+          [x1, z1],
+          [x2, z1],
+          [x2, z2],
+        ]
+      : [
+          [x1, z1],
+          [x2, z2],
+          [x1, z2],
+        ];
+  }
+
+  if (signedArea(pts) < 0) {
+    pts = [pts[0], pts[2], pts[1]];
+  }
+
+  const areaM2 = ((wCm * dCm) / 20000).toFixed(1);
+  return {
+    pts,
+    wCm,
+    dCm,
+    areaM2,
+    isValid: wCm >= 50 && dCm >= 50,
+  };
+}
+
+
 
