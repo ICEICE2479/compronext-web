@@ -89,8 +89,36 @@ interface MyDreamSetupBlueprintProps {
   onCancel?: () => void;
 }
 
-const VB_W = 1040;
-const VB_H = 660;
+const VB_W = 1140;
+const VB_H = 680;
+const COMPASS_CX = VB_W - 60;
+const COMPASS_CY = 68;
+
+/** ไอคอนรูปหน้าต่างพร้อมขอบธรณีหน้าต่างและเส้นแบ่งกระจก (แทนไอคอนสี่เหลี่ยมแยก 4 อันเดิม) */
+function WindowPaneIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* กรอบหน้าต่างหลัก */}
+      <rect x="4" y="3" width="16" height="16" rx="1.5" />
+      {/* เส้นแบ่งบานกระจกซ้าย-ขวา และ บน-ล่าง */}
+      <line x1="12" y1="3" x2="12" y2="19" />
+      <line x1="4" y1="11" x2="20" y2="11" />
+      {/* ขอบธรณีหน้าต่างด้านล่าง (Window Sill) */}
+      <line x1="2.5" y1="19" x2="21.5" y2="19" strokeWidth="2.2" />
+      {/* แสงสะท้อนกระจกเล็กๆ */}
+      <line x1="6.5" y1="6.8" x2="8.4" y2="5.2" strokeWidth="1.4" />
+    </svg>
+  );
+}
 
 /** สร้าง Polygon เริ่มต้นบนกระดาษพิมพ์เขียวจาก RoomSize */
 function initialCanvasPolyFromRoom(room: RoomSize): Pt2[] {
@@ -556,9 +584,7 @@ export function MyDreamSetupBlueprint({
 
       // A. หมุนเข็มทิศ
       if (draggingCompass) {
-        const compassCx = VB_W - 68;
-        const compassCy = 66;
-        const angleRad = Math.atan2(pt.sx - compassCx, -(pt.sy - compassCy));
+        const angleRad = Math.atan2(pt.sx - COMPASS_CX, -(pt.sy - COMPASS_CY));
         const deg = Math.round((((angleRad * 180) / Math.PI) % 360 + 360) % 360 / 5) * 5 % 360;
         setSun((prev) => ({ ...prev, orientationDeg: deg }));
         return;
@@ -1084,27 +1110,115 @@ export function MyDreamSetupBlueprint({
         </div>
       )}
 
-      {/* แถบคำแนะนำเมื่อเลือกเครื่องมือหน้าต่างหรือประตู */}
-      {activeTool !== "pencil" && (
-        <div className="relative z-20 flex w-full items-center justify-between border-b border-white/15 bg-slate-950/45 px-4 py-2 text-xs backdrop-blur-md">
-          <div className="flex items-center gap-2 font-semibold">
-            {activeTool === "window" ? (
-              <span className="text-rose-200">
-                ⊞ <b>โหมดวางหน้าต่าง:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อเพิ่มหน้าต่าง หรือคลิกค้างที่หน้าต่างสีแดงแล้วลากเลื่อนไปตามผนังได้เลย
-              </span>
-            ) : (
-              <span className="text-sky-200">
-                🚪 <b>โหมดวางประตู:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อเพิ่มประตู หรือคลิกค้างที่ประตูสีฟ้าแล้วลากเลื่อนไปตามผนังได้เลย
-              </span>
+      {/* แถบคำแนะนำเมื่อเลือกเครื่องมือหน้าต่างหรือประตู + แผงปรับขนาดชิ้นที่เลือก (อยู่ด้านบน ไม่บังผนังห้องด้านล่าง) */}
+      {(activeTool !== "pencil" || selectedElement) && (
+        <div className="relative z-20 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-950/55 px-4 py-1.5 text-xs backdrop-blur-md">
+          {activeTool !== "pencil" ? (
+            <div className="flex items-center gap-2 font-semibold">
+              {activeTool === "window" ? (
+                <span className="inline-flex items-center gap-1.5 text-rose-200">
+                  <WindowPaneIcon className="h-4 w-4 text-rose-300 shrink-0" />
+                  <span>
+                    <b>โหมดวางหน้าต่าง:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อวางเพิ่ม หรือลากหน้าต่างสีแดงไปตามผนัง
+                  </span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-sky-200">
+                  <DoorClosed className="h-4 w-4 text-sky-300 shrink-0" />
+                  <span>
+                    <b>โหมดวางประตู:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อวางเพิ่ม หรือลากประตูสีฟ้าไปตามผนัง
+                  </span>
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] font-semibold text-blue-100">
+              💡 กำลังเลือก{selectedElement?.type === "door" ? "ประตู" : "หน้าต่าง"} — ลากเลื่อนบนผนังได้ทุกด้านโดยไม่มีแถบบัง
+            </span>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+            {selectedElement && (
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/25 bg-slate-900/80 px-2.5 py-1 text-white">
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 pr-1.5 border-r border-white/20">
+                  {selectedElement.type === "door" ? (
+                    <>
+                      <DoorClosed className="h-3.5 w-3.5" /> ประตู
+                    </>
+                  ) : (
+                    <>
+                      <WindowPaneIcon className="h-3.5 w-3.5" /> หน้าต่าง
+                    </>
+                  )}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={moveSelectedToNextWall}
+                  className="rounded-lg bg-white/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/25"
+                >
+                  สลับผนัง ↻
+                </button>
+
+                <div className="flex items-center gap-1 text-[11px] pl-1 border-l border-white/20">
+                  <span className="text-white/60">กว้าง:</span>
+                  {(selectedElement.type === "door" ? [70, 80, 90, 100] : [80, 120, 160, 200]).map(
+                    (w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => changeSelectedWidth(w)}
+                        className={`rounded-md px-1.5 py-0.5 ${
+                          (selectedElement.type === "door" ? selectedDoor?.width : selectedWin?.width) === w
+                            ? "bg-amber-400 text-slate-950 font-bold"
+                            : "bg-white/10 hover:bg-white/20"
+                        }`}
+                      >
+                        {w}cm
+                      </button>
+                    )
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 pl-1 border-l border-white/20">
+                  <button
+                    type="button"
+                    onClick={duplicateSelected}
+                    title="คัดลอกเพิ่มอีกบาน"
+                    className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteSelected}
+                    title="ลบออก"
+                    className="rounded-md bg-rose-500 p-1 hover:bg-rose-400 text-white"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedElement(null)}
+                    title="ปิดแถบเลือก"
+                    className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white/80"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTool !== "pencil" && (
+              <button
+                type="button"
+                onClick={() => setActiveTool("pencil")}
+                className="rounded-lg bg-white/15 px-2.5 py-1 text-[11px] font-bold hover:bg-white/25"
+              >
+                กลับโหมดปากกา ✏️
+              </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setActiveTool("pencil")}
-            className="rounded-lg bg-white/15 px-2.5 py-1 text-[11px] font-bold hover:bg-white/25"
-          >
-            กลับโหมดปากกา ✏️
-          </button>
         </div>
       )}
 
@@ -1139,7 +1253,7 @@ export function MyDreamSetupBlueprint({
             <PenTool className="h-5 w-5" />
           </button>
 
-          {/* 3. ปุ่มหน้าต่าง ⊞ */}
+          {/* 3. ปุ่มหน้าต่าง (รูปหน้าต่างพร้อมขอบธรณีและช่องกระจก) */}
           <button
             type="button"
             onClick={() => {
@@ -1154,7 +1268,7 @@ export function MyDreamSetupBlueprint({
                 : "bg-white text-slate-800 hover:bg-slate-100"
             }`}
           >
-            <LayoutGrid className="h-5 w-5" />
+            <WindowPaneIcon className="h-5 w-5" />
           </button>
 
           {/* 4. ปุ่มประตู 🚪 */}
@@ -1794,7 +1908,7 @@ export function MyDreamSetupBlueprint({
             );
           })()}
 
-          {/* วงแหวนเข็มทิศ (Interactive Compass Dial มุมขวาบน — คลิกหมุนทิศเหนือได้โดยตรง) */}
+          {/* วงแหวนเข็มทิศ (Interactive Compass Dial มุมขวาบนนอกกรอบตาราง — ไม่ทับผนังห้อง) */}
           <g
             className="cursor-grab active:cursor-grabbing"
             onMouseDown={(e) => {
@@ -1803,98 +1917,42 @@ export function MyDreamSetupBlueprint({
             }}
           >
             <circle
-              cx={VB_W - 68}
-              cy={66}
-              r={42}
-              fill="rgba(15, 23, 42, 0.82)"
+              cx={COMPASS_CX}
+              cy={COMPASS_CY}
+              r={36}
+              fill="rgba(15, 23, 42, 0.85)"
               stroke="rgba(255,255,255,0.45)"
               strokeWidth={2}
             />
-            <g transform={`translate(${VB_W - 68}, 66) rotate(${-sun.orientationDeg})`}>
+            <g transform={`translate(${COMPASS_CX}, ${COMPASS_CY}) rotate(${-sun.orientationDeg})`}>
               {/* เข็มทิศชี้ทิศเหนือ (N สีแดง / S สีขาว) */}
-              <polygon points="0,-28 6,0 -6,0" fill="#ef4444" />
-              <polygon points="0,28 6,0 -6,0" fill="#e2e8f0" />
-              <text x={0} y={-31} textAnchor="middle" fill="#fca5a5" className="font-mono text-[10px] font-black">
+              <polygon points="0,-24 5.5,0 -5.5,0" fill="#ef4444" />
+              <polygon points="0,24 5.5,0 -5.5,0" fill="#e2e8f0" />
+              <text x={0} y={-26} textAnchor="middle" fill="#fca5a5" className="font-mono text-[9px] font-black">
                 N
               </text>
-              <text x={33} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[9px] font-bold">
+              <text x={28} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
                 E
               </text>
-              <text x={0} y={38} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[9px] font-bold">
+              <text x={0} y={33} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
                 S
               </text>
-              <text x={-33} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[9px] font-bold">
+              <text x={-28} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
                 W
               </text>
             </g>
-            <circle cx={VB_W - 68} cy={66} r={4} fill="#fbbf24" />
+            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={3.5} fill="#fbbf24" />
             <text
-              x={VB_W - 68}
-              y={121}
+              x={COMPASS_CX}
+              y={COMPASS_CY + 49}
               textAnchor="middle"
               fill="#fde047"
-              className="font-mono text-[10px] font-bold pointer-events-none"
+              className="font-mono text-[9.5px] font-bold pointer-events-none"
             >
               หัน {degToCardinal(sun.orientationDeg).cardinal} ({sun.orientationDeg}°)
             </text>
           </g>
         </svg>
-
-        {/* การ์ดปรับขนาด/ย้ายผนังของประตูหรือหน้าต่างที่คลิกเลือก */}
-        {selectedElement && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-wrap items-center gap-2 rounded-2xl border border-white/30 bg-slate-900/92 px-3 py-2 shadow-2xl backdrop-blur-md text-white">
-            <span className="text-xs font-bold text-amber-300 pr-2 border-r border-white/20">
-              {selectedElement.type === "door" ? "🚪 ประตู (ลากบนผนังได้)" : "⊞ หน้าต่าง (ลากบนผนังได้)"}
-            </span>
-
-            <button
-              type="button"
-              onClick={moveSelectedToNextWall}
-              className="rounded-lg bg-white/15 px-2.5 py-1 text-[11px] font-semibold hover:bg-white/25"
-            >
-              สลับไปผนังถัดไป ↻
-            </button>
-
-            <div className="flex items-center gap-1 text-[11px] pl-1 border-l border-white/20">
-              <span className="text-white/60">กว้าง:</span>
-              {(selectedElement.type === "door" ? [70, 80, 90, 100] : [80, 120, 160, 200]).map(
-                (w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => changeSelectedWidth(w)}
-                    className={`rounded-lg px-2 py-1 ${
-                      (selectedElement.type === "door" ? selectedDoor?.width : selectedWin?.width) === w
-                        ? "bg-amber-400 text-slate-950 font-bold"
-                        : "bg-white/10 hover:bg-white/20"
-                    }`}
-                  >
-                    {w}cm
-                  </button>
-                )
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 pl-1 border-l border-white/20">
-              <button
-                type="button"
-                onClick={duplicateSelected}
-                title="คัดลอกเพิ่มอีกบาน"
-                className="rounded-lg bg-white/10 p-1.5 hover:bg-white/20 text-white"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={deleteSelected}
-                title="ลบออก"
-                className="rounded-lg bg-rose-500 p-1.5 hover:bg-rose-400 text-white"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* แผงด้านล่าง: กำหนดทิศห้อง + เวลาแสงแดดส่องเข้า + อุณหภูมิห้อง (°C & Kelvin) */}
