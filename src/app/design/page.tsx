@@ -33,11 +33,11 @@ export default async function DesignPage({ searchParams }: { searchParams: Promi
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-ink-950">อยากวาดแปลนและจัดห้องเองแบบ My Dream Setup?</span>
+                <span className="font-semibold text-ink-950">อยากวาดแปลนห้องและจัดวางสินค้า 3D ด้วยตัวเอง?</span>
                 <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">ใหม่</span>
               </div>
               <p className="mt-0.5 text-xs sm:text-sm text-ink-600">
-                โหมด Blueprint Mode วาดขนาดห้อง ประตู หน้าต่าง แล้วหยิบสินค้าทุกชิ้นในร้านมาวางหมุนในห้อง 3D ได้อิสระ
+                วาดขนาดห้อง ประตู หน้าต่าง ปรับทิศแสงแดด แล้วหยิบสินค้าทุกชิ้นในร้านมาวางหมุนในห้อง 3D ได้อิสระ
               </p>
             </div>
           </div>

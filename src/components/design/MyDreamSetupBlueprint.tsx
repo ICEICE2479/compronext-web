@@ -13,7 +13,6 @@ import {
   Thermometer,
   Copy,
   ChevronDown,
-  Sparkles,
   Undo2,
   Plus,
   Minus,
@@ -178,9 +177,10 @@ export function MyDreamSetupBlueprint({
     id: string;
   } | null>(null);
 
-  // ทิศทางเข็มทิศ & แสงอาทิตย์ตามเวลา
+  // ทิศทางเข็มทิศ & แสงอาทิตย์ตามเวลา + เมนูทรงห้องสำเร็จรูป
   const [sun, setSun] = useState<SunSettings>(room.sunSettings || initialSunSettings);
   const [sunPanelOpen, setSunPanelOpen] = useState(false);
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
 
   // สถานะการลากวาดบล็อกบนตาราง (Grid Box Drag)
   const [boxDrag, setBoxDrag] = useState<{
@@ -498,6 +498,8 @@ export function MyDreamSetupBlueprint({
 
   // คลิกหรือเริ่มลากบนพื้นกระดาษพิมพ์เขียว
   const handleCanvasMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    setSunPanelOpen(false);
+    setShapeMenuOpen(false);
     if (e.button !== 0 && e.button !== 2) return;
     const pt = clientToSvgAndCm(e.clientX, e.clientY);
     if (!pt) return;
@@ -864,16 +866,6 @@ export function MyDreamSetupBlueprint({
     [selectedElement, windows]
   );
 
-  // จุดกึ่งกลางห้องในพิกัด SVG (สำหรับโคจรดวงอาทิตย์รอบห้อง)
-  const roomCenterSvg = useMemo((): [number, number] => {
-    if (isBlankCanvas || canvasPolyCm.length < 3) return [VB_W / 2, VB_H / 2];
-    const minX = Math.min(...canvasPolyCm.map((p) => p[0]));
-    const maxX = Math.max(...canvasPolyCm.map((p) => p[0]));
-    const minZ = Math.min(...canvasPolyCm.map((p) => p[1]));
-    const maxZ = Math.max(...canvasPolyCm.map((p) => p[1]));
-    return cmToSvg((minX + maxX) / 2, (minZ + maxZ) / 2);
-  }, [canvasPolyCm, isBlankCanvas]);
-
   // พิกัด SVG ของกล่องลากวาด (Box Drag Preview)
   const boxDragPreview = useMemo(() => {
     if (!boxDrag) return null;
@@ -893,367 +885,503 @@ export function MyDreamSetupBlueprint({
     return { x, y, wPx, hPx, wM, dM, aM2, mode: boxDrag.mode };
   }, [boxDrag]);
 
+  const formattedTime = `${Math.floor(sun.timeHour)
+    .toString()
+    .padStart(2, "0")}:${Math.round((sun.timeHour % 1) * 60)
+    .toString()
+    .padStart(2, "0")}`;
+
   return (
     <div
-      className={`relative flex flex-col items-center justify-between overflow-hidden bg-[#3b82f6] select-none w-full text-white ${
+      className={`relative flex flex-col overflow-hidden bg-gradient-to-b from-[#2f76eb] to-[#2563eb] select-none w-full text-white ${
         isFullscreen
           ? "h-full flex-1 rounded-none border-0"
-          : "min-h-[600px] lg:h-[calc(100dvh-7.25rem)] rounded-3xl border-4 border-[#1e40af] shadow-2xl"
+          : "min-h-[600px] lg:h-[calc(100dvh-5.25rem)] rounded-2xl border border-[#1d4ed8] shadow-xl"
       }`}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* รอยแก้วกาแฟ & ดินสอสถาปนิกสไตล์เกม My Dream Setup */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-30">
-        <div className="absolute -left-12 -top-12 h-44 w-44 rounded-full border-4 border-amber-900/35" />
-        <div className="absolute -left-10 -top-10 h-40 w-40 rounded-full border-2 border-amber-800/25" />
-        <div className="absolute right-4 top-4 h-32 w-1.5 rotate-45 rounded-full bg-amber-200/40 shadow-sm" />
-        <div className="absolute right-8 top-12 h-24 w-1.5 rotate-12 rounded-full bg-slate-300/40 shadow-sm" />
-        <span className="absolute bottom-28 right-12 font-mono text-2xl font-bold tracking-widest text-white/40">
-          2 ¹/₂
-        </span>
-        <span className="absolute bottom-20 right-10 font-mono text-base text-white/30">0.26</span>
-      </div>
+      {/* แถบควบคุมหลักเพียงแถวเดียวด้านบน: เรียบ สะอาด จัดหมวดหมู่เป็นระเบียบ */}
+      <div className="relative z-30 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-900/45 px-3.5 py-2 backdrop-blur-md sm:px-5">
+        {/* ฝั่งซ้าย: ชื่อหน้า + ขนาดห้องและเพดานในกล่องเดียว */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-white">
+              <PenTool className="h-3.5 w-3.5" />
+            </span>
+            <h1 className="font-display text-sm font-bold tracking-wide text-white sm:text-base">
+              วาดแปลนห้อง
+            </h1>
+          </div>
 
-      {/* แถบหัวด้านบน: BLUEPRINT MODE + ขนาดห้อง + ความสูงเพดาน */}
-      <div className="relative z-20 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/20 bg-[#1e40af]/75 px-4 py-2.5 backdrop-blur-md sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white shadow-inner">
-            <PenTool className="h-4 w-4" />
-          </span>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-mono text-base font-black tracking-widest uppercase text-white drop-shadow-sm sm:text-lg">
-                BLUEPRINT MODE
-              </h1>
-              <span className="rounded-full bg-emerald-500/30 border border-emerald-300/50 px-2 py-0.5 text-[10px] font-bold text-emerald-100">
-                My Dream Setup
-              </span>
-            </div>
-            <p className="text-[11px] font-medium text-blue-100">
-              กดรูปปากกาแล้วลากวาดห้องบนตารางได้เลย · ลากขยับประตู/หน้าต่าง · หมุนเข็มทิศ & แสงตามเวลาจริง
-            </p>
+          <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-slate-950/35 px-3 py-1 text-xs">
+            <span className="font-mono font-semibold text-white">
+              {isBlankCanvas ? "รอวาดห้อง" : `${widthM} × ${depthM} ม.`}
+            </span>
+            {!isBlankCanvas && (
+              <span className="font-mono font-bold text-amber-300">({areaM2} ตร.ม.)</span>
+            )}
+            <span className="text-white/25">|</span>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <span className="text-blue-100 hidden sm:inline">เพดาน</span>
+              <select
+                value={heightCm}
+                onChange={(e) => setHeightCm(Number(e.target.value))}
+                className="bg-transparent font-mono font-bold text-white focus:outline-none cursor-pointer"
+              >
+                {[220, 240, 260, 280, 300, 320, 350, 400].map((h) => (
+                  <option key={h} value={h} className="bg-slate-900 text-white">
+                    {(h / 100).toFixed(2)} ม.
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 font-mono text-xs font-semibold">
-          <div className="rounded-xl border border-white/30 bg-black/30 px-3 py-1.5 backdrop-blur-sm">
-            <span className="text-blue-200">ขนาดรวม: </span>
-            <span className="text-white">
-              {isBlankCanvas ? "รอวาดห้อง" : `${widthM} × ${depthM} ม.`}
-            </span>
-          </div>
-          <label className="flex items-center gap-1.5 rounded-xl border border-white/30 bg-black/30 px-3 py-1.5 backdrop-blur-sm cursor-pointer">
-            <span className="text-blue-200">สูงเพดาน:</span>
-            <select
-              value={heightCm}
-              onChange={(e) => setHeightCm(Number(e.target.value))}
-              className="bg-transparent font-bold text-amber-300 focus:outline-none cursor-pointer"
-            >
-              {[220, 240, 260, 280, 300, 320, 350, 400].map((h) => (
-                <option key={h} value={h} className="bg-slate-900 text-white">
-                  {(h / 100).toFixed(2)} ม.
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="rounded-xl border border-white/30 bg-black/30 px-3 py-1.5 backdrop-blur-sm">
-            <span className="text-blue-200">พื้นที่: </span>
-            <span className="font-bold text-amber-300">{areaM2} ตร.ม.</span>
-          </div>
+        {/* ตรงกลาง: แถบเครื่องมือย่อยตามสิ่งที่กำลังทำอยู่ (ไม่ซ้อนหลายบรรทัด) */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {selectedElement ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/25 bg-slate-950/65 px-2.5 py-1 text-white">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 pr-1.5 border-r border-white/15">
+                {selectedElement.type === "door" ? (
+                  <>
+                    <DoorClosed className="h-3.5 w-3.5" /> ประตู
+                  </>
+                ) : (
+                  <>
+                    <WindowPaneIcon className="h-3.5 w-3.5" /> หน้าต่าง
+                  </>
+                )}
+              </span>
 
-          <button
-            type="button"
-            disabled={isBlankCanvas}
-            onClick={onProceedTo3D}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 font-sans text-xs font-extrabold text-white shadow-md hover:bg-emerald-400 transition disabled:opacity-40"
-          >
-            เข้าห้อง 3D
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+              <div className="flex items-center gap-1 text-[11px]">
+                {(selectedElement.type === "door" ? [70, 80, 90, 100] : [80, 120, 160, 200]).map(
+                  (w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => changeSelectedWidth(w)}
+                      className={`rounded-md px-1.5 py-0.5 transition ${
+                        (selectedElement.type === "door" ? selectedDoor?.width : selectedWin?.width) === w
+                          ? "bg-amber-400 text-slate-950 font-bold"
+                          : "bg-white/10 hover:bg-white/20"
+                      }`}
+                    >
+                      {w}cm
+                    </button>
+                  )
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={moveSelectedToNextWall}
+                className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/20"
+              >
+                สลับผนัง
+              </button>
+
+              <button
+                type="button"
+                onClick={duplicateSelected}
+                title="คัดลอกเพิ่มอีกบาน"
+                className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelected}
+                title="ลบออก"
+                className="rounded-md bg-rose-500/90 p-1 hover:bg-rose-500 text-white"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedElement(null)}
+                title="ยกเลิกการเลือก"
+                className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white/80"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : activeTool === "pencil" ? (
+            <>
+              <div className="inline-flex items-center gap-0.5 rounded-xl border border-white/15 bg-slate-950/40 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPenMode("paint-add");
+                    setDraftPointsCm([]);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    penMode === "paint-add"
+                      ? "bg-amber-400 text-slate-950 shadow-sm"
+                      : "text-white/90 hover:bg-white/10"
+                  }`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  วาดเพิ่ม
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPenMode("paint-erase");
+                    setDraftPointsCm([]);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    penMode === "paint-erase"
+                      ? "bg-rose-500 text-white shadow-sm"
+                      : "text-white/90 hover:bg-white/10"
+                  }`}
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                  ตัดเว้า
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPenMode("point-pen");
+                    setDraftPointsCm([]);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    penMode === "point-pen"
+                      ? "bg-emerald-400 text-slate-950 shadow-sm"
+                      : "text-white/90 hover:bg-white/10"
+                  }`}
+                >
+                  <Waypoints className="h-3.5 w-3.5" />
+                  วาดเส้น
+                </button>
+              </div>
+
+              {/* เมนูทรงห้องสำเร็จรูป (รวมไว้ในปุ่มเดียวไม่ให้รกตา) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShapeMenuOpen((v) => !v);
+                    setSunPanelOpen(false);
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    shapeMenuOpen ? "bg-white text-slate-900" : "bg-slate-950/35 text-white hover:bg-slate-950/55"
+                  }`}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  <span>ทรงห้อง</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${shapeMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {shapeMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1.5 z-50 w-48 rounded-2xl border border-white/20 bg-slate-900/95 p-1.5 text-xs text-white shadow-2xl backdrop-blur-xl">
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      เลือกทรงห้องเริ่มต้น
+                    </div>
+                    {[
+                      { id: "rect", label: "สี่เหลี่ยมมาตรฐาน" },
+                      { id: "L-left", label: "ห้องตัว L (ซ้าย)" },
+                      { id: "L-right", label: "ห้องตัว L (ขวา)" },
+                      { id: "U", label: "ห้องตัว U" },
+                      { id: "alcove", label: "ห้องมีซอกโต๊ะคอม" },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          applyQuickShape(p.id as "rect" | "L-left" | "L-right" | "U" | "alcove");
+                          setShapeMenuOpen(false);
+                        }}
+                        className="flex w-full items-center rounded-xl px-2.5 py-1.5 text-left font-medium text-slate-100 hover:bg-white/10 transition"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-white/10" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearCanvasForFreshDraw();
+                        setShapeMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-left font-semibold text-rose-300 hover:bg-rose-500/20 transition"
+                    >
+                      <Eraser className="h-3.5 w-3.5" />
+                      ล้างกระดานวาดใหม่
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {polyHistory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleUndoRoomShape}
+                  title="ย้อนกลับรูปทรงห้อง"
+                  className="inline-flex items-center gap-1 rounded-xl border border-white/15 bg-slate-950/35 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-950/55"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">ย้อนกลับ</span>
+                </button>
+              )}
+
+              {penMode === "point-pen" && draftPointsCm.length >= 3 && (
+                <button
+                  type="button"
+                  onClick={() => finishPointPenPolygon(draftPointsCm)}
+                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  เชื่อมปิดห้อง ({draftPointsCm.length})
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-950/45 px-3 py-1 text-[11px] font-medium text-blue-100">
+              {activeTool === "window" ? (
+                <>
+                  <WindowPaneIcon className="h-3.5 w-3.5 text-rose-300 shrink-0" />
+                  <span>คลิกบนเส้นผนังเพื่อวางหน้าต่าง หรือลากบานสีแดงเพื่อย้าย</span>
+                </>
+              ) : (
+                <>
+                  <DoorClosed className="h-3.5 w-3.5 text-sky-300 shrink-0" />
+                  <span>คลิกบนเส้นผนังเพื่อวางประตู หรือลากบานสีฟ้าเพื่อย้าย</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ฝั่งขวา: ปุ่มทิศและแสงแดด (Popover) + เปิดเต็มจอ + เข้าห้อง 3D */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setSunPanelOpen((v) => !v);
+                setShapeMenuOpen(false);
+              }}
+              title="ตั้งค่าทิศห้อง เวลาแสงแดด และอุณหภูมิ"
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 font-semibold transition ${
+                sunPanelOpen
+                  ? "border-amber-300 bg-amber-400 text-slate-950 shadow-sm"
+                  : "border-white/20 bg-slate-950/35 text-white hover:bg-slate-950/55"
+              }`}
+            >
+              <Compass className="h-3.5 w-3.5" />
+              <span className="font-mono">{degToCardinal(sun.orientationDeg).cardinal}</span>
+              <span className="opacity-40">·</span>
+              <Sun className="h-3.5 w-3.5 text-amber-300" />
+              <span className="font-mono">{formattedTime}</span>
+              <span className="hidden sm:inline opacity-40">·</span>
+              <span className="hidden sm:inline font-mono">{sunlightAdvice.roomTempC}°C</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${sunPanelOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* กล่องตั้งค่าทิศ แสงแดด และอุณหภูมิแบบลอย (เปิดเมื่อกดใช้ ไม่รกหน้าจอ) */}
+            {sunPanelOpen && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-[310px] sm:w-[356px] space-y-3 rounded-2xl border border-white/20 bg-slate-900/95 p-4 text-xs text-white shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="font-bold text-sm text-white">ทิศห้อง แสงแดด & อุณหภูมิ</span>
+                  <button
+                    type="button"
+                    onClick={() => setSunPanelOpen(false)}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* 1. ทิศห้อง */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300">ผนังด้านบนหันทิศ</span>
+                    <span className="font-mono font-bold text-amber-300">
+                      {degToCardinal(sun.orientationDeg).label} ({sun.orientationDeg}°)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { label: "N เหนือ", deg: 0 },
+                      { label: "NE", deg: 45 },
+                      { label: "E ออก", deg: 90 },
+                      { label: "SE", deg: 135 },
+                      { label: "S ใต้", deg: 180 },
+                      { label: "SW", deg: 225 },
+                      { label: "W ตก", deg: 270 },
+                      { label: "NW", deg: 315 },
+                    ].map(({ label, deg }) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => setSun((prev) => ({ ...prev, orientationDeg: deg }))}
+                        className={`rounded-lg py-1 text-[11px] font-semibold transition ${
+                          Math.abs(((sun.orientationDeg - deg + 540) % 360) - 180) < 22
+                            ? "bg-amber-400 text-slate-950 font-bold"
+                            : "bg-white/10 text-slate-200 hover:bg-white/20"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="359"
+                    step="5"
+                    value={sun.orientationDeg}
+                    onChange={(e) =>
+                      setSun((prev) => ({ ...prev, orientationDeg: Number(e.target.value) }))
+                    }
+                    className="w-full accent-amber-400"
+                  />
+                </div>
+
+                {/* 2. เวลาแสงเข้า */}
+                <div className="space-y-1.5 border-t border-white/10 pt-2.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300">ช่วงเวลาแสงแดด</span>
+                    <span className="font-mono font-bold text-amber-300">{formattedTime} น.</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="6"
+                    max="24"
+                    step="0.25"
+                    value={sun.timeHour}
+                    onChange={(e) => setSun((prev) => ({ ...prev, timeHour: Number(e.target.value) }))}
+                    className="w-full accent-amber-400"
+                  />
+                  <div className="grid grid-cols-5 gap-1">
+                    {[
+                      { label: "07:00", hour: 7.0, k: 3400 },
+                      { label: "10:00", hour: 10.0, k: 5000 },
+                      { label: "12:00", hour: 12.0, k: 5800 },
+                      { label: "15:30", hour: 15.5, k: 4500 },
+                      { label: "21:30", hour: 21.5, k: 7000 },
+                    ].map(({ label, hour, k }) => (
+                      <button
+                        key={hour}
+                        type="button"
+                        onClick={() => setSun((prev) => ({ ...prev, timeHour: hour, colorTempK: k }))}
+                        className={`rounded-lg py-1 font-mono text-[11px] font-semibold transition ${
+                          Math.abs(sun.timeHour - hour) < 0.4
+                            ? "bg-amber-400 text-slate-950 font-bold"
+                            : "bg-white/10 text-slate-200 hover:bg-white/20"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. โทนแสง & อุณหภูมิ */}
+                <div className="space-y-1.5 border-t border-white/10 pt-2.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-300">โทนสีแสง (Kelvin)</span>
+                    <span className="font-mono font-bold text-sky-300">{sun.colorTempK}K</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2500"
+                    max="7500"
+                    step="100"
+                    value={sun.colorTempK}
+                    onChange={(e) =>
+                      setSun((prev) => ({ ...prev, colorTempK: Number(e.target.value) }))
+                    }
+                    className="w-full accent-sky-400"
+                  />
+
+                  <div className="rounded-xl bg-white/5 p-2.5 text-[11px] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1 text-slate-300">
+                        <Thermometer className="h-3.5 w-3.5 text-amber-300" />
+                        อุณหภูมิห้องโดยประมาณ
+                      </span>
+                      <span className="font-mono font-bold text-emerald-300">
+                        ~{sunlightAdvice.roomTempC}°C (นอก {sunlightAdvice.outdoorTempC}°C)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-200/90 leading-snug">
+                      {sunlightAdvice.statusText}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {onToggleFullscreen && (
             <button
               type="button"
               onClick={onToggleFullscreen}
-              title={isFullscreen ? "ออกจากโหมดเต็มจอ (กด Esc หรือ F)" : "ขยายเต็มจอนั่งวาดและจัดห้องได้เลย (กด F)"}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-sans text-xs font-extrabold shadow-md transition ${
-                isFullscreen
-                  ? "bg-white/20 text-white border border-white/40 hover:bg-white/30"
-                  : "bg-amber-400 text-slate-950 hover:bg-amber-300 ring-2 ring-amber-200/70"
-              }`}
+              title={isFullscreen ? "ออกจากโหมดเต็มจอ (กด Esc หรือ F)" : "ขยายเต็มจอ (กด F)"}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-slate-950/35 px-3 py-1.5 font-semibold text-white hover:bg-slate-950/55 transition"
             >
               {isFullscreen ? (
                 <>
                   <Minimize2 className="h-3.5 w-3.5" />
-                  ย่อจอ (Esc)
+                  <span>ย่อจอ</span>
                 </>
               ) : (
                 <>
                   <Maximize2 className="h-3.5 w-3.5" />
-                  เปิดเต็มจอ
+                  <span>เต็มจอ</span>
                 </>
               )}
             </button>
           )}
+
+          <button
+            type="button"
+            disabled={isBlankCanvas}
+            onClick={onProceedTo3D}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-1.5 font-bold text-white shadow-sm hover:bg-emerald-400 transition disabled:opacity-40"
+          >
+            <span>จัดห้อง 3D</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* แถบโหมดวาดห้อง (แสดงชัดเจนทันทีเมื่อเลือกไอคอนรูปปากกา) */}
-      {activeTool === "pencil" && (
-        <div className="relative z-20 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-950/45 px-4 py-2 text-xs backdrop-blur-md">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-bold text-amber-300 mr-1">✏️ โหมดปากกาวาดห้อง:</span>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPenMode("paint-add");
-                setDraftPointsCm([]);
-              }}
-              className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 font-bold transition ${
-                penMode === "paint-add"
-                  ? "bg-amber-400 text-slate-950 shadow"
-                  : "bg-white/15 text-white hover:bg-white/25"
-              }`}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              ลากวาด / ต่อเติมห้อง
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPenMode("paint-erase");
-                setDraftPointsCm([]);
-              }}
-              className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 font-bold transition ${
-                penMode === "paint-erase"
-                  ? "bg-rose-500 text-white shadow"
-                  : "bg-white/15 text-white hover:bg-white/25"
-              }`}
-            >
-              <Minus className="h-3.5 w-3.5" />
-              ลากตัดเว้ามุมห้อง
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPenMode("point-pen");
-                setDraftPointsCm([]);
-              }}
-              className={`inline-flex items-center gap-1 rounded-xl px-3 py-1.5 font-bold transition ${
-                penMode === "point-pen"
-                  ? "bg-emerald-400 text-slate-950 shadow"
-                  : "bg-white/15 text-white hover:bg-white/25"
-              }`}
-            >
-              <Waypoints className="h-3.5 w-3.5" />
-              คลิกวาดเส้นทีละมุม
-            </button>
-
-            <button
-              type="button"
-              onClick={clearCanvasForFreshDraw}
-              className="inline-flex items-center gap-1 rounded-xl bg-rose-500/80 px-2.5 py-1.5 font-bold text-white hover:bg-rose-500 transition"
-              title="ลบผนังเดิมออกเพื่อเริ่มวาดห้องเองตั้งแต่ศูนย์"
-            >
-              <Eraser className="h-3.5 w-3.5" />
-              ล้างกระดานวาดใหม่
-            </button>
-
-            {polyHistory.length > 0 && (
-              <button
-                type="button"
-                onClick={handleUndoRoomShape}
-                className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-2.5 py-1.5 font-semibold text-white hover:bg-white/25"
-              >
-                <Undo2 className="h-3.5 w-3.5" />
-                ย้อนกลับ
-              </button>
-            )}
-
-            {penMode === "point-pen" && draftPointsCm.length >= 3 && (
-              <button
-                type="button"
-                onClick={() => finishPointPenPolygon(draftPointsCm)}
-                className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 font-bold text-white shadow hover:bg-emerald-400"
-              >
-                <Check className="h-3.5 w-3.5" />
-                เชื่อมปิดห้อง ({draftPointsCm.length} มุม)
-              </button>
-            )}
-          </div>
-
-          {/* ทรงห้องสำเร็จรูปเผื่อกดเริ่มเร็ว */}
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[11px] text-blue-100 mr-0.5">ทรงด่วน:</span>
-            {[
-              { id: "rect", label: "สี่เหลี่ยม" },
-              { id: "L-left", label: "ตัว L ซ้าย" },
-              { id: "L-right", label: "ตัว L ขวา" },
-              { id: "U", label: "ตัว U" },
-              { id: "alcove", label: "ซอกโต๊ะคอม" },
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() =>
-                  applyQuickShape(p.id as "rect" | "L-left" | "L-right" | "U" | "alcove")
-                }
-                className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-semibold text-white hover:bg-white/25 transition"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* แถบคำแนะนำเมื่อเลือกเครื่องมือหน้าต่างหรือประตู + แผงปรับขนาดชิ้นที่เลือก (อยู่ด้านบน ไม่บังผนังห้องด้านล่าง) */}
-      {(activeTool !== "pencil" || selectedElement) && (
-        <div className="relative z-20 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-950/55 px-4 py-1.5 text-xs backdrop-blur-md">
-          {activeTool !== "pencil" ? (
-            <div className="flex items-center gap-2 font-semibold">
-              {activeTool === "window" ? (
-                <span className="inline-flex items-center gap-1.5 text-rose-200">
-                  <WindowPaneIcon className="h-4 w-4 text-rose-300 shrink-0" />
-                  <span>
-                    <b>โหมดวางหน้าต่าง:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อวางเพิ่ม หรือลากหน้าต่างสีแดงไปตามผนัง
-                  </span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-sky-200">
-                  <DoorClosed className="h-4 w-4 text-sky-300 shrink-0" />
-                  <span>
-                    <b>โหมดวางประตู:</b> คลิกบนเส้นผนังด้านใดก็ได้เพื่อวางเพิ่ม หรือลากประตูสีฟ้าไปตามผนัง
-                  </span>
-                </span>
-              )}
-            </div>
-          ) : (
-            <span className="text-[11px] font-semibold text-blue-100">
-              💡 กำลังเลือก{selectedElement?.type === "door" ? "ประตู" : "หน้าต่าง"} — ลากเลื่อนบนผนังได้ทุกด้านโดยไม่มีแถบบัง
-            </span>
-          )}
-
-          <div className="flex flex-wrap items-center gap-1.5 ml-auto">
-            {selectedElement && (
-              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/25 bg-slate-900/80 px-2.5 py-1 text-white">
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 pr-1.5 border-r border-white/20">
-                  {selectedElement.type === "door" ? (
-                    <>
-                      <DoorClosed className="h-3.5 w-3.5" /> ประตู
-                    </>
-                  ) : (
-                    <>
-                      <WindowPaneIcon className="h-3.5 w-3.5" /> หน้าต่าง
-                    </>
-                  )}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={moveSelectedToNextWall}
-                  className="rounded-lg bg-white/15 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/25"
-                >
-                  สลับผนัง ↻
-                </button>
-
-                <div className="flex items-center gap-1 text-[11px] pl-1 border-l border-white/20">
-                  <span className="text-white/60">กว้าง:</span>
-                  {(selectedElement.type === "door" ? [70, 80, 90, 100] : [80, 120, 160, 200]).map(
-                    (w) => (
-                      <button
-                        key={w}
-                        type="button"
-                        onClick={() => changeSelectedWidth(w)}
-                        className={`rounded-md px-1.5 py-0.5 ${
-                          (selectedElement.type === "door" ? selectedDoor?.width : selectedWin?.width) === w
-                            ? "bg-amber-400 text-slate-950 font-bold"
-                            : "bg-white/10 hover:bg-white/20"
-                        }`}
-                      >
-                        {w}cm
-                      </button>
-                    )
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1 pl-1 border-l border-white/20">
-                  <button
-                    type="button"
-                    onClick={duplicateSelected}
-                    title="คัดลอกเพิ่มอีกบาน"
-                    className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={deleteSelected}
-                    title="ลบออก"
-                    className="rounded-md bg-rose-500 p-1 hover:bg-rose-400 text-white"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedElement(null)}
-                    title="ปิดแถบเลือก"
-                    className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white/80"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeTool !== "pencil" && (
-              <button
-                type="button"
-                onClick={() => setActiveTool("pencil")}
-                className="rounded-lg bg-white/15 px-2.5 py-1 text-[11px] font-bold hover:bg-white/25"
-              >
-                กลับโหมดปากกา ✏️
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* พื้นที่กระดาษพิมพ์เขียวหลัก */}
+      {/* พื้นที่กระดาษแปลนห้องหลัก */}
       <div className="relative flex flex-1 min-h-0 w-full items-center justify-center overflow-hidden">
-        {/* แถบปุ่มกลมลอยฝั่งซ้าย 5 ปุ่ม (ตรงตามภาพเกม My Dream Setup) */}
-        <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-2.5 rounded-2xl border border-white/30 bg-[#1d4ed8]/85 p-2 shadow-2xl backdrop-blur-md">
+        {/* แถบเครื่องมือหลักฝั่งซ้าย 5 ปุ่ม (เรียบสะอาด ใช้งานง่าย) */}
+        <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-2xl border border-white/20 bg-slate-900/45 p-2 shadow-xl backdrop-blur-md">
           {/* 1. ปุ่ม X (รีเซ็ตค่าเริ่มต้น) */}
           <button
             type="button"
             onClick={onCancel || resetBlueprint}
             title="รีเซ็ตแปลนห้องใหม่"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-md transition-colors hover:bg-slate-100"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-800 shadow transition-colors hover:bg-slate-100"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
 
-          {/* 2. ปุ่มปากกา ✏️ (วาดตัวห้องเอง / ต่อเติม / ดึงผนัง) */}
+          {/* 2. ปุ่มปากกาวาดตัวห้อง */}
           <button
             type="button"
             onClick={() => {
               setActiveTool("pencil");
               setSelectedElement(null);
             }}
-            title="ปากกาวาดตัวห้องเอง (ลากคลุมตารางเพื่อวาดห้อง หรือดึงจุดผนัง)"
-            className={`flex h-11 w-11 items-center justify-center rounded-full shadow-md transition-colors ${
+            title="ปากกาวาดตัวห้อง / ปรับขนาดผนัง"
+            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "pencil"
-                ? "bg-slate-900 text-amber-300 ring-4 ring-amber-300/70"
+                ? "bg-slate-950 text-amber-300 ring-2 ring-amber-300"
                 : "bg-white text-slate-800 hover:bg-slate-100"
             }`}
           >
-            <PenTool className="h-5 w-5" />
+            <PenTool className="h-4 w-4" />
           </button>
 
-          {/* 3. ปุ่มหน้าต่าง (รูปหน้าต่างพร้อมขอบธรณีและช่องกระจก) */}
+          {/* 3. ปุ่มหน้าต่าง */}
           <button
             type="button"
             onClick={() => {
@@ -1262,16 +1390,16 @@ export function MyDreamSetupBlueprint({
               setSelectedElement(null);
             }}
             title="วางและขยับหน้าต่าง"
-            className={`flex h-11 w-11 items-center justify-center rounded-full shadow-md transition-colors ${
+            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "window"
-                ? "bg-rose-500 text-white ring-4 ring-rose-300/70"
+                ? "bg-rose-500 text-white ring-2 ring-rose-200"
                 : "bg-white text-slate-800 hover:bg-slate-100"
             }`}
           >
-            <WindowPaneIcon className="h-5 w-5" />
+            <WindowPaneIcon className="h-4 w-4" />
           </button>
 
-          {/* 4. ปุ่มประตู 🚪 */}
+          {/* 4. ปุ่มประตู */}
           <button
             type="button"
             onClick={() => {
@@ -1280,28 +1408,28 @@ export function MyDreamSetupBlueprint({
               setSelectedElement(null);
             }}
             title="วางและขยับประตู"
-            className={`flex h-11 w-11 items-center justify-center rounded-full shadow-md transition-colors ${
+            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "door"
-                ? "bg-sky-400 text-slate-950 ring-4 ring-sky-200/80"
+                ? "bg-sky-400 text-slate-950 ring-2 ring-sky-200"
                 : "bg-white text-slate-800 hover:bg-slate-100"
             }`}
           >
-            <DoorClosed className="h-5 w-5" />
+            <DoorClosed className="h-4 w-4" />
           </button>
 
-          {/* 5. ปุ่มลูกศรไปต่อ ➔ (เข้าสู่ห้อง 3D) */}
+          {/* 5. ปุ่มไปต่อ (เข้าสู่ห้อง 3D) */}
           <button
             type="button"
             disabled={isBlankCanvas}
             onClick={onProceedTo3D}
-            title="วาดเสร็จแล้ว เข้าสู่ห้อง 3D!"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition-colors hover:bg-emerald-400 ring-2 ring-emerald-200/80 disabled:opacity-40"
+            title="เข้าสู่ห้อง 3D"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition-colors hover:bg-emerald-400 disabled:opacity-40"
           >
-            <ArrowRight className="h-6 w-6" />
+            <ArrowRight className="h-5 w-5" />
           </button>
         </div>
 
-        {/* ปุ่มถังขยะมุมขวาล่าง (เหมือนภาพเกม My Dream Setup เป๊ะ) */}
+        {/* ปุ่มถังขยะมุมขวาล่าง */}
         <button
           type="button"
           onClick={() => {
@@ -1316,11 +1444,11 @@ export function MyDreamSetupBlueprint({
           title={
             selectedElement
               ? "ลบประตู/หน้าต่างที่เลือก"
-              : "ล้างผนังห้องเพื่อวาดห้องใหม่ด้วยตัวเอง"
+              : "ล้างผนังห้องเพื่อวาดห้องใหม่"
           }
-          className="absolute bottom-4 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-800 shadow-xl hover:bg-rose-50 hover:text-rose-600 transition-colors"
+          className="absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg hover:bg-rose-50 hover:text-rose-600 transition-colors"
         >
-          <Trash2 className="h-5 w-5" />
+          <Trash2 className="h-4 w-4" />
         </button>
 
         {/* กระดาษพิมพ์เขียว SVG (สเกลคงที่ 1 ช่อง = 0.50 ม. ไม่สั่น ไม่เด้ง รองรับเต็มจอทุกความละเอียด) */}
@@ -1471,14 +1599,14 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* วาดตัวห้อง (Polygon ผนังสีขาวหนาขอบมนแบบ My Dream Setup) */}
+          {/* วาดตัวห้อง (Polygon ผนังสีขาวหนาขอบมน) */}
           {!isBlankCanvas && canvasPolyCm.length >= 3 && (
             <g>
               <polygon
                 points={canvasPolyCm
                   .map(([x, z]) => cmToSvg(x, z).join(","))
                   .join(" ")}
-                fill="rgba(255, 255, 255, 0.10)"
+                fill="rgba(255, 255, 255, 0.08)"
                 stroke="#ffffff"
                 strokeWidth={11}
                 strokeLinejoin="round"
@@ -1486,12 +1614,12 @@ export function MyDreamSetupBlueprint({
                 pointerEvents="none"
               />
 
-              {/* ป้ายความยาวผนังแต่ละด้าน + ทิศของผนัง */}
+              {/* ป้ายความยาวผนังแต่ละด้าน + ทิศของผนัง (โปร่งเบาสบายตา ไม่เบียดเส้นผนัง) */}
               {canvasPolyCm.map((_, i) => {
                 const info = getEdgeInfo(canvasPolyCm, i);
                 if (info.lengthCm < 50) return null;
-                const midX = (info.x1 + info.x2) / 2 + info.nx * 36;
-                const midZ = (info.z1 + info.z2) / 2 + info.nz * 36;
+                const midX = (info.x1 + info.x2) / 2 + info.nx * 44;
+                const midZ = (info.z1 + info.z2) / 2 + info.nz * 44;
                 const [lx, ly] = cmToSvg(midX, midZ);
                 const wallCard = degToCardinal((info.outwardBaseDeg + sun.orientationDeg) % 360);
                 const lenText = `${(info.lengthCm / 100).toFixed(2).replace(/\.?0+$/, "")}m · ${wallCard.cardinal}`;
@@ -1499,20 +1627,20 @@ export function MyDreamSetupBlueprint({
                 return (
                   <g key={`dim-${i}`} pointerEvents="none">
                     <rect
-                      x={lx - 34}
-                      y={ly - 9}
-                      width={68}
-                      height={18}
-                      rx={5}
-                      fill="rgba(15, 23, 42, 0.82)"
+                      x={lx - 32}
+                      y={ly - 8.5}
+                      width={64}
+                      height={17}
+                      rx={8.5}
+                      fill="rgba(15, 23, 42, 0.45)"
                     />
                     <text
                       x={lx}
-                      y={ly + 1}
+                      y={ly + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill="#f8fafc"
-                      className="font-mono text-[10px] font-bold"
+                      fill="#f1f5f9"
+                      className="font-mono text-[9.5px] font-semibold"
                     >
                       {lenText}
                     </text>
@@ -1668,11 +1796,33 @@ export function MyDreamSetupBlueprint({
             !boxDrag &&
             canvasPolyCm.length >= 3 && (
               <g>
-                {/* จุดสีฟ้ากึ่งกลางผนังแต่ละด้าน (ลากขยับผนังเข้า-ออก) */}
+                {/* จุดสีฟ้าบนผนังแต่ละด้าน (หลบตำแหน่งประตู/หน้าต่างอัตโนมัติ ไม่ทับซ้อนกัน) */}
                 {canvasPolyCm.map((_, i) => {
                   const info = getEdgeInfo(canvasPolyCm, i);
                   if (info.lengthCm < 80) return null;
-                  const [mx, my] = cmToSvg((info.x1 + info.x2) / 2, (info.z1 + info.z2) / 2);
+
+                  let handleT = 0.5;
+                  const edgeOpenings = [
+                    ...windows.filter((w) => (w.edgeIndex ?? 0) === i),
+                    ...doors.filter((d) => (d.edgeIndex ?? 0) === i),
+                  ];
+                  const isBlocked = (t: number) =>
+                    edgeOpenings.some(
+                      (o) => Math.abs(o.pos - t) * info.lengthCm < o.width / 2 + 22
+                    );
+                  if (isBlocked(0.5)) {
+                    for (const cand of [0.75, 0.25, 0.82, 0.18, 0.65, 0.35]) {
+                      if (!isBlocked(cand)) {
+                        handleT = cand;
+                        break;
+                      }
+                    }
+                  }
+
+                  const [mx, my] = cmToSvg(
+                    info.x1 + info.ex * info.lengthCm * handleT,
+                    info.z1 + info.ez * info.lengthCm * handleT
+                  );
                   const hid = `edge-${i}`;
                   const isHov = hoveredHandle === hid;
                   const isHoriz = Math.abs(info.z1 - info.z2) < 2;
@@ -1871,44 +2021,7 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* ไอคอนดวงอาทิตย์ / ดวงจันทร์โคจรรอบห้องตามเวลาและทิศจริง */}
-          {!isBlankCanvas && (() => {
-            const orbitRadius = 225;
-            const sunSvgX = Math.max(135, Math.min(VB_W - 95, roomCenterSvg[0] + sunState.sunDirX * orbitRadius));
-            const sunSvgY = Math.max(42, Math.min(VB_H - 42, roomCenterSvg[1] + sunState.sunDirZ * orbitRadius));
-            return (
-              <g pointerEvents="none">
-                <line
-                  x1={sunSvgX}
-                  y1={sunSvgY}
-                  x2={roomCenterSvg[0]}
-                  y2={roomCenterSvg[1]}
-                  stroke={sunState.isNight ? "rgba(165,180,252,0.3)" : "rgba(254,240,138,0.45)"}
-                  strokeWidth={1.5}
-                  strokeDasharray="5 5"
-                />
-                <circle
-                  cx={sunSvgX}
-                  cy={sunSvgY}
-                  r={18}
-                  fill={sunState.isNight ? "#312e81" : "#f59e0b"}
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                />
-                <text
-                  x={sunSvgX}
-                  y={sunSvgY + 1}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="text-xs"
-                >
-                  {sunState.isNight ? "🌙" : sunState.isDawnOrDusk ? "🌅" : "☀️"}
-                </text>
-              </g>
-            );
-          })()}
-
-          {/* วงแหวนเข็มทิศ (Interactive Compass Dial มุมขวาบนนอกกรอบตาราง — ไม่ทับผนังห้อง) */}
+          {/* วงแหวนเข็มทิศ & ทิศดวงอาทิตย์ขนาดกะทัดรัดมุมขวาบน (ไม่เกะกะหรือบังตัวห้อง) */}
           <g
             className="cursor-grab active:cursor-grabbing"
             onMouseDown={(e) => {
@@ -1919,220 +2032,49 @@ export function MyDreamSetupBlueprint({
             <circle
               cx={COMPASS_CX}
               cy={COMPASS_CY}
-              r={36}
-              fill="rgba(15, 23, 42, 0.85)"
-              stroke="rgba(255,255,255,0.45)"
-              strokeWidth={2}
+              r={32}
+              fill="rgba(15, 23, 42, 0.65)"
+              stroke="rgba(255,255,255,0.35)"
+              strokeWidth={1.5}
+            />
+            {/* จุดแสดงทิศแสงอาทิตย์/ดวงจันทร์บนขอบเข็มทิศ */}
+            <circle
+              cx={COMPASS_CX + sunState.sunDirX * 32}
+              cy={COMPASS_CY + sunState.sunDirZ * 32}
+              r={5.5}
+              fill={sunState.isNight ? "#818cf8" : "#fbbf24"}
+              stroke="#ffffff"
+              strokeWidth={1.5}
+              pointerEvents="none"
             />
             <g transform={`translate(${COMPASS_CX}, ${COMPASS_CY}) rotate(${-sun.orientationDeg})`}>
-              {/* เข็มทิศชี้ทิศเหนือ (N สีแดง / S สีขาว) */}
-              <polygon points="0,-24 5.5,0 -5.5,0" fill="#ef4444" />
-              <polygon points="0,24 5.5,0 -5.5,0" fill="#e2e8f0" />
-              <text x={0} y={-26} textAnchor="middle" fill="#fca5a5" className="font-mono text-[9px] font-black">
+              <polygon points="0,-20 4.5,0 -4.5,0" fill="#ef4444" />
+              <polygon points="0,20 4.5,0 -4.5,0" fill="#e2e8f0" />
+              <text x={0} y={-22} textAnchor="middle" fill="#fca5a5" className="font-mono text-[8.5px] font-black">
                 N
               </text>
-              <text x={28} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
+              <text x={24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
                 E
               </text>
-              <text x={0} y={33} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
+              <text x={0} y={28} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
                 S
               </text>
-              <text x={-28} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8.5px] font-bold">
+              <text x={-24} y={3} textAnchor="middle" fill="#cbd5e1" className="font-mono text-[8px] font-bold">
                 W
               </text>
             </g>
-            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={3.5} fill="#fbbf24" />
+            <circle cx={COMPASS_CX} cy={COMPASS_CY} r={3} fill="#fbbf24" />
             <text
               x={COMPASS_CX}
-              y={COMPASS_CY + 49}
+              y={COMPASS_CY + 44}
               textAnchor="middle"
-              fill="#fde047"
-              className="font-mono text-[9.5px] font-bold pointer-events-none"
+              fill="rgba(255,255,255,0.85)"
+              className="font-mono text-[9px] font-semibold pointer-events-none"
             >
-              หัน {degToCardinal(sun.orientationDeg).cardinal} ({sun.orientationDeg}°)
+              {degToCardinal(sun.orientationDeg).cardinal} ({sun.orientationDeg}°)
             </text>
           </g>
         </svg>
-      </div>
-
-      {/* แผงด้านล่าง: กำหนดทิศห้อง + เวลาแสงแดดส่องเข้า + อุณหภูมิห้อง (°C & Kelvin) */}
-      <div className="relative z-20 w-full border-t border-white/20 bg-[#1e40af]/85 px-4 py-3 backdrop-blur-md">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          {/* ปุ่มเลือกทิศห้อง 8 ทิศ */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 text-white">
-              <Compass className="h-4 w-4" />
-            </span>
-            <span className="font-bold text-white">ผนังบนหันทิศ:</span>
-            {[
-              { label: "เหนือ N", deg: 0 },
-              { label: "ตอ.เฉียงเหนือ NE", deg: 45 },
-              { label: "ตะวันออก E", deg: 90 },
-              { label: "ตอ.เฉียงใต้ SE", deg: 135 },
-              { label: "ใต้ S", deg: 180 },
-              { label: "ตต.เฉียงใต้ SW", deg: 225 },
-              { label: "ตะวันตก W", deg: 270 },
-              { label: "ตต.เฉียงเหนือ NW", deg: 315 },
-            ].map(({ label, deg }) => (
-              <button
-                key={deg}
-                type="button"
-                onClick={() => setSun((prev) => ({ ...prev, orientationDeg: deg }))}
-                className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
-                  Math.abs(((sun.orientationDeg - deg + 540) % 360) - 180) < 22
-                    ? "bg-amber-400 text-slate-950 font-bold shadow-sm"
-                    : "bg-white/10 text-white hover:bg-white/20"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* ช่วงเวลาและปุ่มเปิดแผงสภาพอากาศ */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 font-bold text-amber-300">
-              <Sun className="h-4 w-4" />
-              {Math.floor(sun.timeHour).toString().padStart(2, "0")}:
-              {Math.round((sun.timeHour % 1) * 60)
-                .toString()
-                .padStart(2, "0")}{" "}
-              น.
-            </span>
-            {[
-              { label: "🌅 07:00", hour: 7.0, k: 3400 },
-              { label: "🌤️ 09:30", hour: 9.5, k: 4800 },
-              { label: "☀️ 12:00", hour: 12.0, k: 5800 },
-              { label: "🌇 15:30", hour: 15.5, k: 4500 },
-              { label: "🌄 17:45", hour: 17.75, k: 2800 },
-              { label: "🌙 21:30", hour: 21.5, k: 7000 },
-            ].map(({ label, hour, k }) => (
-              <button
-                key={hour}
-                type="button"
-                onClick={() => setSun((prev) => ({ ...prev, timeHour: hour, colorTempK: k }))}
-                className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
-                  Math.abs(sun.timeHour - hour) < 0.4
-                    ? "bg-amber-400 text-slate-950 font-bold shadow-sm"
-                    : "bg-white/10 text-white hover:bg-white/20"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setSunPanelOpen((v) => !v)}
-              className="inline-flex items-center gap-1 rounded-xl bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-white/25"
-            >
-              <Thermometer className="h-3.5 w-3.5 text-amber-300" />
-              <span>{sunlightAdvice.roomTempC}°C</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${sunPanelOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* แผงปรับละเอียด: เวลา, องศาเข็มทิศ, อุณหภูมิแสง (Kelvin) และอุณหภูมิห้อง (°C) */}
-        {sunPanelOpen && (
-          <div className="mt-2.5 pt-2.5 border-t border-white/20 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-            <div className="space-y-1.5 bg-black/25 p-2.5 rounded-xl">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-blue-100">หมุนองศาทิศห้อง (0° - 359°):</span>
-                <span className="font-mono font-bold text-amber-300">
-                  {degToCardinal(sun.orientationDeg).label} ({sun.orientationDeg}°)
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="359"
-                step="5"
-                value={sun.orientationDeg}
-                onChange={(e) =>
-                  setSun((prev) => ({ ...prev, orientationDeg: Number(e.target.value) }))
-                }
-                className="w-full accent-amber-400"
-              />
-
-              <div className="flex justify-between items-center text-[11px] pt-1">
-                <span className="text-blue-100">เวลาแสงเข้าห้อง (06:00 - 24:00):</span>
-                <span className="font-mono font-bold text-amber-300">
-                  {Math.floor(sun.timeHour).toString().padStart(2, "0")}:
-                  {Math.round((sun.timeHour % 1) * 60)
-                    .toString()
-                    .padStart(2, "0")}{" "}
-                  น.
-                </span>
-              </div>
-              <input
-                type="range"
-                min="6"
-                max="24"
-                step="0.25"
-                value={sun.timeHour}
-                onChange={(e) => setSun((prev) => ({ ...prev, timeHour: Number(e.target.value) }))}
-                className="w-full accent-amber-400"
-              />
-            </div>
-
-            <div className="space-y-1.5 bg-black/25 p-2.5 rounded-xl">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-blue-100">โทนอุณหภูมิสีแสง (Kelvin):</span>
-                <span className="font-mono font-bold text-amber-300">{sun.colorTempK}K</span>
-              </div>
-              <input
-                type="range"
-                min="2500"
-                max="7500"
-                step="100"
-                value={sun.colorTempK}
-                onChange={(e) =>
-                  setSun((prev) => ({ ...prev, colorTempK: Number(e.target.value) }))
-                }
-                className="w-full accent-amber-400"
-              />
-              <div className="flex justify-between text-[10px] text-blue-100/75">
-                <span>2700K ส้มอุ่น</span>
-                <span>4500K นวลธรรมชาติ</span>
-                <span>6500K ขาวฟ้า</span>
-              </div>
-              <div className="flex items-center justify-between pt-1 text-[11px] border-t border-white/10">
-                <span className="text-blue-100">🌡️ อุณหภูมิตอนนั้น:</span>
-                <span className="font-mono font-bold text-emerald-300">
-                  นอก {sunlightAdvice.outdoorTempC}°C · ในห้อง ~{sunlightAdvice.roomTempC}°C
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-black/30 p-2.5 rounded-xl flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 font-bold text-amber-300 text-[11px]">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                  <span>{sunlightAdvice.statusText}</span>
-                </div>
-                <p className="mt-1 text-[11px] leading-relaxed text-blue-100">
-                  {sunlightAdvice.advice}
-                </p>
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-white/60 pt-1">
-                <span>
-                  ☀️ มุมเงยแดด {sunState.elevationDeg}° · ทิศดวงอาทิตย์ {sunState.azimuthDeg}°
-                </span>
-                <button
-                  type="button"
-                  disabled={isBlankCanvas}
-                  onClick={onProceedTo3D}
-                  className="rounded-lg bg-emerald-500 px-2.5 py-1 font-sans text-[11px] font-bold text-white hover:bg-emerald-400 disabled:opacity-40"
-                >
-                  เข้าห้อง 3D ➔
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

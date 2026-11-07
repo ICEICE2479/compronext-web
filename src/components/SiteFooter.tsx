@@ -49,7 +49,7 @@ const ROOM_LINKS = [
 
 const TOOL_LINKS = [
   { href: "/design", label: "AI จัดห้องจากรูปถ่าย" },
-  { href: "/room-3d", label: "จัดห้อง 3D (My Dream Setup)" },
+  { href: "/room-3d", label: "จัดห้อง 3D & วาดแปลนห้อง" },
   { href: "/builder", label: "จัดสเปกคอม 3D & ทดสอบ FPS เกม" },
   { href: "/cart", label: "ตะกร้าสินค้า" },
   { href: "/stores", label: "ร้านค้า & รีวิว" },

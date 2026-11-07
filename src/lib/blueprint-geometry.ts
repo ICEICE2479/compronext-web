@@ -1,7 +1,7 @@
 import { pointInShape, signedArea, type Pt2 } from "./room-shape";
 
 /**
- * ระบบเรขาคณิตสำหรับกระดาษพิมพ์เขียว (My Dream Setup Blueprint Geometry)
+ * ระบบเรขาคณิตสำหรับกระดาษแปลนห้อง 2D (Blueprint Geometry)
  * รองรับ:
  * 1. วาดห้องด้วยการลากคลุมช่องตาราง (Grid Paint: ต่อเติม + / เว้ามุม -) -> แปลงเป็น Polygon อัตโนมัติ
  * 2. วาดเส้นผนังทีละจุด (Point-to-Point Polygon)

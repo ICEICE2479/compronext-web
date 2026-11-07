@@ -2,19 +2,14 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Box,
-  Check,
   Copy,
   Layers,
-  LayoutGrid,
   Loader2,
   Maximize2,
   Minimize2,
   Moon,
-  Move,
   PackagePlus,
   PanelRightClose,
   PanelRightOpen,
@@ -24,7 +19,6 @@ import {
   RotateCw,
   Search,
   ShoppingBag,
-  Sparkles,
   Sun,
   Trash2,
   Undo2,
@@ -109,7 +103,7 @@ const CATEGORIES = [
 ];
 
 export function Room3DStudioClient() {
-  // Mode: "blueprint" (My Dream Setup room drawing) or "studio" (3D Diorama room)
+  // Mode: "blueprint" (2D room plan) or "studio" (3D room)
   const [mode, setMode] = useState<"blueprint" | "studio">("blueprint");
 
   // Doors & Windows
@@ -436,46 +430,9 @@ export function Room3DStudioClient() {
       className={
         isFullscreen
           ? "fixed inset-0 z-[55] flex h-dvh w-screen flex-col overflow-hidden bg-slate-950"
-          : "flex flex-col gap-2.5"
+          : "flex flex-col"
       }
     >
-      {/* Compact Top Page Bar (shown before entering Fullscreen so user can click Fullscreen immediately) */}
-      {!isFullscreen && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ink-200/80 bg-surface px-3.5 py-2 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-info/10 px-2.5 py-1 text-xs font-bold text-info border border-info/30">
-              <Box className="h-3.5 w-3.5" /> จัดห้อง 3D
-            </span>
-            <h1 className="font-display text-base font-bold text-ink-950 sm:text-lg">
-              สตูดิโอวาดแปลน & จัดห้อง 3D
-            </h1>
-            <span className="hidden xl:inline text-xs text-ink-500">
-              — กดปุ่ม <strong className="text-ink-800">เปิดเต็มจอนั่งแก้ไข</strong> (หรือกดปุ่มลัด <kbd className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800">F</kbd>) เพื่อขยายเต็มหน้าจอ
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-4 py-1.5 text-xs font-extrabold text-slate-950 shadow-sm hover:bg-amber-300 transition-all"
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-              เปิดเต็มจอนั่งแก้ไข (Fullscreen)
-            </button>
-
-            <Link
-              href="/design"
-              className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-surface px-3 py-1.5 text-xs font-bold text-ink-700 hover:border-info hover:text-info transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-info" />
-              <span className="hidden sm:inline">AI จัดห้องจากรูปถ่าย</span>
-              <span className="sm:hidden">AI จัดห้อง</span>
-            </Link>
-          </div>
-        </div>
-      )}
-
       {/* View Mode: Blueprint vs Studio */}
       {mode === "blueprint" ? (
         <div className={isFullscreen ? "flex flex-1 min-h-0 w-full" : "w-full"}>
@@ -495,53 +452,196 @@ export function Room3DStudioClient() {
           className={`relative flex flex-col overflow-hidden bg-surface ${
             isFullscreen
               ? "h-full flex-1 rounded-none border-0"
-              : "h-[calc(100dvh-7.25rem)] min-h-[620px] rounded-3xl border border-ink-200 shadow-2xl"
+              : "h-[calc(100dvh-5.25rem)] min-h-[600px] rounded-2xl border border-ink-200 shadow-xl"
           }`}
         >
           {/* Top 3D Control Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-surface/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
-            <div className="flex items-center gap-2">
+          <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-surface/95 px-3.5 py-2 backdrop-blur-md sm:px-5">
+            <div className="flex items-center gap-2.5">
               {/* Back to Blueprint Button */}
               <button
                 type="button"
                 onClick={() => setMode("blueprint")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-bold text-info hover:bg-info hover:text-white transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-info/35 bg-info/10 px-3 py-1.5 text-xs font-bold text-info hover:bg-info hover:text-white transition-all"
               >
                 <PenTool className="h-3.5 w-3.5" />
-                โหมดพิมพ์เขียว (วาดห้องใหม่)
+                แก้แปลนห้อง
               </button>
 
-              <span className="text-xs font-semibold text-ink-500 hidden md:inline">
-                {room.shape && room.shape.length > 4
-                  ? `ห้องวาดเอง (${room.shape.length} มุม) · `
-                  : ""}
-                {(room.w / 100).toFixed(1)} × {(room.d / 100).toFixed(1)} ม. (สูง {(room.h / 100).toFixed(1)} ม.)
+              <span className="text-xs font-medium text-ink-500 hidden md:inline">
+                {(room.w / 100).toFixed(1)} × {(room.d / 100).toFixed(1)} ม. · สูง {(room.h / 100).toFixed(1)} ม.
               </span>
             </div>
 
             {/* Quick Actions & Toggles */}
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* Sun & Compass Control Toggle */}
-              <button
-                type="button"
-                onClick={() => setSun3DPanelOpen((v) => !v)}
-                title="ปรับแสงอาทิตย์ เวลา อุณหภูมิ และทิศทางเข็มทิศ"
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                  sun3DPanelOpen
-                    ? "bg-amber-400 text-slate-950 shadow-sm"
-                    : "bg-ink-100 text-ink-800 hover:bg-ink-200"
-                }`}
-              >
-                <Sun className="h-3.5 w-3.5 text-amber-600" />
-                <span>
-                  {Math.floor(sunSettings.timeHour)}:
-                  {Math.round((sunSettings.timeHour % 1) * 60)
-                    .toString()
-                    .padStart(2, "0")}{" "}
-                  น. · {degToCardinal(sunSettings.orientationDeg).cardinal} · ~{sunAnalysis.roomTempC}°C
-                </span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${sun3DPanelOpen ? "rotate-180" : ""}`} />
-              </button>
+              {/* Sun & Compass Floating Popover Toggle */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSun3DPanelOpen((v) => !v)}
+                  title="ปรับทิศห้อง แสงแดด และอุณหภูมิ"
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    sun3DPanelOpen
+                      ? "bg-amber-400 text-slate-950 shadow-sm"
+                      : "bg-ink-100 text-ink-800 hover:bg-ink-200"
+                  }`}
+                >
+                  <Sun className="h-3.5 w-3.5 text-amber-600" />
+                  <span className="font-mono">
+                    {Math.floor(sunSettings.timeHour).toString().padStart(2, "0")}:
+                    {Math.round((sunSettings.timeHour % 1) * 60)
+                      .toString()
+                      .padStart(2, "0")}{" "}
+                    · {degToCardinal(sunSettings.orientationDeg).cardinal} · ~{sunAnalysis.roomTempC}°C
+                  </span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${sun3DPanelOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {sun3DPanelOpen && (
+                  <div className="absolute right-0 top-full mt-2 z-50 w-[310px] sm:w-[356px] space-y-3 rounded-2xl border border-ink-200 bg-surface p-4 text-xs text-ink-900 shadow-pop">
+                    <div className="flex items-center justify-between border-b border-ink-100 pb-2">
+                      <span className="font-bold text-sm text-ink-950">ทิศห้อง แสงแดด & อุณหภูมิ</span>
+                      <button
+                        type="button"
+                        onClick={() => setSun3DPanelOpen(false)}
+                        className="rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-900"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="inline-flex items-center gap-1 font-semibold text-ink-600">
+                          <Compass className="h-3.5 w-3.5 text-info" /> ทิศห้อง
+                        </span>
+                        <span className="font-mono font-bold text-info">
+                          {degToCardinal(sunSettings.orientationDeg).label} ({sunSettings.orientationDeg}°)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[
+                          { label: "N เหนือ", deg: 0 },
+                          { label: "NE", deg: 45 },
+                          { label: "E ออก", deg: 90 },
+                          { label: "SE", deg: 135 },
+                          { label: "S ใต้", deg: 180 },
+                          { label: "SW", deg: 225 },
+                          { label: "W ตก", deg: 270 },
+                          { label: "NW", deg: 315 },
+                        ].map(({ label, deg }) => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() =>
+                              updateSunInStudio((prev) => ({ ...prev, orientationDeg: deg }))
+                            }
+                            className={`rounded-lg py-1 text-[11px] font-semibold transition ${
+                              (Math.round(sunSettings.orientationDeg / 45) * 45) % 360 === deg
+                                ? "bg-info text-white"
+                                : "bg-ink-100 text-ink-700 hover:bg-ink-200"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 border-t border-ink-100 pt-2.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="inline-flex items-center gap-1 font-semibold text-ink-600">
+                          <Clock className="h-3.5 w-3.5 text-amber-500" /> เวลาแสงเข้า
+                        </span>
+                        <span className="font-mono font-bold text-amber-600">
+                          {Math.floor(sunSettings.timeHour).toString().padStart(2, "0")}:
+                          {Math.round((sunSettings.timeHour % 1) * 60)
+                            .toString()
+                            .padStart(2, "0")}{" "}
+                          น.
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={6}
+                        max={23.75}
+                        step={0.25}
+                        value={sunSettings.timeHour}
+                        onChange={(e) =>
+                          updateSunInStudio((prev) => ({
+                            ...prev,
+                            timeHour: parseFloat(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-amber-500 cursor-pointer"
+                      />
+                      <div className="grid grid-cols-5 gap-1">
+                        {[
+                          { label: "07:00", hour: 7.0, k: 3200 },
+                          { label: "10:00", hour: 10.0, k: 5000 },
+                          { label: "12:00", hour: 12.0, k: 5800 },
+                          { label: "15:30", hour: 15.5, k: 4500 },
+                          { label: "21:30", hour: 21.5, k: 7000 },
+                        ].map(({ label, hour, k }) => (
+                          <button
+                            key={hour}
+                            type="button"
+                            onClick={() =>
+                              updateSunInStudio((prev) => ({
+                                ...prev,
+                                timeHour: hour,
+                                colorTempK: k,
+                              }))
+                            }
+                            className={`rounded-lg py-1 font-mono text-[11px] font-semibold transition ${
+                              Math.abs(sunSettings.timeHour - hour) < 0.45
+                                ? "bg-amber-400 text-slate-950 font-bold"
+                                : "bg-ink-100 text-ink-700 hover:bg-ink-200"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 border-t border-ink-100 pt-2.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-ink-600">โทนสีแสง (Kelvin)</span>
+                        <span className="font-mono font-bold text-ink-900">
+                          {sunSettings.colorTempK}K
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={2500}
+                        max={7500}
+                        step={100}
+                        value={sunSettings.colorTempK}
+                        onChange={(e) =>
+                          updateSunInStudio((prev) => ({
+                            ...prev,
+                            colorTempK: parseInt(e.target.value, 10),
+                          }))
+                        }
+                        className="w-full accent-sky-500 cursor-pointer"
+                      />
+                      <div className="rounded-xl bg-ink-50 p-2.5 text-[11px] space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1 text-ink-600">
+                            <Thermometer className="h-3.5 w-3.5 text-amber-500" /> อุณหภูมิห้อง
+                          </span>
+                          <span className="font-mono font-bold text-ink-900">
+                            ~{sunAnalysis.roomTempC}°C (นอก {sunAnalysis.outdoorTempC}°C)
+                          </span>
+                        </div>
+                        <p className="text-ink-600 leading-snug">{sunAnalysis.statusText}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Day / Night Toggle */}
               <button
@@ -553,7 +653,7 @@ export function Room3DStudioClient() {
                   }));
                 }}
                 title={night ? "สลับเป็นโหมดกลางวัน" : "สลับเป็นโหมดกลางคืน (ไฟ RGB)"}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                   night
                     ? "bg-purple-900/60 text-purple-200 border border-purple-500/30"
                     : "bg-amber-100 text-amber-800 border border-amber-300/40"
@@ -589,7 +689,7 @@ export function Room3DStudioClient() {
                 type="button"
                 onClick={() => setDrawerOpen((v) => !v)}
                 title={drawerOpen ? "ซ่อนแถบสินค้าเพื่อดูห้อง 3D กว้างสุด" : "เปิดแถบเลือกสินค้า 2,100+ ชิ้น"}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                   drawerOpen
                     ? "bg-info/15 text-info border border-info/30"
                     : "bg-ink-100 text-ink-800 hover:bg-ink-200"
@@ -608,12 +708,12 @@ export function Room3DStudioClient() {
             <div className="flex items-center gap-2 sm:gap-2.5">
               <div className="text-right">
                 <span className="block text-[10px] text-ink-500">รวม ({productCount} ชิ้น)</span>
-                <span className="font-mono text-sm sm:text-base font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
+                <span className="font-mono text-sm font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
               </div>
               <button
                 type="button"
                 onClick={handleAddSetupToCart}
-                className="btn btn-primary h-8 sm:h-9 rounded-full px-3.5 text-xs font-bold shadow-md"
+                className="btn btn-primary h-8 sm:h-9 rounded-xl px-3.5 text-xs font-bold shadow-sm"
               >
                 <ShoppingBag className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">ใส่ตะกร้าทั้งหมด</span>
@@ -624,11 +724,7 @@ export function Room3DStudioClient() {
                 type="button"
                 onClick={toggleFullscreen}
                 title={isFullscreen ? "ย่อออกจากเต็มจอ (กด Esc หรือ F)" : "เปิดเต็มจอนั่งจัดห้อง (กด F)"}
-                className={`inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-extrabold shadow-sm transition-all ${
-                  isFullscreen
-                    ? "bg-ink-900 text-white hover:bg-ink-800"
-                    : "bg-amber-400 text-slate-950 hover:bg-amber-300"
-                }`}
+                className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-ink-200 bg-ink-100 px-3 text-xs font-semibold text-ink-800 hover:bg-ink-200 transition-all"
               >
                 {isFullscreen ? (
                   <>
@@ -644,142 +740,6 @@ export function Room3DStudioClient() {
               </button>
             </div>
           </div>
-
-          {/* 3D Sunlight, Compass, Kelvin & Temperature Expandable Strip */}
-          {sun3DPanelOpen && (
-            <div className="border-b border-ink-200 bg-ink-50/95 px-4 py-3 backdrop-blur-md flex flex-col gap-2.5 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                {/* Compass Orientation */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 font-semibold text-ink-700">
-                    <Compass className="h-4 w-4 text-info" />
-                    <span>ทิศห้อง:</span>
-                    <span className="font-bold text-info">
-                      {degToCardinal(sunSettings.orientationDeg).label} ({sunSettings.orientationDeg}°)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { label: "N", deg: 0 },
-                      { label: "NE", deg: 45 },
-                      { label: "E", deg: 90 },
-                      { label: "SE", deg: 135 },
-                      { label: "S", deg: 180 },
-                      { label: "SW", deg: 225 },
-                      { label: "W", deg: 270 },
-                      { label: "NW", deg: 315 },
-                    ].map(({ label, deg }) => (
-                      <button
-                        key={deg}
-                        type="button"
-                        onClick={() =>
-                          updateSunInStudio((prev) => ({ ...prev, orientationDeg: deg }))
-                        }
-                        className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
-                          Math.round(sunSettings.orientationDeg / 45) * 45 % 360 === deg
-                            ? "bg-info text-white shadow-sm"
-                            : "bg-surface border border-ink-200 hover:bg-ink-100 text-ink-800"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Time Presets + Slider */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 font-semibold text-ink-700">
-                    <Clock className="h-4 w-4 text-amber-500" />
-                    <span>เวลาแสงเข้า:</span>
-                    <span className="font-mono font-bold text-amber-600">
-                      {Math.floor(sunSettings.timeHour).toString().padStart(2, "0")}:
-                      {Math.round((sunSettings.timeHour % 1) * 60)
-                        .toString()
-                        .padStart(2, "0")}{" "}
-                      น.
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={6}
-                    max={23.75}
-                    step={0.25}
-                    value={sunSettings.timeHour}
-                    onChange={(e) =>
-                      updateSunInStudio((prev) => ({
-                        ...prev,
-                        timeHour: parseFloat(e.target.value),
-                      }))
-                    }
-                    className="w-28 accent-amber-500 cursor-pointer"
-                  />
-                  <div className="flex items-center gap-1">
-                    {[
-                      { label: "🌅 07:00", hour: 7.0, k: 3200 },
-                      { label: "☀️ 12:00", hour: 12.0, k: 5800 },
-                      { label: "🌇 15:30", hour: 15.5, k: 4500 },
-                      { label: "🌄 18:00", hour: 18.0, k: 2800 },
-                      { label: "🌙 21:30", hour: 21.5, k: 7000 },
-                    ].map(({ label, hour, k }) => (
-                      <button
-                        key={hour}
-                        type="button"
-                        onClick={() =>
-                          updateSunInStudio((prev) => ({
-                            ...prev,
-                            timeHour: hour,
-                            colorTempK: k,
-                          }))
-                        }
-                        className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
-                          Math.abs(sunSettings.timeHour - hour) < 0.45
-                            ? "bg-amber-400 text-slate-950 shadow-sm"
-                            : "bg-surface border border-ink-200 hover:bg-ink-100 text-ink-800"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Second row: Kelvin slider + Live Outdoor/Indoor Temperature & Sunbeam status */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-ink-200/60">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-ink-700">โทนแสง:</span>
-                  <input
-                    type="range"
-                    min={2500}
-                    max={7500}
-                    step={100}
-                    value={sunSettings.colorTempK}
-                    onChange={(e) =>
-                      updateSunInStudio((prev) => ({
-                        ...prev,
-                        colorTempK: parseInt(e.target.value, 10),
-                      }))
-                    }
-                    className="w-28 accent-sky-500 cursor-pointer"
-                  />
-                  <span className="font-mono font-bold text-ink-900">
-                    {sunSettings.colorTempK}K
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/80 border border-amber-300/60 px-2.5 py-0.5 font-bold text-amber-900">
-                    <Thermometer className="h-3.5 w-3.5 text-amber-600" />
-                    นอกห้อง {sunAnalysis.outdoorTempC}°C · ในห้อง ~{sunAnalysis.roomTempC}°C
-                  </span>
-                  <span className="text-ink-600 font-medium">
-                    {sunAnalysis.statusText}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Main Workspace Split: 3D Viewport (Left/Full) + Collapsible Product Catalog Dock (Right/Bottom) */}
           <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
