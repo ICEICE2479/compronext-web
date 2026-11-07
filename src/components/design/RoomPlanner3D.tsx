@@ -142,7 +142,8 @@ function updateSelectionAngleGizmo(gizmo: SelectionAngleGizmo, it: PlanItem | nu
   gizmo.pointerPivot.rotation.y = (-norm * Math.PI) / 180;
 
   const degStr = Number.isInteger(norm) ? `${norm}°` : `${norm.toFixed(1)}°`;
-  const text = `↻ หมุน ${degStr}`;
+  const lockTag = it.rotLocked ? " 🔒" : "";
+  const text = `↻ หมุน ${degStr}${lockTag}`;
   if (gizmo.lastText !== text) {
     gizmo.lastText = text;
     const { ctx, canvas } = gizmo;
@@ -421,6 +422,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       riders: PlanItem[];
       activeWallKey: string | null;
       curRot: number;
+      manualRot?: boolean;
       last?: { x: number; z: number; y: number; rot: number };
     } | null = null;
     let raf = 0;
@@ -545,6 +547,12 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         return lx <= it.w * 0.55 && lz <= it.d * 0.55;
       });
       const initWall = findNearestWallForItem(it, propsRef.current.room, 28);
+      // หากผู้ใช้ล็อกมุมหมุนไว้แล้ว (rotLocked) หรือมุมของสิ่งของแตกต่างจากองศากำแพงอยู่แล้ว ถือเป็นการหมุนที่ผู้ใช้ตั้งใจไว้
+      const isAlreadyDifferentFromWall = initWall
+        ? Math.abs(normalizeRotDeg(it.rot) - initWall.targetRot) > 3
+        : false;
+      const isManualRot = Boolean(it.rotLocked) || isAlreadyDifferentFromWall;
+
       drag = {
         uid,
         dx: it.x - hit.x / CM,
@@ -554,6 +562,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         riders,
         activeWallKey: initWall?.key ?? null,
         curRot: it.rot,
+        manualRot: isManualRot,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
@@ -572,7 +581,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const curRoom = propsRef.current.room;
       const allItems = propsRef.current.items;
 
-      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง (ตรงหรือเฉียง) ปรับหมุนตามองศากำแพงอัตโนมัติ (กด Shift ค้างเพื่อล็อกมุมเดิม)
+      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง (ตรงหรือเฉียง) ปรับหมุนตามองศากำแพงอัตโนมัติ
+      // *ยกเว้น* ถ้าผู้ใช้ตั้งใจหมุนสิ่งของนี้แล้ว (rotLocked / manualRot) หรือกด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
+      const isRotLocked = Boolean(base.rotLocked || drag.manualRot);
       const isChairNearDesk =
         base.category === "chair" &&
         allItems.some(
@@ -581,7 +592,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             o.category === "desk" &&
             Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
         );
-      if (!e.shiftKey && !isChairNearDesk) {
+      if (!isRotLocked && !e.shiftKey && !isChairNearDesk) {
         const probe = { ...base, x: rawX, z: rawZ, rot: drag.curRot };
         const nearWall = findNearestWallForItem(probe, curRoom, 28);
         if (!nearWall) {

@@ -7,6 +7,7 @@ import {
   Copy,
   Layers,
   Loader2,
+  Lock,
   Maximize2,
   Minimize2,
   Moon,
@@ -22,6 +23,7 @@ import {
   Sun,
   Trash2,
   Undo2,
+  Unlock,
   X,
   Compass,
   Clock,
@@ -316,7 +318,7 @@ export function Room3DStudioClient() {
     (rawDeg: number, syncInputText: boolean) => {
       if (!selectedUid || !Number.isFinite(rawDeg)) return;
       const norm = normalizeRotDeg(rawDeg);
-      setItemsState((prev) => rotateItemWithRiders(selectedUid, norm, prev, room));
+      setItemsState((prev) => rotateItemWithRiders(selectedUid, norm, prev, room, true));
       if (syncInputText) {
         setRotInput(Number.isInteger(norm) ? String(norm) : norm.toFixed(1));
       }
@@ -330,8 +332,9 @@ export function Room3DStudioClient() {
       setItems((prev) => {
         const cur = prev.find((i) => i.uid === selectedUid);
         if (!cur) return prev;
-        return rotateItemWithRiders(selectedUid, cur.rot + angle, prev, room);
+        return rotateItemWithRiders(selectedUid, cur.rot + angle, prev, room, true);
       });
+      toast(`หมุน ${angle > 0 ? `+${angle}` : angle}° (ล็อกมุมแล้ว ไม่เด้งกลับตอนเลื่อน)`, { tone: "ok" });
     },
     [selectedUid, room, setItems]
   );
@@ -345,9 +348,24 @@ export function Room3DStudioClient() {
       toast("ขยับสิ่งของเข้าใกล้กำแพงที่ต้องการก่อนนะครับ");
       return;
     }
-    setItems((prev) => rotateItemWithRiders(selectedUid, near.targetRot, prev, room));
+    setItems((prev) => rotateItemWithRiders(selectedUid, near.targetRot, prev, room, false));
     toast(`ปรับหมุนตามองศากำแพง (${near.targetRot}°) แล้ว`);
   }, [selectedUid, items, room, setItems]);
+
+  const handleToggleRotLock = useCallback(() => {
+    if (!selectedUid) return;
+    setItems((prev) =>
+      prev.map((i) => (i.uid === selectedUid ? { ...i, rotLocked: !i.rotLocked } : i))
+    );
+    const item = items.find((i) => i.uid === selectedUid);
+    const nextLocked = !item?.rotLocked;
+    toast(
+      nextLocked
+        ? "🔒 ล็อกมุมหมุนแล้ว (เวลาเลื่อนของมุมจะไม่เด้งกลับ)"
+        : "🔓 ปลดล็อกมุมหมุน (จะหมุนตามองศากำแพงอัตโนมัติเมื่อวางใกล้)",
+      { tone: "ok" }
+    );
+  }, [selectedUid, items, setItems]);
 
   const handleToggleAltitude = () => {
     if (!selectedUid) return;
@@ -999,6 +1017,33 @@ export function Room3DStudioClient() {
 
                       <button
                         type="button"
+                        onClick={handleToggleRotLock}
+                        className={`inline-flex h-8 items-center gap-1 rounded-xl px-2.5 text-xs font-semibold transition-all ${
+                          selectedItem.rotLocked
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-sm"
+                            : "bg-white/10 text-slate-300 hover:bg-white/20"
+                        }`}
+                        title={
+                          selectedItem.rotLocked
+                            ? "ล็อกมุมหมุนไว้แล้ว (เวลาลากขยับของมุมจะไม่เด้งกลับตามกำแพง) — คลิกเพื่อปลดล็อก"
+                            : "ยังไม่ได้ล็อกมุมหมุน (จะปรับตามกำแพงอัตโนมัติ) — คลิกเพื่อล็อกมุมนี้"
+                        }
+                      >
+                        {selectedItem.rotLocked ? (
+                          <>
+                            <Lock className="h-3.5 w-3.5 text-amber-400" />
+                            <span>ล็อกมุม</span>
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="h-3.5 w-3.5 text-slate-400" />
+                            <span>ปรับตามผนัง</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={handleToggleAltitude}
                         className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
                         title="ปรับความสูง (วางบนโต๊ะ / บนพื้น)"
@@ -1113,12 +1158,26 @@ export function Room3DStudioClient() {
                       <span className="font-mono text-xs font-bold text-sky-300">°</span>
                     </div>
 
-                    <span className="rounded-lg bg-sky-500/15 px-2 py-0.5 font-mono text-[11px] font-bold text-sky-300">
+                    <button
+                      type="button"
+                      onClick={handleToggleRotLock}
+                      className={`rounded-lg px-2 py-0.5 font-mono text-[11px] font-bold transition-all ${
+                        selectedItem.rotLocked
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-400/35"
+                          : "bg-sky-500/15 text-sky-300 hover:bg-sky-500/25"
+                      }`}
+                      title={
+                        selectedItem.rotLocked
+                          ? "คลิกเพื่อปลดล็อกมุม (ให้หมุนตามกำแพง)"
+                          : "คลิกเพื่อล็อกมุม (ไม่ให้หมุนตามกำแพง)"
+                      }
+                    >
                       หมุนแล้ว{" "}
                       {Number.isInteger(normalizeRotDeg(selectedItem.rot))
                         ? `${normalizeRotDeg(selectedItem.rot)}°`
                         : `${normalizeRotDeg(selectedItem.rot).toFixed(1)}°`}
-                    </span>
+                      {selectedItem.rotLocked ? " 🔒" : ""}
+                    </button>
                   </div>
                 </div>
               )}
