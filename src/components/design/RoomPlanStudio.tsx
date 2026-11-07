@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Copy, LayoutTemplate, Link2, Lock, Moon, PenTool, Plus, RotateCw, Search, Sparkles, Sun, Trash2, Undo2, Unlock, Video, Wand2, X } from "lucide-react";
+import { AlertTriangle, Copy, LayoutTemplate, Link2, Moon, PenTool, Plus, RotateCw, Search, Sparkles, Sun, Trash2, Undo2, Video, Wand2, X } from "lucide-react";
 import { toast } from "@/lib/toast";
 import Spinner from "@/components/Spinner";
 import { CATEGORY_LABELS, formatTHB } from "@/lib/format";
@@ -280,47 +280,12 @@ export function RoomPlanStudio({
             </div>
             <button
               type="button"
-              onClick={() => setItems((prev) => rotateItemWithRiders(sel.uid, sel.rot + 45, prev, room, true))}
+              onClick={() => setItems((prev) => rotateItemWithRiders(sel.uid, sel.rot + 45, prev, room))}
               className="btn btn-outline h-9 rounded-xl px-2.5 text-xs font-semibold"
               aria-label="หมุน 45 องศา"
               title="หมุน +45° (หรือกด R)"
             >
               <RotateCw className="h-3.5 w-3.5 text-amber-500" /> R +45°
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setItems((prev) =>
-                  prev.map((i) => (i.uid === sel.uid ? { ...i, rotLocked: !i.rotLocked } : i))
-                );
-                const nextLocked = !sel.rotLocked;
-                toast(
-                  nextLocked
-                    ? "🔒 ล็อกมุมหมุนแล้ว (เลื่อนของมุมจะไม่เด้งกลับ)"
-                    : "🔓 ปลดล็อกมุมหมุน (จะหมุนตามกำแพงอัตโนมัติ)",
-                  { tone: "ok" }
-                );
-              }}
-              className={`btn h-9 rounded-xl px-2.5 text-xs font-semibold transition-all ${
-                sel.rotLocked
-                  ? "bg-amber-100 text-amber-900 border border-amber-300"
-                  : "btn-outline text-ink-700"
-              }`}
-              title={
-                sel.rotLocked
-                  ? "ล็อกมุมหมุนไว้แล้ว (เวลาลากขยับของมุมจะไม่เด้งกลับ) — คลิกเพื่อปลดล็อก"
-                  : "ยังไม่ได้ล็อกมุมหมุน — คลิกเพื่อล็อกมุมนี้"
-              }
-            >
-              {sel.rotLocked ? (
-                <>
-                  <Lock className="h-3.5 w-3.5 text-amber-600" /> ล็อกมุม
-                </>
-              ) : (
-                <>
-                  <Unlock className="h-3.5 w-3.5 text-ink-400" /> ปรับตามผนัง
-                </>
-              )}
             </button>
             <button
               type="button"

@@ -142,8 +142,7 @@ function updateSelectionAngleGizmo(gizmo: SelectionAngleGizmo, it: PlanItem | nu
   gizmo.pointerPivot.rotation.y = (-norm * Math.PI) / 180;
 
   const degStr = Number.isInteger(norm) ? `${norm}°` : `${norm.toFixed(1)}°`;
-  const lockTag = it.rotLocked ? " 🔒" : "";
-  const text = `↻ หมุน ${degStr}${lockTag}`;
+  const text = `↻ หมุน ${degStr}`;
   if (gizmo.lastText !== text) {
     gizmo.lastText = text;
     const { ctx, canvas } = gizmo;
@@ -422,7 +421,6 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       riders: PlanItem[];
       activeWallKey: string | null;
       curRot: number;
-      manualRot?: boolean;
       last?: { x: number; z: number; y: number; rot: number };
     } | null = null;
     let raf = 0;
@@ -547,12 +545,6 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         return lx <= it.w * 0.55 && lz <= it.d * 0.55;
       });
       const initWall = findNearestWallForItem(it, propsRef.current.room, 28);
-      // หากผู้ใช้ล็อกมุมหมุนไว้แล้ว (rotLocked) หรือมุมของสิ่งของแตกต่างจากองศากำแพงอยู่แล้ว ถือเป็นการหมุนที่ผู้ใช้ตั้งใจไว้
-      const isAlreadyDifferentFromWall = initWall
-        ? Math.abs(normalizeRotDeg(it.rot) - initWall.targetRot) > 3
-        : false;
-      const isManualRot = Boolean(it.rotLocked) || isAlreadyDifferentFromWall;
-
       drag = {
         uid,
         dx: it.x - hit.x / CM,
@@ -562,7 +554,6 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         riders,
         activeWallKey: initWall?.key ?? null,
         curRot: it.rot,
-        manualRot: isManualRot,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
@@ -581,9 +572,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const curRoom = propsRef.current.room;
       const allItems = propsRef.current.items;
 
-      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง (ตรงหรือเฉียง) ปรับหมุนตามองศากำแพงอัตโนมัติ
-      // *ยกเว้น* ถ้าผู้ใช้ตั้งใจหมุนสิ่งของนี้แล้ว (rotLocked / manualRot) หรือกด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
-      const isRotLocked = Boolean(base.rotLocked || drag.manualRot);
+      // เมื่อลากสิ่งของเข้าใกล้กำแพงห้อง ปรับหมุนตามกำแพงอัตโนมัติ (รองรับทั้งแบบขนานและแบบตั้งฉากทำตัวกั้นห้อง)
+      // *ยกเว้น* ถ้ากด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
       const isChairNearDesk =
         base.category === "chair" &&
         allItems.some(
@@ -592,11 +582,11 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             o.category === "desk" &&
             Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
         );
-      if (!isRotLocked && !e.shiftKey && !isChairNearDesk) {
+      if (!e.shiftKey && !isChairNearDesk) {
         const probe = { ...base, x: rawX, z: rawZ, rot: drag.curRot };
-        const nearWall = findNearestWallForItem(probe, curRoom, 28);
+        const nearWall = findNearestWallForItem(probe, curRoom, 30);
         if (!nearWall) {
-          if (!findNearestWallForItem(probe, curRoom, 36)) {
+          if (!findNearestWallForItem(probe, curRoom, 42)) {
             drag.activeWallKey = null;
           }
         } else if (nearWall.key !== drag.activeWallKey) {
@@ -697,6 +687,62 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       downAt = null;
       controls.enabled = true;
     };
+    const onDragKeyRotate = (e: KeyboardEvent) => {
+      if (!drag) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.code === "KeyR" || e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.shiftKey ? -45 : 45;
+        drag.curRot = normalizeRotDeg(drag.curRot + delta);
+        drag.activeWallKey = null;
+
+        const curRoom = propsRef.current.room;
+        const allItems = propsRef.current.items;
+        const base = allItems.find((i) => i.uid === drag!.uid);
+        if (!base) return;
+
+        const riderIds = new Set(drag.riders.map((r) => r.uid));
+        const nonRiders = riderIds.size > 0 ? allItems.filter((o) => !riderIds.has(o.uid)) : allItems;
+
+        const it = drag.last
+          ? { ...base, x: drag.last.x, z: drag.last.z, y: drag.last.y, rot: drag.curRot }
+          : { ...base, rot: drag.curRot };
+        const next = dragTo(it, { x: it.x, z: it.z }, nonRiders, curRoom);
+        drag.last = { x: next.x, z: next.z, y: next.y, rot: next.rot };
+
+        const curApi = api.current;
+        const m = curApi?.meshes.get(it.uid);
+        if (m && curApi) {
+          m.group.position.x = next.x * CM;
+          m.group.position.z = next.z * CM;
+          m.group.userData.ty = next.y * CM;
+          m.group.rotation.y = (-next.rot * Math.PI) / 180;
+          m.group.updateMatrixWorld(true);
+          curApi.selBox.box.setFromObject(m.group).expandByScalar(0.02);
+          updateSelectionAngleGizmo(curApi.selGizmo, next);
+        }
+
+        const dRad = ((next.rot - base.rot) * Math.PI) / 180;
+        const cosD = Math.cos(dRad);
+        const sinD = Math.sin(dRad);
+        for (const r of drag.riders) {
+          const rm = curApi?.meshes.get(r.uid);
+          if (!rm) continue;
+          const rx = r.x - base.x;
+          const rz = r.z - base.z;
+          const rnx = next.x + rx * cosD - rz * sinD;
+          const rnz = next.z + rx * sinD + rz * cosD;
+          const rRot = normalizeRotDeg(r.rot + (next.rot - base.rot));
+          rm.group.position.x = rnx * CM;
+          rm.group.position.z = rnz * CM;
+          rm.group.userData.ty = (r.y + next.y - base.y) * CM;
+          rm.group.rotation.y = (-rRot * Math.PI) / 180;
+        }
+      }
+    };
+    window.addEventListener("keydown", onDragKeyRotate, true);
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointermove", onMoveEv);
     renderer.domElement.addEventListener("pointerup", onUp);
@@ -706,6 +752,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      window.removeEventListener("keydown", onDragKeyRotate, true);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointermove", onMoveEv);
       renderer.domElement.removeEventListener("pointerup", onUp);

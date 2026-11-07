@@ -71,8 +71,6 @@ export interface PlanItem {
   rot: number;
   color: string;
   price: number;
-  /** ล็อกมุมหมุนที่ผู้ใช้ตั้งใจปรับ ไม่ให้เด้งกลับตามกำแพงตอนเลื่อนของ */
-  rotLocked?: boolean;
 }
 
 /** ปรับค่ามุมหมุนให้อยู่ในช่วง 0 – 359.9 องศา (ความละเอียด 0.1°) */
@@ -598,7 +596,7 @@ export function inRoom(it: PlanItem, room: RoomSize): boolean {
 export function findNearestWallForItem(
   it: Pick<PlanItem, "x" | "z" | "w" | "d" | "rot" | "category">,
   room: RoomSize,
-  maxGapCm = 28
+  maxGapCm = 32
 ): { key: string; targetRot: number; gapCm: number } | null {
   if (it.category === "door") return null;
   const { outer, interior } = getRoomWallSegments(room);
@@ -606,43 +604,49 @@ export function findNearestWallForItem(
   const hw = it.w * 0.5;
   const hd = it.d * 0.5;
 
-  let best: { key: string; targetRot: number; gapCm: number; score: number } | null = null;
+  let best: { key: string; targetRot: number; gapCm: number; distCenter: number } | null = null;
 
   for (const seg of [...outer, ...interior]) {
-    if (seg.len < 35) continue;
+    if (seg.len < 15) continue;
     const rx = it.x - seg.x1;
     const rz = it.z - seg.z1;
     const proj = rx * seg.tx + rz * seg.tz;
-    const endMargin = Math.min(12, seg.len * 0.15);
-    if (proj < endMargin || proj > seg.len - endMargin) continue;
+
+    // ต้องอยู่ในช่วงความยาวของผนัง (เผื่อปลายผนังเล็กน้อย 12 ซม. สำหรับเข้ามุมห้อง)
+    if (proj < -12 || proj > seg.len + 12) continue;
+
+    const t = Math.max(0, Math.min(seg.len, proj));
+    const closeX = seg.x1 + seg.tx * t;
+    const closeZ = seg.z1 + seg.tz * t;
+    const distToSeg = Math.hypot(it.x - closeX, it.z - closeZ);
 
     const signedPerp = (it.x - seg.mx) * seg.inx + (it.z - seg.mz) * seg.inz;
-    if (!seg.isInterior && signedPerp < -15) continue;
+    if (!seg.isInterior && signedPerp < -18) continue;
 
     const sideSign = seg.isInterior ? (signedPerp >= 0 ? 1 : -1) : 1;
     const inx = seg.inx * sideSign;
     const inz = seg.inz * sideSign;
-    const distCenter = Math.abs(signedPerp);
-    const wallHalf = seg.isInterior ? 6.2 : 0;
 
-    // ระยะห่างเมื่อหมุนหลังชิดกำแพงแล้ว เทียบกับระยะขอบ OBB ปัจจุบัน
-    const alignedGap = distCenter - wallHalf - hd;
+    const wallHalf = seg.isInterior ? 6.2 : 0;
+    // รัศมี OBB ของสิ่งของในทิศตั้งฉากกับแนวกำแพง
     const currentObbRadius =
       hw * Math.abs(axes.ux * inx + axes.uz * inz) + hd * Math.abs(axes.vx * inx + axes.vz * inz);
-    const currentGap = distCenter - wallHalf - currentObbRadius;
+    const currentGap = distToSeg - wallHalf - currentObbRadius;
+    const flatGap = distToSeg - wallHalf - hd;
 
-    // ยอมสแนปเมื่อนำเมาส์เข้าใกล้กำแพง หรือขอบสิ่งของเข้าประชิดกำแพงในระยะสแนป
-    if (alignedGap > maxGapCm && currentGap > Math.min(18, maxGapCm * 0.65)) continue;
+    // องศาฐานของกำแพง: ด้านหลังสิ่งของแนบกำแพง ด้านหน้า (+Z) หันเข้าในห้อง
+    const wallBaseRot = normalizeRotDeg((Math.atan2(-inx, inz) * 180) / Math.PI);
 
-    const targetRot = normalizeRotDeg((Math.atan2(-inx, inz) * 180) / Math.PI);
-    const score = alignedGap + Math.max(0, currentGap) * 0.2;
+    // เข้าข่ายสแนปเมื่อขอบสิ่งของหรือระยะประชิดอยู่ในระยะ maxGapCm
+    const effectiveGap = Math.min(currentGap, flatGap);
+    if (effectiveGap > maxGapCm) continue;
 
-    if (!best || score < best.score) {
+    if (!best || distToSeg < best.distCenter) {
       best = {
         key: seg.key,
-        targetRot,
-        gapCm: Math.round(Math.max(0, Math.min(alignedGap, currentGap)) * 10) / 10,
-        score,
+        targetRot: wallBaseRot,
+        gapCm: Math.round(Math.max(0, effectiveGap) * 10) / 10,
+        distCenter: distToSeg,
       };
     }
   }
@@ -672,25 +676,22 @@ export function alignItemToNearestWall<T extends PlanItem>(
   return clampToRoom({ ...it, rot: near.targetRot }, room);
 }
 
-/** หมุนสิ่งของไปยังองศาที่กำหนดอย่างปลอดภัย พร้อมดันออกจากกำแพงและสิ่งของข้างเคียงไม่ให้ทะลุผนัง */
+/** หมุนสิ่งของไปยังองศาที่กำหนดอย่างปลอดภัยในจุดเดิม พร้อมดันไม่ให้มุมทะลุกำแพง (ไม่วาปกระโดดไปจุดอื่น) */
 export function rotateItemSafely(it: PlanItem, nextRotDeg: number, all: PlanItem[], room: RoomSize): PlanItem {
   const rot = normalizeRotDeg(nextRotDeg);
   const clamped = clampToRoom({ ...it, rot }, room);
-  const nudged = nudgeFree(clamped, all, room);
-  return nudged.y > 0 ? clampToRoom(settleOnTop(nudged, all, room), room) : nudged;
+  return clamped.y > 0 ? clampToRoom(settleOnTop(clamped, all, room), room) : clamped;
 }
 
 /**
  * หมุนสิ่งของเป้าหมายไปยังองศาที่ระบุ และหากเป็นโต๊ะที่มีของวางอยู่ด้านบน (เช่น จอ คีย์บอร์ด เมาส์)
  * จะหมุนของบนโต๊ะตามไปด้วยอย่างเป็นธรรมชาติโดยไม่ทะลุกำแพง
- * @param setRotLocked ล็อกมุมหมุนนี้ไว้เพื่อไม่ให้เด้งกลับตามกำแพงตอนเลื่อนของ (ค่าเริ่มต้น true)
  */
 export function rotateItemWithRiders(
   uid: string,
   nextRotDeg: number,
   items: PlanItem[],
-  room: RoomSize,
-  setRotLocked = true
+  room: RoomSize
 ): PlanItem[] {
   const target = items.find((i) => i.uid === uid);
   if (!target) return items;
@@ -705,10 +706,7 @@ export function rotateItemWithRiders(
   const riderIds = new Set(riders.map((r) => r.uid));
   const nonRiders = items.filter((i) => !riderIds.has(i.uid));
 
-  const rotatedTarget: PlanItem = {
-    ...rotateItemSafely(target, nextRotDeg, nonRiders, room),
-    rotLocked: setRotLocked,
-  };
+  const rotatedTarget: PlanItem = rotateItemSafely(target, nextRotDeg, nonRiders, room);
   const dRad = (((rotatedTarget.rot - target.rot) * Math.PI) / 180);
   const cosD = Math.cos(dRad);
   const sinD = Math.sin(dRad);
@@ -726,7 +724,6 @@ export function rotateItemWithRiders(
         x: Math.round(nx * 10) / 10,
         z: Math.round(nz * 10) / 10,
         rot: normalizeRotDeg(item.rot + (rotatedTarget.rot - target.rot)),
-        rotLocked: setRotLocked,
       },
       room
     );
@@ -948,32 +945,9 @@ export function autoLayout(items: PlanItem[], room: RoomSize): PlanItem[] {
   const deskStart = desk ? alignItemToNearestWall(clampToRoom({ ...desk, x: room.w / 2, z: desk.d / 2 + 4, y: 0, rot: 0 }, room), room, []) : null;
 
   for (const raw of items) {
-    let it: PlanItem = { ...raw, rot: raw.rotLocked ? normalizeRotDeg(raw.rot) : 0, y: 0 };
+    let it: PlanItem = { ...raw, rot: 0, y: 0 };
     const c = it.category;
-    if (raw.rotLocked) {
-      if (c === "desk" && deskStart) {
-        it = { ...it, x: deskStart.x, z: deskStart.z };
-      } else if (c === "chair" && deskStart && desk) {
-        const dAxes = getItemAxes(deskStart.rot);
-        it = {
-          ...it,
-          x: deskStart.x + dAxes.vx * (desk.d * 0.5 + 32),
-          z: deskStart.z + dAxes.vz * (desk.d * 0.5 + 32),
-        };
-      } else if (c === "rug") {
-        it = { ...it, x: room.w / 2, z: room.d / 2 + 20 };
-      } else if (c === "door") {
-        it = { ...it, x: it.d / 2 + 1, z: room.d - it.w / 2 - 15 };
-      } else if (c === "bed") {
-        it = clampToRoom({ ...it, x: it.d / 2 + 4, z: room.d - it.w / 2 - 4 - leftZ }, room);
-        leftZ += it.w + 10;
-      } else if (c === "wardrobe" || c === "storage") {
-        it = clampToRoom({ ...it, x: room.w - it.d / 2 - 4, z: it.w / 2 + 4 + rightZ }, room);
-        rightZ += it.w + 6;
-      } else {
-        it = freeSpot(it, corners, out, room, corner++);
-      }
-    } else if (c === "desk" && deskStart) {
+    if (c === "desk" && deskStart) {
       it = { ...it, x: deskStart.x, z: deskStart.z, rot: deskStart.rot };
     } else if (c === "chair" && deskStart && desk) {
       const dAxes = getItemAxes(deskStart.rot);
@@ -1117,22 +1091,7 @@ export const ROOM_TEMPLATES: Array<{ id: string; label: string; items: string[] 
 ];
 
 /* ---------- แชร์ห้องเป็นลิงก์ (เก็บในลิงก์เลย ไม่ต้องมีเซิร์ฟเวอร์) ---------- */
-type Packed = [
-  string | null,
-  string,
-  string,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  string,
-  number,
-  0 | 1,
-  (0 | 1)?
-];
+type Packed = [string | null, string, string, number, number, number, number, number, number, number, string, number, 0 | 1];
 export function encodePlan(room: RoomSize, items: PlanItem[]): string {
   const data = {
     r: [room.w, room.d, room.h, room.win?.wall ?? "back", Math.round((room.win?.pos ?? 0.68) * 100)],
@@ -1152,7 +1111,6 @@ export function encodePlan(room: RoomSize, items: PlanItem[]): string {
         it.color,
         it.price,
         it.estimated ? 1 : 0,
-        it.rotLocked ? 1 : 0,
       ]
     ),
   };
@@ -1193,7 +1151,6 @@ export function decodePlan(code: string): { room: RoomSize; items: PlanItem[] } 
         color: /^#[0-9a-f]{6}$/i.test(String(p[10])) ? String(p[10]) : "#a8b0ba",
         price: n(p[11], 0, 10_000_000),
         estimated: p[12] === 1,
-        rotLocked: p[13] === 1,
       };
     });
     return { room, items };
