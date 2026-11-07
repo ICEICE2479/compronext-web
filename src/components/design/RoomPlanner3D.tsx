@@ -332,8 +332,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     const winH = Math.min(1.2, H * 0.45);
     const winLight = new THREE.Vector3(W * winPos, wy, 0.5);
     let hasWin = winWall !== "none";
-    const buildWindow = (along: number) => {
-      const winW = Math.min(1.4, along * 0.4);
+    const buildWindow = (along: number, customWidthM?: number) => {
+      const winW = customWidthM
+        ? Math.min(Math.max(0.45, customWidthM), Math.max(0.45, along - 0.16))
+        : Math.min(1.4, along * 0.4);
       const grp = new THREE.Group();
       const local = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
         const m = new THREE.Mesh(geo, mat);
@@ -368,7 +370,39 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         grp.add(m);
       }
       local(new THREE.CylinderGeometry(0.012, 0.012, winW + cw * 2 + 0.1, 12).rotateZ(Math.PI / 2), trim, 0, winH / 2 + 0.14, 0.08);
-    return grp;
+      return grp;
+    };
+
+    const buildWallDoor = (along: number, customWidthM: number, fullWall: boolean) => {
+      const dw = Math.min(Math.max(0.6, customWidthM), Math.max(0.6, along - 0.14));
+      const dh = Math.min(2.05, H - 0.12);
+      const grp = new THREE.Group();
+      const leafMat = new THREE.MeshStandardMaterial({ color: night ? "#3b3530" : "#e7dfd3", roughness: 0.65 });
+      const handleMat = new THREE.MeshStandardMaterial({ color: "#d4af37", metalness: 0.85, roughness: 0.25 });
+      if (fullWall) {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(dw + 0.1, dh + 0.05, 0.05), trim);
+        frame.position.set(0, dh / 2, 0.01);
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, dh, 0.04), leafMat);
+        leaf.position.set(0, dh / 2, 0.025);
+        leaf.castShadow = true;
+        leaf.receiveShadow = true;
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.025, 14, 14), handleMat);
+        knob.position.set(dw * 0.36, 0.98, 0.06);
+        grp.add(frame, leaf, knob);
+      } else {
+        // ผนังฝั่งใกล้กล้องที่ตัดเตี้ย: แสดงธรณีประตูและเสาวงกบเตี้ยเพื่อให้เห็นตำแหน่งประตูชัดโดยไม่บังมุมมองห้อง
+        const sill = new THREE.Mesh(
+          new THREE.BoxGeometry(dw, 0.04, T + 0.06),
+          new THREE.MeshStandardMaterial({ color: "#60a5fa", roughness: 0.45 })
+        );
+        sill.position.set(0, 0.13, -T / 2);
+        const postL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, T + 0.04), trim);
+        postL.position.set(-dw / 2, 0.11, -T / 2);
+        const postR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, T + 0.04), trim);
+        postR.position.set(dw / 2, 0.11, -T / 2);
+        grp.add(sill, postL, postR);
+      }
+      return grp;
     };
     const m = (cm: number) => `${(cm / 100).toFixed(2).replace(/\.?0+$/, "")} ม.`;
     let ledMat: THREE.MeshStandardMaterial | null = null;
@@ -421,29 +455,137 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       lh.scale.multiplyScalar(lk);
       lh.position.set(poly[0][0] * CM, H + 0.15, poly[0][1] * CM);
       a.roomRoot.add(lh);
-      // หน้าต่างบนผนังเต็มที่ยาวสุดของฝั่งที่เลือก (หลัง = หันออก −z · ซ้าย = หันออก −x)
-      const full = walls.filter((w) => w.full && w.len > 0.6);
-      const side = full.filter((w) => (winWall === "left" ? w.nx < -0.7 : w.nz < -0.7));
-      const ww = (side.length ? side : full).sort((p, q) => q.len - p.len)[0];
-      if (hasWin && ww) {
-        const grp = buildWindow(ww.len);
-        const px = ww.x1 + ww.ex * ww.len * winPos;
-        const pz = ww.z1 + ww.ez * ww.len * winPos;
-        grp.rotation.y = Math.atan2(-ww.nx, -ww.nz);
-        grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
-        a.roomRoot.add(grp);
-        winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
-      } else hasWin = false;
+      if (room.windows && room.windows.length > 0) {
+        hasWin = false;
+        for (const winSpec of room.windows) {
+          const fallbackIdx =
+            winSpec.wall === "top"
+              ? walls.findIndex((w) => w.nz < -0.5)
+              : winSpec.wall === "right"
+              ? walls.findIndex((w) => w.nx > 0.5)
+              : winSpec.wall === "bottom"
+              ? walls.findIndex((w) => w.nz > 0.5)
+              : walls.findIndex((w) => w.nx < -0.5);
+          const idx =
+            winSpec.edgeIndex !== undefined && winSpec.edgeIndex >= 0 && winSpec.edgeIndex < walls.length
+              ? winSpec.edgeIndex
+              : Math.max(0, fallbackIdx);
+          const ww = walls[idx];
+          if (!ww || ww.len < 0.45) continue;
+          const px = ww.x1 + ww.ex * ww.len * winSpec.pos;
+          const pz = ww.z1 + ww.ez * ww.len * winSpec.pos;
+          const rotY = Math.atan2(-ww.nx, -ww.nz);
+          if (ww.full) {
+            const grp = buildWindow(ww.len, (winSpec.width || 120) * CM);
+            grp.rotation.y = rotY;
+            grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
+            a.roomRoot.add(grp);
+          } else {
+            // ผนังฝั่งใกล้กล้องที่ตัดเตี้ย: แสดงขอบหน้าต่างกระจกเตี้ยบนขอบผนัง
+            const sillW = Math.min(Math.max(0.45, (winSpec.width || 120) * CM), Math.max(0.45, ww.len - 0.14));
+            const sill = new THREE.Mesh(
+              new THREE.BoxGeometry(sillW, 0.05, T + 0.05),
+              new THREE.MeshStandardMaterial({ color: "#f87171", emissive: "#fca5a5", emissiveIntensity: 0.35 })
+            );
+            sill.rotation.y = rotY;
+            sill.position.set(px + (ww.nx * T) / 2, 0.13, pz + (ww.nz * T) / 2);
+            a.roomRoot.add(sill);
+          }
+          if (!hasWin) {
+            winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
+            hasWin = true;
+          }
+        }
+      } else {
+        // หน้าต่างบนผนังเต็มที่ยาวสุดของฝั่งที่เลือก (หลัง = หันออก −z · ซ้าย = หันออก −x)
+        const full = walls.filter((w) => w.full && w.len > 0.6);
+        const side = full.filter((w) => (winWall === "left" ? w.nx < -0.7 : w.nz < -0.7));
+        const ww = (side.length ? side : full).sort((p, q) => q.len - p.len)[0];
+        if (hasWin && ww) {
+          const grp = buildWindow(ww.len);
+          const px = ww.x1 + ww.ex * ww.len * winPos;
+          const pz = ww.z1 + ww.ez * ww.len * winPos;
+          grp.rotation.y = Math.atan2(-ww.nx, -ww.nz);
+          grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
+          a.roomRoot.add(grp);
+          winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
+        } else hasWin = false;
+      }
+
+      if (room.doors && room.doors.length > 0) {
+        for (const doorSpec of room.doors) {
+          const fallbackIdx =
+            doorSpec.wall === "top"
+              ? walls.findIndex((w) => w.nz < -0.5)
+              : doorSpec.wall === "right"
+              ? walls.findIndex((w) => w.nx > 0.5)
+              : doorSpec.wall === "bottom"
+              ? walls.findIndex((w) => w.nz > 0.5)
+              : walls.findIndex((w) => w.nx < -0.5);
+          const idx =
+            doorSpec.edgeIndex !== undefined && doorSpec.edgeIndex >= 0 && doorSpec.edgeIndex < walls.length
+              ? doorSpec.edgeIndex
+              : Math.max(0, fallbackIdx);
+          const dw = walls[idx];
+          if (!dw || dw.len < 0.55) continue;
+          const px = dw.x1 + dw.ex * dw.len * doorSpec.pos;
+          const pz = dw.z1 + dw.ez * dw.len * doorSpec.pos;
+          const dGrp = buildWallDoor(dw.len, (doorSpec.width || 80) * CM, dw.full);
+          dGrp.rotation.y = Math.atan2(-dw.nx, -dw.nz);
+          dGrp.position.set(px - dw.nx * 0.01, 0, pz - dw.nz * 0.01);
+          a.roomRoot.add(dGrp);
+        }
+      }
     } else {
       // ฐาน + พื้นไม้
       add(new THREE.BoxGeometry(W + T * 2 + 0.3, 0.3, D + T * 2 + 0.3), new THREE.MeshStandardMaterial({ color: night ? "#2a2326" : "#d8d2ca", roughness: 1 }), W / 2, -0.15 - 0.02, D / 2);
       add(new THREE.BoxGeometry(W, 0.02, D), new THREE.MeshStandardMaterial({ map: floorTexture(room), roughness: 0.55 }), W / 2, -0.01, D / 2, false);
-      // ผนังหลัง + ผนังซ้าย + บัวพื้น
+      // ผนังหลัง + ผนังซ้าย + ขอบเตี้ยผนังหน้า/ขวา + บัวพื้น
       add(new THREE.BoxGeometry(W + T, H, T), wallMat, W / 2 - T / 2, H / 2, -T / 2);
       add(new THREE.BoxGeometry(T, H, D), wallMat, -T / 2, H / 2, D / 2);
+      add(new THREE.BoxGeometry(W + T, 0.12, T), wallMat, W / 2, 0.06, D + T / 2);
+      add(new THREE.BoxGeometry(T, 0.12, D + T), wallMat, W + T / 2, 0.06, D / 2);
       add(new THREE.BoxGeometry(W, 0.08, 0.015), trim, W / 2, 0.04, 0.008, false);
       add(new THREE.BoxGeometry(0.015, 0.08, D), trim, 0.008, 0.04, D / 2, false);
-      if (hasWin) {
+
+      const rectWalls = [
+        { x1: 0, z1: 0, len: W, ex: 1, ez: 0, nx: 0, nz: -1, full: true, wall: "top" },
+        { x1: W, z1: 0, len: D, ex: 0, ez: 1, nx: 1, nz: 0, full: false, wall: "right" },
+        { x1: W, z1: D, len: W, ex: -1, ez: 0, nx: 0, nz: 1, full: false, wall: "bottom" },
+        { x1: 0, z1: D, len: D, ex: 0, ez: -1, nx: -1, nz: 0, full: true, wall: "left" },
+      ];
+
+      if (room.windows && room.windows.length > 0) {
+        hasWin = false;
+        for (const winSpec of room.windows) {
+          const ww =
+            winSpec.edgeIndex !== undefined && rectWalls[winSpec.edgeIndex]
+              ? rectWalls[winSpec.edgeIndex]
+              : rectWalls.find((rw) => rw.wall === winSpec.wall) || rectWalls[0];
+          const px = ww.x1 + ww.ex * ww.len * winSpec.pos;
+          const pz = ww.z1 + ww.ez * ww.len * winSpec.pos;
+          const rotY = Math.atan2(-ww.nx, -ww.nz);
+          if (ww.full) {
+            const grp = buildWindow(ww.len, (winSpec.width || 120) * CM);
+            grp.rotation.y = rotY;
+            grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
+            a.roomRoot.add(grp);
+          } else {
+            const sillW = Math.min(Math.max(0.45, (winSpec.width || 120) * CM), Math.max(0.45, ww.len - 0.14));
+            const sill = new THREE.Mesh(
+              new THREE.BoxGeometry(sillW, 0.05, T + 0.05),
+              new THREE.MeshStandardMaterial({ color: "#f87171", emissive: "#fca5a5", emissiveIntensity: 0.35 })
+            );
+            sill.rotation.y = rotY;
+            sill.position.set(px + (ww.nx * T) / 2, 0.13, pz + (ww.nz * T) / 2);
+            a.roomRoot.add(sill);
+          }
+          if (!hasWin) {
+            winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
+            hasWin = true;
+          }
+        }
+      } else if (hasWin) {
         const grp = buildWindow(winWall === "back" ? W : D);
         if (winWall === "back") grp.position.set(W * winPos, wy, 0.03);
         else {
@@ -453,6 +595,22 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         }
         a.roomRoot.add(grp);
       }
+
+      if (room.doors && room.doors.length > 0) {
+        for (const doorSpec of room.doors) {
+          const dw =
+            doorSpec.edgeIndex !== undefined && rectWalls[doorSpec.edgeIndex]
+              ? rectWalls[doorSpec.edgeIndex]
+              : rectWalls.find((rw) => rw.wall === doorSpec.wall) || rectWalls[1];
+          const px = dw.x1 + dw.ex * dw.len * doorSpec.pos;
+          const pz = dw.z1 + dw.ez * dw.len * doorSpec.pos;
+          const dGrp = buildWallDoor(dw.len, (doorSpec.width || 80) * CM, dw.full);
+          dGrp.rotation.y = Math.atan2(-dw.nx, -dw.nz);
+          dGrp.position.set(px - dw.nx * 0.01, 0, pz - dw.nz * 0.01);
+          a.roomRoot.add(dGrp);
+        }
+      }
+
       // ป้ายขนาดห้อง: ขอบหน้า (กว้าง) + ขอบขวา (ลึก) + ความสูง
       const lw = labelSprite(m(room.w), night);
       lw.position.set(W / 2, 0.05, D + 0.3);

@@ -150,11 +150,12 @@ export function calculateSunState(
   const cz = (roomD / 100) / 2;
   const cy = (roomH / 100) / 2;
 
-  // Three.js: -z = back (North), +x = right (East), +z = front (South), -x = left (West)
-  // azRad 0° = South (+z), 90° = West (-x), 180° = North (-z), 270° = East (+x)
-  const sunX = cx + Math.sin(azRad) * Math.cos(elRad) * dist;
+  // Three.js & Blueprint: -z = back (North 0°), +x = right (East 90°), +z = front (South 180°), -x = left (West 270°)
+  const sunDirX = Math.sin(azRad);
+  const sunDirZ = -Math.cos(azRad);
+  const sunX = cx + sunDirX * Math.cos(elRad) * dist;
   const sunY = cy + Math.sin(elRad) * dist;
-  const sunZ = cz + Math.cos(azRad) * Math.cos(elRad) * dist;
+  const sunZ = cz + sunDirZ * Math.cos(elRad) * dist;
 
   // สีและอุณหภูมิแสง
   let effectiveKelvin = colorTempK;
@@ -184,6 +185,9 @@ export function calculateSunState(
     sunX,
     sunY,
     sunZ,
+    sunDirX,
+    sunDirZ,
+    relativeAzimuthDeg,
     intensity,
     isDay,
     isNight,
@@ -198,66 +202,96 @@ export function calculateSunState(
   };
 }
 
-/** คำนวณคำแนะนำสภาพแสงและแดดส่องเข้าหน้าต่าง */
+/** คำนวณคำแนะนำสภาพแสง อุณหภูมิในห้อง และแดดส่องเข้าหน้าต่าง */
 export function analyzeWindowSunlight(
   sun: SunSettings,
-  windows: Array<{ wall: "top" | "bottom" | "left" | "right" | "back"; pos: number }>
+  windows: Array<{
+    wall: "top" | "bottom" | "left" | "right" | "back";
+    pos: number;
+    width?: number;
+    outwardBaseDeg?: number;
+  }>
 ) {
   const { timeHour, orientationDeg } = sun;
   const isNight = timeHour < 5.8 || timeHour > 18.8;
 
+  // อุณหภูมิอากาศภายนอกพื้นฐาน
+  let outdoorTempC = 26;
+  if (timeHour >= 6 && timeHour < 10) outdoorTempC = 26.5 + (timeHour - 6) * 1.4;
+  else if (timeHour >= 10 && timeHour < 15) outdoorTempC = 32.5 + Math.sin(((timeHour - 10) / 5) * Math.PI) * 3.0;
+  else if (timeHour >= 15 && timeHour < 18.8) outdoorTempC = 33.5 - (timeHour - 15) * 1.2;
+  else if (timeHour >= 18.8 && timeHour < 22) outdoorTempC = 28.5 - (timeHour - 18.8) * 0.7;
+  else outdoorTempC = 25.5;
+
   if (isNight) {
+    const roomTempC = Math.round((outdoorTempC - 0.5) * 10) / 10;
     return {
       statusText: "กลางคืน (โหมดไฟห้อง & RGB)",
-      tempText: "25°C · บรรยากาศเงียบสงบ",
-      advice: "เหมาะสำหรับการเล่นเกมหรือดูหนัง แนะนำให้เปิดไฟ Ambient / LED Strip หลังโต๊ะคอมเพื่อถนอมสายตา",
+      outdoorTempC: Math.round(outdoorTempC * 10) / 10,
+      roomTempC,
+      tempText: `นอกห้อง ${Math.round(outdoorTempC)}°C · ในห้อง ~${roomTempC}°C (เปิดแอร์แนะนำ 25°C)`,
+      advice: "ไม่มีแสงแดดภายนอก เหมาะสำหรับเล่นเกมหรือทำงานกลางคืน แนะนำติดไฟเส้น LED หลังจอ/โต๊ะเพื่อลดความล้าสายตา",
       sunlightHitsWindow: false,
-      activeWall: null,
+      activeWall: null as string | null,
     };
   }
 
-  // คำนวณทิศแดด
+  // ทิศดวงอาทิตย์ (06:00 = 90° ตะวันออก -> 12:00 = 180° ใต้ -> 18:00 = 270° ตะวันตก)
   const sunAzimuth = 90 + ((timeHour - 6) / 12) * 180;
 
-  // ตรวจสอบหน้าต่างที่แดดส่องเข้า
   let directHit = false;
   let hitWallLabel = "";
+  let heatGainC = 0;
 
   for (const win of windows) {
-    const wallInfo = getWallOrientation(win.wall, orientationDeg);
-    const diff = Math.abs(((sunAzimuth - wallInfo.angleDeg + 540) % 360) - 180);
-    if (diff < 70) {
+    const wallWorldDeg =
+      win.outwardBaseDeg !== undefined
+        ? (win.outwardBaseDeg + orientationDeg) % 360
+        : getWallOrientation(win.wall, orientationDeg).angleDeg;
+    const wallInfo = degToCardinal(wallWorldDeg);
+    const diff = Math.abs(((sunAzimuth - wallWorldDeg + 540) % 360) - 180);
+    if (diff < 75) {
       directHit = true;
       hitWallLabel = wallInfo.label;
-      break;
+      const cosFactor = Math.cos((diff * Math.PI) / 180);
+      const sizeFactor = (win.width ?? 120) / 120;
+      heatGainC += (timeHour >= 12.5 ? 3.2 : 1.6) * cosFactor * sizeFactor;
     }
   }
+
+  const roomTempC = Math.round((outdoorTempC - 1.5 + Math.min(4.5, heatGainC)) * 10) / 10;
+  outdoorTempC = Math.round(outdoorTempC * 10) / 10;
 
   if (directHit) {
     if (timeHour >= 13) {
       return {
-        statusText: `แดดบ่ายส่องเข้า ${hitWallLabel}`,
-        tempText: "33°C - 35°C · แดดแรง",
-        advice: "แสงแดดช่วงบ่ายมีความร้อนและแสงสะท้อนสูง แนะนำให้ดึงม่านหรือมู่ลี่ลง และวางหน้าจอไม่ให้หันหลังให้หน้าต่างเพื่อกันแสงสะท้อน",
-        sunlightHitsWindow: true,
-        activeWall: hitWallLabel,
-      };
-    } else {
-      return {
-        statusText: `แสงแดดยามเช้าส่องเข้า ${hitWallLabel}`,
-        tempText: "28°C - 30°C · อบอุ่นสดใส",
-        advice: "แสงเช้าช่วยให้ตื่นตัว กระปรี้กระเปร่า เหมาะแก่การเริ่มต้นทำงาน เปิดม่านรับแสงธรรมชาติได้สบายตา",
+        statusText: `แดดบ่ายส่องเข้าหน้าต่างฝั่ง${hitWallLabel}`,
+        outdoorTempC,
+        roomTempC,
+        tempText: `นอกห้อง ${outdoorTempC}°C · ในห้องสะสมความร้อน ~${roomTempC}°C`,
+        advice: "แสงแดดบ่ายส่องตรงเข้าหน้าต่างทำให้อุณหภูมิห้องสูงขึ้นและเกิดแสงสะท้อนบนจอ แนะนำติดมู่ลี่/ม่านกัน UV และหันจอตั้งฉากกับหน้าต่าง",
         sunlightHitsWindow: true,
         activeWall: hitWallLabel,
       };
     }
+    return {
+      statusText: `แสงแดดเช้า-กลางวันส่องเข้าฝั่ง${hitWallLabel}`,
+      outdoorTempC,
+      roomTempC,
+      tempText: `นอกห้อง ${outdoorTempC}°C · ในห้องอบอุ่น ~${roomTempC}°C`,
+      advice: "แสงแดดธรรมชาติส่องเข้าห้องกำลังสดใส ช่วยให้ตื่นตัวเวลาทำงาน หากแสงจ้าเกินไปสามารถปรับมู่ลี่กรองแสงได้",
+      sunlightHitsWindow: true,
+      activeWall: hitWallLabel,
+    };
   }
 
   return {
-    statusText: "ห้องรับแสงสะท้อนธรรมชาติ (Indirect Light)",
-    tempText: "29°C · แสงนุ่มสบายตา",
-    advice: "ไม่มีแดดส่องตรงเข้าหน้าต่าง แสงธรรมชาติกำลังดี ไม่เกิดแสงสะท้อนแยงตาบนหน้าจอคอมพิวเตอร์",
+    statusText: "ห้องร่มรับแสงสว่างธรรมชาติ (แดดไม่ส่องตรง)",
+    outdoorTempC,
+    roomTempC,
+    tempText: `นอกห้อง ${outdoorTempC}°C · ในห้องร่มเย็น ~${roomTempC}°C`,
+    advice: "ดวงอาทิตย์ไม่ได้ส่องเข้าหน้าต่างโดยตรง ห้องจึงไม่สะสมความร้อนและไม่มีแสงแยงตาบนหน้าจอคอมพิวเตอร์",
     sunlightHitsWindow: false,
-    activeWall: null,
+    activeWall: null as string | null,
   };
 }

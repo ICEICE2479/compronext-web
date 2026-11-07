@@ -6,6 +6,14 @@ import type { SunSettings } from "./sun-simulation";
  * หน่วยทั้งหมดเป็น ซม. · จุดเริ่ม (0,0) = มุมห้องด้านหลังซ้าย · x = ความกว้างห้อง (ซ้าย→ขวา) · z = ความลึก (ผนังหลัง→ด้านหน้า)
  */
 
+export interface RoomOpeningSpec {
+  id: string;
+  edgeIndex?: number;
+  wall: "top" | "bottom" | "left" | "right";
+  pos: number;
+  width: number;
+}
+
 export interface RoomSize {
   /** กว้าง (ผนังหลัง) */
   w: number;
@@ -21,6 +29,10 @@ export interface RoomSize {
   orientation?: number;
   /** การตั้งค่าแสงอาทิตย์และเวลา */
   sunSettings?: SunSettings;
+  /** รายการหน้าต่างทั้งหมดตามด้านผนัง */
+  windows?: RoomOpeningSpec[];
+  /** รายการประตูทั้งหมดตามด้านผนัง */
+  doors?: RoomOpeningSpec[];
 }
 
 export const DEFAULT_ROOM: RoomSize = { w: 300, d: 300, h: 260 };
