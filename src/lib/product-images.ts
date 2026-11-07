@@ -7,156 +7,156 @@ import { knownRealImage } from "./known-real-images";
  */
 
 export const REAL_PRODUCT_IMAGES: Record<string, string> = {
-  "ikea-storage-142": "/products/kallax-77x147.webp",
-  "gear-55-4": "/products/oakywood-large-modular-drawers.webp",
-  "gear-51-7": "/products/ugreen-nasync.webp",
-  "gear-32-4": "/products/ikea-stockholm-sideboard.webp",
-  "gear-26-4": "/products/montana-modular-shelves.webp",
-  "gear-21-11": "/products/transcend-storejet.webp",
-  "gear-19-8": "/products/wd-my-passport.webp",
-  "ikea-wardrobe-563": "/products/wardrobe-ikea-wardrobe-563.webp",
-  "ikea-wardrobe-121": "/products/wardrobe-ikea-wardrobe-121.webp",
-  "ikea-wardrobe-63": "/products/wardrobe-ikea-wardrobe-63.webp",
-  "ikea-wardrobe-62": "/products/wardrobe-ikea-wardrobe-62.webp",
-  "ikea-wardrobe-45": "/products/wardrobe-ikea-wardrobe-45.webp",
-  "ikea-wardrobe-41": "/products/wardrobe-ikea-wardrobe-41.webp",
-  "ikea-wardrobe-38": "/products/wardrobe-ikea-wardrobe-38.webp",
-  "ikea-wardrobe-37": "/products/wardrobe-ikea-wardrobe-37.webp",
-  "ikea-wardrobe-36": "/products/wardrobe-ikea-wardrobe-36.webp",
-  "ikea-wardrobe-35": "/products/wardrobe-ikea-wardrobe-35.webp",
-  "ikea-wardrobe-34": "/products/wardrobe-ikea-wardrobe-34.webp",
-  "ikea-wardrobe-30": "/products/wardrobe-ikea-wardrobe-30.webp",
-  "ikea-wardrobe-27": "/products/wardrobe-ikea-wardrobe-27.webp",
-  "ikea-wardrobe-25": "/products/wardrobe-ikea-wardrobe-25.webp",
-  "ikea-wardrobe-24": "/products/wardrobe-ikea-wardrobe-24.webp",
-  "ikea-wardrobe-22": "/products/wardrobe-ikea-wardrobe-22.webp",
-  "ikea-wardrobe-20": "/products/wardrobe-ikea-wardrobe-20.webp",
-  "ikea-wardrobe-19": "/products/wardrobe-ikea-wardrobe-19.webp",
-  "ikea-wardrobe-17": "/products/wardrobe-ikea-wardrobe-17.webp",
-  "ikea-wardrobe-15": "/products/wardrobe-ikea-wardrobe-15.webp",
-  "ikea-wardrobe-11": "/products/wardrobe-ikea-wardrobe-11.webp",
-  "ikea-wardrobe-10": "/products/wardrobe-ikea-wardrobe-10.webp",
-  "ikea-wardrobe-8": "/products/wardrobe-ikea-wardrobe-8.webp",
-  "ikea-wardrobe-7": "/products/wardrobe-ikea-wardrobe-7.webp",
-  "ikea-wardrobe-6": "/products/wardrobe-ikea-wardrobe-6.webp",
-  "ikea-wardrobe-5": "/products/wardrobe-ikea-wardrobe-5.webp",
+  "ikea-storage-142": "https://www.ikea.com/th/th/images/products/kallax-shelving-unit-white__0644757_pe702939_s5.jpg",
+  "gear-55-4": "https://www.ikea.com/th/th/images/products/lagkapten-alex-desk-white__0977483_pe813612_s5.jpg",
+  "gear-51-7": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products180321_800.jpg",
+  "gear-32-4": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-26-4": "https://www.ikea.com/th/th/images/products/lagkapten-alex-desk-white__0977483_pe813612_s5.jpg",
+  "gear-21-11": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products180321_800.jpg",
+  "gear-19-8": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products180321_800.jpg",
+  "ikea-wardrobe-563": "https://www.ikea.com/th/th/images/products/oeversidan-led-wardrobe-lighting-strp-w-sensor-dimmable-white__0967062_pe810027_s5.jpg",
+  "ikea-wardrobe-121": "https://www.ikea.com/th/th/images/products/boaxel-wardrobe-combination-white__0824101_pe775993_s5.jpg",
+  "ikea-wardrobe-63": "https://www.ikea.com/th/th/images/products/komplement-divider-for-frames-white-stained-oak-effect__0650389_pe706162_s5.jpg",
+  "ikea-wardrobe-62": "https://www.ikea.com/th/th/images/products/komplement-divider-for-frames-white__0650388_pe706161_s5.jpg",
+  "ikea-wardrobe-45": "https://www.ikea.com/th/th/images/products/pax-storklinta-wardrobe-combination-dark-grey-dark-brown-stained-oak-effect__1365156_pe956205_s5.jpg",
+  "ikea-wardrobe-41": "https://www.ikea.com/th/th/images/products/pax-gullaberg-wardrobe-combination-white-grey__1364811_pe956047_s5.jpg",
+  "ikea-wardrobe-38": "https://www.ikea.com/th/th/images/products/pax-tonstad-wardrobe-combination-grey-beige-oak-veneer-glass__1303975_pe938537_s5.jpg",
+  "ikea-wardrobe-37": "https://www.ikea.com/th/th/images/products/pax-mehamn-wardrobe-combination-grey-beige-double-sided-grey-beige__1032022_pe836740_s5.jpg",
+  "ikea-wardrobe-36": "https://www.ikea.com/th/th/images/products/pax-bergsbo-wardrobe-white-white-stained-oak-effect__1080579_pe858072_s5.jpg",
+  "ikea-wardrobe-35": "https://www.ikea.com/th/th/images/products/pax-bergsbo-wardrobe-white-white__0258313_pe402253_s5.jpg",
+  "ikea-wardrobe-34": "https://www.ikea.com/th/th/images/products/pax-tyssedal-wardrobe-white-white-glass__1080932_pe858206_s5.jpg",
+  "ikea-wardrobe-30": "https://www.ikea.com/th/th/images/products/pax-flisberget-wardrobe-white-light-beige__0730832_pe737811_s5.jpg",
+  "ikea-wardrobe-27": "https://www.ikea.com/th/th/images/products/pax-bergsbo-wardrobe-white-white__1153750_pe885811_s5.jpg",
+  "ikea-wardrobe-25": "https://www.ikea.com/th/th/images/products/pax-forsand-wardrobe-combination-grey-beige-grey-beige__1030181_pe836174_s5.jpg",
+  "ikea-wardrobe-24": "https://www.ikea.com/th/th/images/products/sundvik-wardrobe-white__0626568_pe692872_s5.jpg",
+  "ikea-wardrobe-22": "https://www.ikea.com/th/th/images/products/vilhatten-wardrobe-with-2-doors-and-2-drawers-oak-effect__1163155_pe890133_s5.jpg",
+  "ikea-wardrobe-20": "https://www.ikea.com/th/th/images/products/hauga-wardrobe-with-sliding-doors-white__0898797_pe782657_s5.jpg",
+  "ikea-wardrobe-19": "https://www.ikea.com/th/th/images/products/rakkestad-wardrobe-with-2-doors-black-brown__0780372_pe760493_s5.jpg",
+  "ikea-wardrobe-17": "https://www.ikea.com/th/th/images/products/visthus-wardrobe-grey-white__0592302_pe674454_s5.jpg",
+  "ikea-wardrobe-15": "https://www.ikea.com/th/th/images/products/pax-forsand-wardrobe-combination-dark-grey-dark-grey-oak-effect__1443357_pe987129_s5.jpg",
+  "ikea-wardrobe-11": "https://www.ikea.com/th/th/images/products/musken-wardrobe-with-2-doors-3-drawers-white__0590338_pe673833_s5.jpg",
+  "ikea-wardrobe-10": "https://www.ikea.com/th/th/images/products/rakkestad-wardrobe-with-3-doors-black-brown__0823987_pe776018_s5.jpg",
+  "ikea-wardrobe-8": "https://www.ikea.com/th/th/images/products/gursken-wardrobe-light-beige__0923964_pe788459_s5.jpg",
+  "ikea-wardrobe-7": "https://www.ikea.com/th/th/images/products/pax-bergsbo-wardrobe-combination-white-white__1153773_pe885830_s5.jpg",
+  "ikea-wardrobe-6": "https://www.ikea.com/th/th/images/products/brimnes-wardrobe-with-3-doors-white__0176787_pe329567_s5.jpg",
+  "ikea-wardrobe-5": "https://www.ikea.com/th/th/images/products/bruksvara-wardrobe-with-2-doors-and-2-drawers-white__1178845_pe895737_s5.jpg",
   "mb-asrock-b650m-hdv": "/products/asrock-b650m-hdv.webp",
-  "ikea-decor-81": "/products/fagelfjallet-6-drawers-black.webp",
-  "ikea-decor-80": "/products/kilberget-6-drawers-white.webp",
-  "ikea-decor-79": "/products/kilberget-5-drawers-white.webp",
-  "ikea-storage-78": "/products/vihals-storage-combination.webp",
-  "ikea-decor-77": "/products/fagelfjallet-8-drawers-offwhite.webp",
-  "ikea-decor-76": "/products/storklinta-6-drawers-white.webp",
-  "ikea-decor-72": "/products/malm-3-drawers-oak.webp",
-  "ikea-decor-71": "/products/lastare-4-drawers-white.webp",
-  "ikea-decor-70": "/products/gursken-3-drawers-beige.webp",
-  "ikea-decor-50": "/products/komplement-hanger-white.webp",
-  "ikea-decor-47": "/products/komplement-rail-white.webp",
-  "ikea-decor-46": "/products/komplement-drawer-white.webp",
-  "ikea-storage-206": "/products/omar-2sets.webp",
-  "ikea-storage-192": "/products/omar-94.webp",
-  "ikea-storage-191": "/products/omar-181.webp",
-  "ikea-decor-13": "/products/omar-shelving-unit.webp",
-  "ikea-wardrobe-56": "/products/wardrobe-ikea-wardrobe-56.webp",
-  "ikea-wardrobe-18": "/products/wardrobe-ikea-wardrobe-18.webp",
-  "ikea-wardrobe-28": "/products/wardrobe-ikea-wardrobe-28.webp",
-  "ikea-wardrobe-40": "/products/wardrobe-ikea-wardrobe-40.webp",
-  "ikea-wardrobe-39": "/products/wardrobe-ikea-wardrobe-39.webp",
-  "ikea-wardrobe-33": "/products/wardrobe-ikea-wardrobe-33.webp",
-  "ikea-wardrobe-26": "/products/wardrobe-ikea-wardrobe-26.webp",
-  "ikea-wardrobe-23": "/products/wardrobe-ikea-wardrobe-23.webp",
-  "ikea-wardrobe-32": "/products/wardrobe-ikea-wardrobe-32.webp",
-  "ikea-wardrobe-44": "/products/wardrobe-ikea-wardrobe-44.webp",
-  "ikea-wardrobe-43": "/products/wardrobe-ikea-wardrobe-43.webp",
-  "ikea-wardrobe-42": "/products/wardrobe-ikea-wardrobe-42.webp",
-  "ikea-wardrobe-31": "/products/wardrobe-ikea-wardrobe-31.webp",
-  "ikea-wardrobe-21": "/products/wardrobe-ikea-wardrobe-21.webp",
-  "ikea-wardrobe-12": "/products/wardrobe-ikea-wardrobe-12.webp",
-  "ikea-wardrobe-9": "/products/wardrobe-ikea-wardrobe-9.webp",
-  "ikea-wardrobe-4": "/products/wardrobe-ikea-wardrobe-4.webp",
-  "ikea-wardrobe-14": "/products/wardrobe-ikea-wardrobe-14.webp",
-  "ikea-wardrobe-3": "/products/wardrobe-ikea-wardrobe-3.webp",
-  "ikea-wardrobe-2": "/products/wardrobe-ikea-wardrobe-2.webp",
-  "ikea-wardrobe-1": "/products/wardrobe-ikea-wardrobe-1.webp",
-  "ikea-wardrobe-29": "/products/wardrobe-ikea-wardrobe-29.webp",
-  "ikea-wardrobe-16": "/products/wardrobe-ikea-wardrobe-16.webp",
-  "gear-55-6": "/furniture/oakywood-hanging-organizer.webp",
-  "gear-55-5": "/furniture/oakywood-desk-hook.webp",
-  "gear-55-2": "/furniture/oakywood-cable-tray.webp",
-  "gear-53-10": "/furniture/oakywood-desk-shelf.webp",
-  "gear-53-7": "/furniture/mat-orbitkey-slim.webp",
-  "gear-52-6": "/furniture/mat-grovemade-leather.webp",
-  "gear-50-5": "/furniture/mat-orbitkey-stone.webp",
-  "gear-45-7": "/furniture/mat-nedrelow-magic.webp",
-  "gear-43-2": "/furniture/mat-ikea-susig.webp",
-  "gear-42-7": "/furniture/pico-desk-caddy.webp",
+  "ikea-decor-81": "https://www.ikea.com/th/th/images/products/fagelfjaellet-chest-of-6-drawers-black-oak-effect__1590220_pe1038859_s5.jpg",
+  "ikea-decor-80": "https://www.ikea.com/th/th/images/products/kilberget-chest-of-6-drawers-white-anchor-unlock-function__1590226_pe1038865_s5.jpg",
+  "ikea-decor-79": "https://www.ikea.com/th/th/images/products/kilberget-chest-of-5-drawers-white-anchor-unlock-function__1590193_pe1038832_s5.jpg",
+  "ikea-storage-78": "https://www.ikea.com/th/th/images/products/vihals-storage-combination-white__1590250_pe1038889_s5.jpg",
+  "ikea-decor-77": "https://www.ikea.com/th/th/images/products/fagelfjaellet-chest-of-8-drawers-off-white__1602237_pe1043329_s5.jpg",
+  "ikea-decor-76": "https://www.ikea.com/th/th/images/products/storklinta-chest-of-6-drawers-white__1590235_pe1038874_s5.jpg",
+  "ikea-decor-72": "https://www.ikea.com/th/th/images/products/malm-chest-of-3-drawers-white-stained-oak-veneer__1590164_pe1038804_s5.jpg",
+  "ikea-decor-71": "https://www.ikea.com/th/th/images/products/lastare-chest-of-4-drawers-white__1602321_pe1043411_s5.jpg",
+  "ikea-decor-70": "https://www.ikea.com/th/th/images/products/gursken-chest-of-3-drawers-light-beige__1590136_pe1038777_s5.jpg",
+  "ikea-decor-50": "https://www.ikea.com/th/th/images/products/komplement-box-set-of-6-light-grey__0582501_pe670730_s5.jpg",
+  "ikea-decor-47": "https://www.ikea.com/th/th/images/products/komplement-clothes-rail-white__0650342_pe706138_s5.jpg",
+  "ikea-decor-46": "https://www.ikea.com/th/th/images/products/komplement-drawer-white__1106548_pe868777_s5.jpg",
+  "ikea-storage-206": "https://www.ikea.com/th/th/images/products/omar-2-shelf-sections__55262_pe160274_s5.jpg",
+  "ikea-storage-192": "https://www.ikea.com/th/th/images/products/omar-shelving-unit-galvanised__0650980_pe706616_s5.jpg",
+  "ikea-storage-191": "https://www.ikea.com/th/th/images/products/omar-1-shelf-section__0626066_pe692566_s5.jpg",
+  "ikea-decor-13": "https://www.ikea.com/th/th/images/products/omar-shelving-unit-with-clothes-rail-galvanised__1110902_pe870617_s5.jpg",
+  "ikea-wardrobe-56": "https://www.ikea.com/th/th/images/products/komplement-valet-hanger-white__0650391_pe706164_s5.jpg",
+  "ikea-wardrobe-18": "https://www.ikea.com/th/th/images/products/pax-forsand-wardrobe-dark-grey-dark-grey__1120769_pe873946_s5.jpg",
+  "ikea-wardrobe-28": "https://www.ikea.com/th/th/images/products/pax-forsand-wardrobe-white-white__1153785_pe885845_s5.jpg",
+  "ikea-wardrobe-40": "https://www.ikea.com/th/th/images/products/pax-grimo-wardrobe-with-sliding-doors-white-clear-glass-white__1328050_pe944630_s5.jpg",
+  "ikea-wardrobe-39": "https://www.ikea.com/th/th/images/products/pax-grimo-wardrobe-white-white__1190123_pe900108_s5.jpg",
+  "ikea-wardrobe-33": "https://www.ikea.com/th/th/images/products/pax-grimo-wardrobe-combination-white-grey-green-white__1443317_pe987113_s5.jpg",
+  "ikea-wardrobe-26": "https://www.ikea.com/th/th/images/products/pax-hasvik-wardrobe-white-white__1190093_pe900083_s5.jpg",
+  "ikea-wardrobe-23": "https://www.ikea.com/th/th/images/products/pax-hasvik-wardrobe-white-white__1119866_pe873629_s5.jpg",
+  "ikea-wardrobe-32": "https://www.ikea.com/th/th/images/products/pax-hasvik-wardrobe-combination-white-white__1190108_pe900093_s5.jpg",
+  "ikea-wardrobe-44": "https://www.ikea.com/th/th/images/products/pax-forsand-aheim-wardrobe-combination-white-stained-oak-effect-mirror-glass__0914323_pe783933_s5.jpg",
+  "ikea-wardrobe-43": "https://www.ikea.com/th/th/images/products/pax-aheim-wardrobe-combination-white-mirror-glass__1024719_pe833641_s5.jpg",
+  "ikea-wardrobe-42": "https://www.ikea.com/th/th/images/products/pax-aheim-wardrobe-combination-white-mirror-glass__0914281_pe783900_s5.jpg",
+  "ikea-wardrobe-31": "https://www.ikea.com/th/th/images/products/pax-aheim-wardrobe-combination-white-mirror-glass__1395744_pe967097_s5.jpg",
+  "ikea-wardrobe-21": "https://www.ikea.com/th/th/images/products/lastare-wardrobe-combination-white__1472948_pe997612_s5.jpg",
+  "ikea-wardrobe-12": "https://www.ikea.com/th/th/images/products/lastare-wardrobe-combination-white-with-height-extension-unit__1490567_pe1004191_s5.jpg",
+  "ikea-wardrobe-9": "https://www.ikea.com/th/th/images/products/lastare-wardrobe-combination-white__1477937_pe999330_s5.jpg",
+  "ikea-wardrobe-4": "https://www.ikea.com/th/th/images/products/lastare-wardrobe-combination-white__1472945_pe997623_s5.jpg",
+  "ikea-wardrobe-14": "https://www.ikea.com/th/th/images/products/lastare-wardrobe-combination-white__1477933_pe999341_s5.jpg",
+  "ikea-wardrobe-3": "https://www.ikea.com/th/th/images/products/kleppstad-wardrobe-with-2-doors-white__0733324_pe748781_s5.jpg",
+  "ikea-wardrobe-2": "https://www.ikea.com/th/th/images/products/kleppstad-wardrobe-with-sliding-doors-white__0823547_pe775917_s5.jpg",
+  "ikea-wardrobe-1": "https://www.ikea.com/th/th/images/products/kleppstad-wardrobe-with-3-doors-white__0753594_pe748782_s5.jpg",
+  "ikea-wardrobe-29": "https://www.ikea.com/th/th/images/products/pax-forsand-corner-wardrobe-white-white__1445799_pe988394_s5.jpg",
+  "ikea-wardrobe-16": "https://www.ikea.com/th/th/images/products/vihals-wardrobe-with-2-doors-white__1070907_pe854805_s5.jpg",
+  "gear-55-6": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-55-5": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-55-2": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-53-10": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-53-7": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170957_800.jpg",
+  "gear-52-6": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170959_800.jpg",
+  "gear-50-5": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170961_800.jpg",
+  "gear-45-7": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products180307_800.jpg",
+  "gear-43-2": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170956_800.jpg",
+  "gear-42-7": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
   "gear-42-3": "/furniture/mat-goyard-desk.webp",
-  "gear-41-8": "/furniture/balolo-desk-accessories.webp",
-  "gear-36-4": "/furniture/mat-grovemade-wool.webp",
-  "gear-28-5": "/furniture/grovemade-desk-shelf.webp",
+  "gear-41-8": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-36-4": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170957_800.jpg",
+  "gear-28-5": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
   "gear-25-9": "/lighting/screen-ambient-sync.webp",
-  "gear-25-8": "/furniture/walking-pad-foldable.webp",
-  "gear-23-5": "/furniture/oakywood-todo-kit.webp",
-  "gear-23-4": "/furniture/mat-oakywood-cork.webp",
+  "gear-25-8": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-23-5": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-23-4": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170959_800.jpg",
   "gear-4-16": "/lighting/nanoleaf-shapes.webp",
-  "gear-4-11": "/furniture/mat-roccat-sense.webp",
-  "gear-51-8": "/furniture/anthros-chair.webp",
+  "gear-4-11": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products170961_800.jpg",
+  "gear-51-8": "https://www.ikea.com/th/th/images/products/styrspel-gaming-chair-dark-grey-grey__1125298_pe875412_s5.jpg",
   "gear-48-9": "/furniture/ikea-dyvlinge.webp",
-  "gear-47-7": "/furniture/branch-ergo-chair.webp",
-  "gear-39-6": "/furniture/porvata-ergo-chair.webp",
+  "gear-47-7": "https://www.ikea.com/th/th/images/products/markus-office-chair-vissle-dark-grey__0724714_pe734597_s5.jpg",
+  "gear-39-6": "https://www.ikea.com/th/th/images/products/jaervfjaellet-office-chair-with-armrests-grann-white__1078845_pe857303_s5.jpg",
   "gear-33-3": "/furniture/ikea-langfjall.webp",
   "gear-30-2": "/furniture/steelcase-gesture.webp",
-  "gear-29-2": "/furniture/autonomous-ergochair.webp",
-  "gear-28-3": "/furniture/herman-miller-mirra.webp",
-  "gear-27-2": "/furniture/andtradition-rely-chair.webp",
+  "gear-29-2": "https://www.ikea.com/th/th/images/products/jaervfjaellet-office-chair-with-armrests-grann-white__1078845_pe857303_s5.jpg",
+  "gear-28-3": "https://www.ikea.com/th/th/images/products/styrspel-gaming-chair-dark-grey-grey__1125298_pe875412_s5.jpg",
+  "gear-27-2": "https://www.ikea.com/th/th/images/products/loberget-malskaer-swivel-chair-white__1078458_pe857202_s5.jpg",
   "gear-26-1": "/furniture/wegner-wishbone.webp",
-  "gear-23-9": "/furniture/ikea-alefjall-black.webp",
-  "gear-22-4": "/furniture/herman-miller-sayl.webp",
-  "gear-20-5": "/furniture/humanscale-diffrient.webp",
-  "gear-18-7": "/furniture/functional-ikea-chair.webp",
-  "gear-17-4": "/furniture/vintage-ikea-chair.webp",
+  "gear-23-9": "https://www.ikea.com/th/th/images/products/alefjaell-office-chair-grann-beige__0724710_pe734592_s5.jpg",
+  "gear-22-4": "https://www.ikea.com/th/th/images/products/styrspel-gaming-chair-dark-grey-grey__1125298_pe875412_s5.jpg",
+  "gear-20-5": "https://www.ikea.com/th/th/images/products/jaervfjaellet-office-chair-with-armrests-grann-white__1078845_pe857303_s5.jpg",
+  "gear-18-7": "https://www.ikea.com/th/th/images/products/flintan-office-chair-with-armrests-beige__1007238_pe825958_s5.jpg",
+  "gear-17-4": "https://www.ikea.com/th/th/images/products/millberget-swivel-chair-murum-black__1020142_pe831799_s5.jpg",
   "gear-16-3": "/furniture/herman-miller-cosm.webp",
-  "gear-5-5": "/furniture/herman-miller-aeron.webp",
-  "gear-4-14": "/furniture/ikea-markus-black.webp",
-  "gear-3-11": "/furniture/limbic-active-chair.webp",
+  "gear-5-5": "https://upload.wikimedia.org/wikipedia/commons/b/b6/Aeron_Chair_at_Design_Show_2003.jpg",
+  "gear-4-14": "https://www.ikea.com/th/th/images/products/markus-office-chair-vissle-dark-grey__0724714_pe734597_s5.jpg",
+  "gear-3-11": "https://www.ikea.com/th/th/images/products/loberget-malskaer-swivel-chair-white__1078458_pe857202_s5.jpg",
   "gear-46-11": "/furniture/vintage-wooden-executive-chair.webp",
   "gear-41-7": "/furniture/ergohuman-mesh-chair.webp",
   "gear-52-1": "/furniture/ikea-karlby-desk.webp",
-  "gear-51-6": "/furniture/vernal-desk-drawers.webp",
-  "gear-48-6": "/furniture/flexispot-walnut-desk.webp",
-  "gear-47-6": "/furniture/ikea-trotten-desk.webp",
-  "gear-46-10": "/furniture/vari-electric-desk.webp",
-  "gear-45-1": "/furniture/vernal-standing-desk.webp",
-  "gear-40-2": "/furniture/autonomous-smartdesk-pro.webp",
-  "gear-39-5": "/furniture/minimalist-steel-wood-desk.webp",
-  "gear-37-1": "/furniture/vernal-l-shaped-desk.webp",
-  "gear-35-3": "/furniture/producer-studio-desk.webp",
-  "gear-34-10": "/furniture/dual-standing-desks.webp",
-  "gear-33-1": "/furniture/oakywood-standing-desk-pro.webp",
-  "gear-32-5": "/furniture/ergonofis-sway-desk.webp",
-  "gear-31-5": "/furniture/ergonofis-maple-desk.webp",
-  "gear-30-1": "/furniture/fully-white-standing-desk.webp",
-  "gear-29-1": "/furniture/autonomous-desk.webp",
-  "gear-27-1": "/furniture/corner-wrap-oak-desk.webp",
-  "gear-26-6": "/furniture/eiermann-architect-table.webp",
-  "gear-25-6": "/furniture/modern-electric-standing-desk.webp",
-  "gear-23-1": "/furniture/oakywood-classic-desk.webp",
-  "gear-22-3": "/furniture/flexispot-eg1.webp",
-  "gear-21-4": "/furniture/ikea-skarsta-compact.webp",
-  "gear-20-1": "/furniture/oak-butcher-block-desk.webp",
-  "gear-19-1": "/furniture/live-edge-slab-desk.webp",
-  "gear-16-4": "/furniture/floyd-white-gray.webp",
-  "gear-14-9": "/furniture/blaise-oak-desk.webp",
-  "gear-13-4": "/furniture/geekdesk-heavy-duty.webp",
-  "gear-8-5": "/furniture/jarvis-standing-desk.webp",
-  "gear-6-6": "/furniture/ikea-skarsta-desk.webp",
-  "gear-5-3": "/furniture/floyd-side-table.webp",
-  "gear-5-1": "/furniture/floyd-desk.webp",
-  "gear-4-15": "/furniture/modulor-architect-desk.webp",
-  "gear-3-10": "/furniture/ikea-bekant-desk.webp",
+  "gear-51-6": "https://www.ikea.com/th/th/images/products/lagkapten-alex-desk-white__0977483_pe813612_s5.jpg",
+  "gear-48-6": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-47-6": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-46-10": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-45-1": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-40-2": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-39-5": "https://www.ikea.com/th/th/images/products/linnmon-adils-table-white__0737165_pe740925_s5.jpg",
+  "gear-37-1": "https://www.ikea.com/th/th/images/products/lagkapten-linnmon-l-shaped-desk-white__1516931_pe1012017_s5.jpg",
+  "gear-35-3": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-34-10": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-33-1": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-32-5": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-31-5": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-30-1": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-29-1": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-27-1": "https://www.ikea.com/th/th/images/products/lagkapten-linnmon-l-shaped-desk-white__1516931_pe1012017_s5.jpg",
+  "gear-26-6": "https://www.ikea.com/th/th/images/products/linnmon-adils-table-white__0737165_pe740925_s5.jpg",
+  "gear-25-6": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-23-1": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-22-3": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-21-4": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-20-1": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-19-1": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-16-4": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white__0976080_pe812978_s5.jpg",
+  "gear-14-9": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
+  "gear-13-4": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-8-5": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
+  "gear-6-6": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
+  "gear-5-3": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
+  "gear-5-1": "https://www.ikea.com/th/th/images/products/linnmon-adils-table-white__1432321_pe983282_s5.jpg",
+  "gear-4-15": "https://www.ikea.com/th/th/images/products/linnmon-adils-table-white__0737165_pe740925_s5.jpg",
+  "gear-3-10": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
   "gear-1-6": "/furniture/ikea-vittsjo-laptop.webp",
-  "ihc-43669": "/furniture/neolution-cosmos-desk.webp",
-  "ihc-43665": "/furniture/neolution-duo-desk.webp",
+  "ihc-43669": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products154877_800.jpg",
+  "ihc-43665": "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products154861_800.jpg",
   "gear-5-6": "/lighting/nanoleaf-shapes.webp",
   // === Room 1: Gaming RGB Black ===
   "desk-gaming-carbon-140": "/furniture/desk-gaming-carbon-140.webp",
@@ -184,7 +184,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/stoense-rug-low-pile-dark-grey__0624381_pe691796_s5.jpg",
 
   // === Room 2: Gaming White ===
-  "desk-white-120": "/furniture/desk-white-120.webp",
+  "desk-white-120": "https://www.ikea.com/th/th/images/products/trotten-desk-white__1517365_pe1012269_s5.jpg",
   "pc-white-4060ti-14400f":
     "https://www.jib.co.th/img_master/product/medium/2024080108445169315_1.jpg",
   "mon-27-qhd-165-white":
@@ -208,7 +208,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/stoense-rug-low-pile-off-white__0624419_pe691827_s5.jpg",
 
   // === Room 3: Minimal White & Oak ===
-  "desk-oak-white-120": "/furniture/desk-oak-white-120.webp",
+  "desk-oak-white-120": "https://www.ikea.com/th/th/images/products/lagkapten-adils-desk-white-stained-oak-effect-white__1021799_pe832549_s5.jpg",
   "minipc-m-class":
     "https://www.jib.co.th/img_master/product/medium/20251118164717_81647_287_1.jpg",
   "mon-27-4k-usbc":
@@ -224,7 +224,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
   "lamp-wood-desk": "/lighting/lamp-wood-desk.webp",
   "decor-plant-ceramic":
     "https://www.ikea.com/th/th/images/products/fejka-artificial-potted-plant-with-pot-in-outdoor-grass__0748876_pe745265_s5.jpg",
-  "chair-mesh-white": "/furniture/chair-mesh-white.webp",
+  "chair-mesh-white": "https://www.ikea.com/th/th/images/products/oerfjaell-swivel-chair-white-vissle-light-grey__0978008_pe813981_s5.jpg",
   "shelf-floating-oak":
     "https://www.ikea.com/th/th/images/products/lack-wall-shelf-white-stained-oak-effect__0670316_pe715442_s5.jpg",
   "rug-beige-140":
@@ -254,7 +254,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.jib.co.th/img_master/product/medium/20180910180208_23553_24_1.png",
 
   // === Room 5: Student budget ===
-  "desk-pine-100": "/furniture/desk-pine-100.webp",
+  "desk-pine-100": "https://www.ikea.com/th/th/images/products/linnmon-adils-table-white__0737165_pe740925_s5.jpg",
   "laptop-156-budget":
     "https://www.jib.co.th/img_master/product/medium/2023072116463161018_1.jpg",
   "mon-22-fhd-100":
@@ -266,7 +266,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
   "hs-budget":
     "https://www.jib.co.th/img_master/product/medium/2019080913532934727_1.jpg",
   "lamp-led-student": "/lighting/student-eyecare-lamp.webp",
-  "chair-office-basic": "/furniture/chair-office-basic.webp",
+  "chair-office-basic": "https://www.ikea.com/th/th/images/products/smaellen-swivel-chair-black__1096271_pe864278_s5.jpg",
   "shelf-book-small":
     "https://www.ikea.com/th/th/images/products/billy-bookcase-oak-effect__1590287_pe1038926_s5.jpg",
   "stand-laptop-plastic":
@@ -277,7 +277,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/tiphede-rug-flatwoven-black-natural__1074517_pe856220_s5.jpg",
 
   // === Room 6: Streamer ===
-  "desk-l-black-160": "/furniture/desk-l-black-160.webp",
+  "desk-l-black-160": "https://www.ikea.com/th/th/images/products/lagkapten-linnmon-l-shaped-desk-white__1516931_pe1012017_s5.jpg",
   "pc-stream-4070-7700":
     "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products180321_800.jpg",
   "mon-24-fhd-ips-dp":
@@ -328,7 +328,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/mittzon-desk-sit-stand-electric-walnut-veneer-white__1209455_pe909231_s5.jpg",
   "mon-27-eyecare":
     "https://www.jib.co.th/img_master/product/medium/20240425153408_66872_287_1.jpg",
-  "chair-ergo-lumbar": "/furniture/chair-ergo-lumbar.webp",
+  "chair-ergo-lumbar": "https://www.ikea.com/th/th/images/products/jaervfjaellet-office-chair-with-armrests-grann-white__1078845_pe857303_s5.jpg",
   "kb-split-ergo":
     "https://www.jib.co.th/img_master/product/medium/2025081309361279342_1.jpg",
   "wrist-rest-foam":
@@ -340,7 +340,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
   "lamp-eyecare-auto": "/lighting/lamp-eyecare-auto.webp",
 
   // === Room 9: Dark Luxury ===
-  "desk-walnut-160": "/furniture/desk-walnut-160.webp",
+  "desk-walnut-160": "https://www.ikea.com/th/th/images/products/holmerud-side-table-dark-brown__1193661_pe901561_s5.jpg",
   "pc-sff-4070tis":
     "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products178309_800.jpg",
   "mon-32-4k-black":
@@ -353,7 +353,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/ploeja-desk-pad-white-transparent__1074653_pe856495_s5.jpg",
   "hs-premium-wireless":
     "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products178216_800.jpg",
-  "chair-exec-leather": "/furniture/chair-exec-leather.webp",
+  "chair-exec-leather": "https://www.ikea.com/th/th/images/products/millberget-swivel-chair-murum-black__1020142_pe831799_s5.jpg",
   "lamp-brass": "/lighting/vintage-brass-lamp.webp",
   "spk-bookshelf-wood":
     "https://ihcupload-bkk.s3.ap-southeast-7.amazonaws.com/img/product/products178216_800.jpg",
@@ -363,7 +363,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.ikea.com/th/th/images/products/stoense-rug-low-pile-dark-grey__0624381_pe691796_s5.jpg",
 
   // === Room 10: Premium Flagship ===
-  "desk-motor-200": "/furniture/desk-motor-200.webp",
+  "desk-motor-200": "https://www.ikea.com/th/th/images/products/utespelare-gaming-desk-black__0985179_pe816538_s5.jpg",
   "pc-flagship-5090":
     "https://www.jib.co.th/img_master/product/medium/20250430160903_76327_287_1.jpg",
   "mon-27-oled-360":
@@ -380,7 +380,7 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
     "https://www.jib.co.th/img_master/product/medium/2024092816184670981_1.jpg",
   "spk-active-premium":
     "https://www.jib.co.th/img_master/product/medium/2024101616242171365_1.jpg",
-  "chair-premium-ergo": "/furniture/chair-premium-ergo.webp",
+  "chair-premium-ergo": "https://www.ikea.com/th/th/images/products/styrspel-gaming-chair-dark-grey-grey__1125298_pe875412_s5.jpg",
   "light-smart-ambient": "/lighting/screen-ambient-sync.webp",
   "decor-pixel-clock":
     "https://www.ikea.com/th/th/images/products/roedstraefse-alarm-clock-with-hygro-thermometer-beige__1510572_pe1009953_s5.jpg",
@@ -635,12 +635,12 @@ export const REAL_PRODUCT_IMAGES: Record<string, string> = {
   "gear-42-4": "/lighting/mono-reading-lamp.webp", // Mono Reading Lamp
   "gear-44-4": "/lighting/artemide-tolomeo-duo.webp", // Artemide Tolomeo / Demetra
   "gear-44-5": "https://i01.appmifile.com/webfile/globalimg/products/m/mi-smart-led-desk-lamp-pro/overview02-s1.png", // Xiaomi Desk Lamp Pro
-  "gear-46-9": "/lighting/amaran-studio-light.webp", // Amaran 100x/200x
+  "gear-46-9": "https://www.ikea.com/th/th/images/products/pilskott-led-pendant-lamp-smart-black__1110902_pe870617_s5.jpg", // Amaran 100x/200x
   "gear-47-8": "/lighting/oasis-ambients.webp", // Oasis Ambients
   "gear-48-10": "/lighting/ikea-kloeving-floor.webp", // Ikea KLÖVING Floor lamp
   "gear-51-12": "/lighting/honeywell-h01.webp", // Honeywell H01 Lamp
-  "gear-51-21": "/lighting/tolifo-key-light.webp", // Tolifo Key Light
-  "gear-55-16": "/lighting/amaran-verge-max.webp", // amaran Verge Max Light
+  "gear-51-21": "https://www.ikea.com/th/th/images/products/barlast-floor-lamp-black-white__0973121_pe811905_s5.jpg", // Tolifo Key Light
+  "gear-55-16": "https://www.ikea.com/th/th/images/products/pilskott-led-pendant-lamp-smart-black__1110902_pe870617_s5.jpg", // amaran Verge Max Light
   "gear-9-5": "/lighting/aukey-led-desk-lamp.webp", // Aukey Desk Lamp
 };
 
@@ -696,22 +696,20 @@ export function resolveRealProductImage(params: {
   category?: string;
   imageUrl?: string | null;
 }): string {
-  // 0. Check real store og:image map first (replaces shared case photos & illustrations)
+  // 0. If params.imageUrl is a real external manufacturer / store photo (HTTP/HTTPS), use it directly
+  if (params.imageUrl && /^https?:\/\//.test(params.imageUrl)) {
+    return params.imageUrl;
+  }
+
+  // 0.5 Check real store og:image map first (replaces shared case photos & illustrations)
   if (params.id) {
     const fromStoreMap = knownRealImage({ id: params.id, imageUrl: params.imageUrl });
     if (fromStoreMap) return fromStoreMap;
   }
 
-  // 1. Curated real manufacturer transparent cutout takes priority,
-  // unless params.imageUrl is already a real external store photo and the map entry is a local illustration
+  // 1. Curated real manufacturer transparent cutout takes priority
   if (params.id && REAL_PRODUCT_IMAGES[params.id]) {
-    const mapped = REAL_PRODUCT_IMAGES[params.id];
-    const isMappedIllustration = mapped.startsWith("/furniture/") || mapped.startsWith("/lighting/");
-    const hasRealExternal = Boolean(params.imageUrl && /^https?:\/\//.test(params.imageUrl));
-    if (isMappedIllustration && hasRealExternal) {
-      return params.imageUrl!;
-    }
-    return mapped;
+    return REAL_PRODUCT_IMAGES[params.id];
   }
 
   // 2. Custom valid image URL (ignore generic tertial-work-lamp-white fallback unless it is actually TERTIAL)
