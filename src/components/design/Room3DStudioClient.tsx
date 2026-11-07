@@ -25,6 +25,10 @@ import {
   Trash2,
   Undo2,
   X,
+  Compass,
+  Clock,
+  Thermometer,
+  ChevronDown,
 } from "lucide-react";
 import { toast, openCartDrawer } from "@/lib/toast";
 import Spinner from "@/components/Spinner";
@@ -44,6 +48,12 @@ import type { Product } from "@/lib/types";
 import { MyDreamSetupBlueprint, type BlueprintDoor, type BlueprintWindow } from "./MyDreamSetupBlueprint";
 import type { RoomPlanner3DHandle } from "./RoomPlanner3D";
 import { displayPhotoSrc } from "@/lib/own-storage";
+import {
+  DEFAULT_SUN_SETTINGS,
+  degToCardinal,
+  analyzeWindowSunlight,
+  type SunSettings,
+} from "@/lib/sun-simulation";
 
 const RoomPlanner3D = dynamic(
   () => import("./RoomPlanner3D").then((m) => m.RoomPlanner3D),
@@ -117,6 +127,8 @@ export function Room3DStudioClient() {
   const [items, setItemsState] = useState<PlanItem[]>([]);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [night, setNight] = useState(false);
+  const [sunSettings, setSunSettings] = useState<SunSettings>(DEFAULT_SUN_SETTINGS);
+  const [sun3DPanelOpen, setSun3DPanelOpen] = useState(false);
   const productsMap = useRef<Map<string, FoundProduct>>(new Map());
 
   // Undo history
@@ -359,10 +371,17 @@ export function Room3DStudioClient() {
             room={room}
             doors={doors}
             windows={windows}
-            onChange={(nextRoom, nextDoors, nextWindows) => {
+            sunSettings={sunSettings}
+            onChange={(nextRoom, nextDoors, nextWindows, nextSunSettings) => {
               setRoom(nextRoom);
               setDoors(nextDoors);
               setWindows(nextWindows);
+              setSunSettings(nextSunSettings);
+              if (nextSunSettings.timeHour >= 19 || nextSunSettings.timeHour < 6) {
+                setNight(true);
+              } else {
+                setNight(false);
+              }
             }}
             onProceedTo3D={handleProceedTo3D}
           />
@@ -389,10 +408,41 @@ export function Room3DStudioClient() {
 
             {/* Quick Actions & Toggles */}
             <div className="flex items-center gap-2">
+              {/* Sun & Compass Control Toggle */}
+              <button
+                type="button"
+                onClick={() => setSun3DPanelOpen((v) => !v)}
+                title="ปรับแสงอาทิตย์ เวลา และทิศทางเข็มทิศ"
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                  sun3DPanelOpen
+                    ? "bg-amber-400 text-slate-950 shadow-sm"
+                    : "bg-ink-100 text-ink-800 hover:bg-ink-200"
+                }`}
+              >
+                <Sun className="h-3.5 w-3.5 text-amber-600" />
+                <span>
+                  {Math.floor(sunSettings.timeHour)}:
+                  {Math.round((sunSettings.timeHour % 1) * 60)
+                    .toString()
+                    .padStart(2, "0")}{" "}
+                  น. ({degToCardinal(sunSettings.orientationDeg).cardinal})
+                </span>
+                <ChevronDown className={`h-3 w-3 transition-transform ${sun3DPanelOpen ? "rotate-180" : ""}`} />
+              </button>
+
               {/* Day / Night Toggle */}
               <button
                 type="button"
-                onClick={() => setNight((v) => !v)}
+                onClick={() => {
+                  setNight((prev) => {
+                    const nextNight = !prev;
+                    setSunSettings((s) => ({
+                      ...s,
+                      timeHour: nextNight ? 21.5 : 14.5,
+                    }));
+                    return nextNight;
+                  });
+                }}
                 title={night ? "สลับเป็นโหมดกลางวัน" : "สลับเป็นโหมดกลางคืน (ไฟ RGB)"}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
                   night
@@ -453,6 +503,88 @@ export function Room3DStudioClient() {
             </div>
           </div>
 
+          {/* 3D Sunlight & Compass Expandable Strip */}
+          {sun3DPanelOpen && (
+            <div className="border-b border-ink-200 bg-ink-50/95 px-4 py-2.5 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 font-semibold text-ink-700">
+                  <Compass className="h-4 w-4 text-info" />
+                  <span>ทิศห้อง:</span>
+                  <span className="font-bold text-info">
+                    {degToCardinal(sunSettings.orientationDeg).label} ({sunSettings.orientationDeg}°)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {[
+                    { label: "N", deg: 0 },
+                    { label: "E", deg: 90 },
+                    { label: "S", deg: 180 },
+                    { label: "W", deg: 270 },
+                  ].map(({ label, deg }) => (
+                    <button
+                      key={deg}
+                      type="button"
+                      onClick={() =>
+                        setSunSettings((prev) => ({ ...prev, orientationDeg: deg }))
+                      }
+                      className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
+                        sunSettings.orientationDeg === deg
+                          ? "bg-info text-white shadow-sm"
+                          : "bg-surface border border-ink-200 hover:bg-ink-100 text-ink-800"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 font-semibold text-ink-700">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  <span>เวลา:</span>
+                  <span className="font-bold text-amber-600">
+                    {Math.floor(sunSettings.timeHour)}:
+                    {Math.round((sunSettings.timeHour % 1) * 60)
+                      .toString()
+                      .padStart(2, "0")}{" "}
+                    น.
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {[
+                    { label: "🌅 07:00", hour: 7.0, k: 3200 },
+                    { label: "☀️ 12:00", hour: 12.0, k: 5800 },
+                    { label: "🌇 15:30", hour: 15.5, k: 4500 },
+                    { label: "🌄 18:00", hour: 18.0, k: 2800 },
+                    { label: "🌙 21:30", hour: 21.5, k: 7000 },
+                  ].map(({ label, hour, k }) => (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() => {
+                        setSunSettings((prev) => ({
+                          ...prev,
+                          timeHour: hour,
+                          colorTempK: k,
+                        }));
+                        if (hour >= 19 || hour < 6) setNight(true);
+                        else setNight(false);
+                      }}
+                      className={`rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
+                        Math.abs(sunSettings.timeHour - hour) < 0.5
+                          ? "bg-amber-400 text-slate-950 shadow-sm"
+                          : "bg-surface border border-ink-200 hover:bg-ink-100 text-ink-800"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 3D Viewport Canvas Container */}
           <div className="relative h-[520px] w-full bg-slate-950 sm:h-[600px]">
             <RoomPlanner3D
@@ -461,6 +593,7 @@ export function Room3DStudioClient() {
               items={items}
               selected={selectedUid}
               night={night}
+              sunSettings={sunSettings}
               onSelect={setSelectedUid}
               onMove={(uid, x, z, y) => {
                 setItems((prev) =>

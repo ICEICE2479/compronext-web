@@ -1,4 +1,5 @@
 import { parseShape, rectInShape, shapeBounds, shapeMetrics, type Pt2 } from "./room-shape";
+import type { SunSettings } from "./sun-simulation";
 
 /**
  * ห้อง 3D จัดเอง (ตรรกะล้วน ไม่แตะ DOM — ทดสอบได้)
@@ -16,6 +17,10 @@ export interface RoomSize {
   win?: { wall: "back" | "left" | "none"; pos: number };
   /** รูปห้องจริงจากการวัด (แปลน ซม. วนตามลำดับ) · ไม่มี = สี่เหลี่ยม w × d */
   shape?: Pt2[];
+  /** ทิศของห้อง (องศาเข็มทิศ 0 - 359): 0° = เหนือ (North) */
+  orientation?: number;
+  /** การตั้งค่าแสงอาทิตย์และเวลา */
+  sunSettings?: SunSettings;
 }
 
 export const DEFAULT_ROOM: RoomSize = { w: 300, d: 300, h: 260 };

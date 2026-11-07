@@ -7,6 +7,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { fabricTex, plasterTex } from "./room3d-textures";
 import { dragTo, footprint, settleOnTop, type PlanItem, type RoomSize } from "@/lib/room-planner";
 import { buildItem, CM, disposeGroup, makeMats } from "./room3d-models";
+import { calculateSunState, type SunSettings } from "@/lib/sun-simulation";
 
 export interface RoomPlanner3DHandle {
   /** ภาพมุมกล้องปัจจุบัน (ใช้ส่งให้ AI วาดเป็นห้องจริง) + ตำแหน่งของแต่ละชิ้นบนภาพ (%) ไว้วางจุดแตะ */
@@ -19,6 +20,7 @@ interface Props {
   items: PlanItem[];
   selected: string | null;
   night: boolean;
+  sunSettings?: SunSettings;
   onSelect: (uid: string | null) => void;
   onMove: (uid: string, x: number, z: number, y: number) => void;
 }
@@ -80,7 +82,7 @@ function floorTexture(room: RoomSize) {
  * ห้อง 3D แบบไดโอรามา (ผนังหลัง + ผนังซ้าย ตัดผนังหน้าออกให้เห็นข้างใน)
  * ลากของบนพื้นเพื่อย้าย · ลากพื้นที่ว่างเพื่อหมุนมุมกล้อง · หยิกเพื่อซูม
  */
-export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D({ room, items, selected, night, onSelect, onMove }, ref) {
+export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D({ room, items, selected, night, sunSettings, onSelect, onMove }, ref) {
   const mountRef = useRef<HTMLDivElement>(null);
   const api = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -465,12 +467,24 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         add(new THREE.BoxGeometry(0.02, 0.02, D), led(), 0.03, H - 0.05, D / 2, false);
       }
     }
-    // แสง
-    a.lights.hemi.intensity = night ? 0.5 : 0.9;
-    a.lights.sun.intensity = night ? 0.45 : 2.1;
-    a.lights.sun.color.set(night ? "#9aa8ff" : "#fff1dc");
-    a.lights.sun.position.set(W * 0.7, H + 3, D + 2.5);
+    // จำลองแสงอาทิตย์ & สภาพอากาศตามเวลาจริง
+    const activeSun: SunSettings = sunSettings || room.sunSettings || {
+      timeHour: night ? 21.5 : 14.5,
+      orientationDeg: room.orientation || 0,
+      colorTempK: 5200,
+      sunIntensity: 1.8,
+    };
+    const sunState = calculateSunState(activeSun, room.w, room.d, room.h);
+
+    a.lights.hemi.color.set(sunState.hemiSky);
+    a.lights.hemi.groundColor.set(sunState.hemiGround);
+    a.lights.hemi.intensity = sunState.isNight ? 0.38 : 0.88;
+
+    a.lights.sun.intensity = sunState.intensity;
+    a.lights.sun.color.set(sunState.sunColor);
+    a.lights.sun.position.set(sunState.sunX, sunState.sunY, sunState.sunZ);
     a.lights.sun.target.position.set(W / 2, 0, D / 2);
+
     const sc = a.lights.sun.shadow.camera;
     sc.left = -Math.max(W, D);
     sc.right = Math.max(W, D);
@@ -478,11 +492,14 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     sc.bottom = -Math.max(W, D);
     sc.far = 30;
     sc.updateProjectionMatrix();
-    a.lights.win.intensity = night || !hasWin ? 0 : 1.2;
+
+    // แสงหน้าต่าง (Window glow)
+    a.lights.win.intensity = !hasWin || sunState.isNight ? 0 : 1.35;
+    a.lights.win.color.set(sunState.sunColor);
     a.lights.win.position.copy(winLight);
-    a.renderer.toneMappingExposure = night ? 1.25 : 1;
+    a.renderer.toneMappingExposure = sunState.isNight ? 1.25 : 1.05;
     a.fit();
-  }, [room, night]);
+  }, [room, night, sunSettings]);
 
   // ---------- ของในห้อง (สร้างใหม่เฉพาะชิ้นที่ขนาด/หมวด/สีเปลี่ยน) ----------
   useEffect(() => {
