@@ -149,6 +149,7 @@ export function Room3DStudioClient() {
   const [canUndo, setCanUndo] = useState(false);
 
   const planner3DRef = useRef<RoomPlanner3DHandle>(null);
+  const catalogAsideRef = useRef<HTMLElement>(null);
 
   // Catalog Drawer state
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -158,10 +159,30 @@ export function Room3DStudioClient() {
   const [searching, setSearching] = useState(false);
 
   // Drag-to-delete state
-  const [dragDeleteState, setDragDeleteState] = useState<{ isDragging: boolean; isOver: boolean }>({
+  const [dragDeleteState, setDragDeleteState] = useState<{
+    isDragging: boolean;
+    isOver: boolean;
+    uid: string | null;
+  }>({
     isDragging: false,
     isOver: false,
+    uid: null,
   });
+
+  const checkDeleteZone = useCallback((clientX: number, clientY: number) => {
+    if (catalogAsideRef.current) {
+      const r = catalogAsideRef.current.getBoundingClientRect();
+      if (
+        clientX >= r.left - 20 &&
+        clientX <= r.right + 20 &&
+        clientY >= r.top - 20 &&
+        clientY <= r.bottom + 20
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
 
   // Update items with undo history
   const setItems = useCallback((fn: (prev: PlanItem[]) => PlanItem[]) => {
@@ -421,6 +442,29 @@ export function Room3DStudioClient() {
     },
     [selectedUid, setItems]
   );
+
+  useEffect(() => {
+    if (!dragDeleteState.isDragging) return;
+
+    const onGlobalPointerMove = (e: PointerEvent) => {
+      const isOver = checkDeleteZone(e.clientX, e.clientY);
+      setDragDeleteState((prev) => (prev.isOver === isOver ? prev : { ...prev, isOver }));
+    };
+
+    const onGlobalPointerUp = (e: PointerEvent) => {
+      if (checkDeleteZone(e.clientX, e.clientY) && dragDeleteState.uid) {
+        handleDeleteItem(dragDeleteState.uid);
+      }
+      setDragDeleteState({ isDragging: false, isOver: false, uid: null });
+    };
+
+    window.addEventListener("pointermove", onGlobalPointerMove, true);
+    window.addEventListener("pointerup", onGlobalPointerUp, true);
+    return () => {
+      window.removeEventListener("pointermove", onGlobalPointerMove, true);
+      window.removeEventListener("pointerup", onGlobalPointerUp, true);
+    };
+  }, [dragDeleteState.isDragging, dragDeleteState.uid, checkDeleteZone, handleDeleteItem]);
 
   // Color options
   const handleColorChange = (hex: string) => {
@@ -963,9 +1007,10 @@ export function Room3DStudioClient() {
                   );
                 }}
                 onDelete={handleDeleteItem}
-                onDragStateChange={(isDragging, isOver) => {
-                  setDragDeleteState({ isDragging, isOver });
+                onDragStateChange={(isDragging, isOver, uid) => {
+                  setDragDeleteState({ isDragging, isOver, uid: uid ?? null });
                 }}
+                checkDeleteZone={checkDeleteZone}
               />
 
               {/* Right Drop-to-Delete Zone Overlay */}
@@ -992,10 +1037,10 @@ export function Room3DStudioClient() {
                       <Trash2 className="h-7 w-7" />
                     </div>
                     <span className="text-center font-display text-xs font-black tracking-wide drop-shadow-md">
-                      {dragDeleteState.isOver ? "ปล่อยเพื่อลบสินค้า" : "ลากออกขวาเพื่อลบ"}
+                      {dragDeleteState.isOver ? "ปล่อยเพื่อลบออกจากห้อง" : "ลากมาที่นี่เพื่อลบ"}
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400">
-                      {dragDeleteState.isOver ? "ทิ้งลงถังขยะ" : "ลากมาที่นี่"}
+                      {dragDeleteState.isOver ? "ลบออกจากห้องทันที" : "ทิ้งลงคลังสินค้า"}
                     </span>
                   </div>
                 </div>
@@ -1003,7 +1048,7 @@ export function Room3DStudioClient() {
 
               {/* Instruction pill */}
               <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-                🖱️ ลากของเพื่อขยับ · ลากออกขวาเพื่อลบ · ลากวงแหวน/คลิกขวาเพื่อหมุน (360°) · กด R หมุน 45° · ลากพื้นว่างหมุนกล้อง
+                🖱️ ลากเพื่อขยับ · ลากลงคลังสินค้าขวาเพื่อลบ · หมุน 360° ด้วยวงแหวน/คลิกขวา · กด R หมุน 45° · ลากพื้นว่างหมุนห้อง
               </div>
 
               {/* Floating button to reopen Catalog when hidden */}
@@ -1195,7 +1240,44 @@ export function Room3DStudioClient() {
 
             {/* Collapsible Catalog Sidebar / Dock (2,100+ Products) */}
             {drawerOpen && (
-              <aside className="flex h-[270px] lg:h-full lg:w-[360px] xl:w-[400px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface">
+              <aside
+                ref={catalogAsideRef}
+                data-catalog-sidebar="true"
+                className="relative flex h-[270px] lg:h-full lg:w-[360px] xl:w-[400px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface overflow-hidden"
+              >
+                {/* Drag-to-Delete Drop Zone Overlay directly on Catalog Sidebar */}
+                {dragDeleteState.isDragging && (
+                  <div
+                    data-drop-delete-zone="true"
+                    className={`pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center transition-all duration-200 backdrop-blur-md ${
+                      dragDeleteState.isOver
+                        ? "bg-rose-600/90 text-white shadow-2xl ring-4 ring-rose-400/80 animate-in fade-in"
+                        : "bg-slate-900/85 text-slate-100 border-2 border-dashed border-rose-400/50"
+                    }`}
+                  >
+                    <div
+                      className={`flex h-20 w-20 items-center justify-center rounded-3xl transition-all duration-200 ${
+                        dragDeleteState.isOver
+                          ? "bg-white text-rose-600 shadow-2xl scale-110 ring-4 ring-white/50 animate-bounce"
+                          : "bg-white/10 text-rose-300 ring-2 ring-white/20"
+                      }`}
+                    >
+                      <Trash2 className="h-10 w-10" />
+                    </div>
+
+                    <p className="mt-4 font-display text-lg font-black tracking-wide drop-shadow-md">
+                      {dragDeleteState.isOver ? "ปล่อยเพื่อลบออกจากห้อง!" : "ลากสินค้ามาวางที่นี่เพื่อลบ"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold opacity-90 max-w-[260px]">
+                      {dragDeleteState.isOver
+                        ? "ปล่อยเมาส์เพื่อนำสินค้านี้ออกจากห้องทันที"
+                        : "ลากสินค้ามาวางบนคลังสินค้าด้านขวานี้เพื่อลบ"}
+                    </p>
+                    <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-[11px] font-medium backdrop-blur">
+                      <span>↩️</span> กดย้อนกลับ (Ctrl+Z) ได้ตลอด
+                    </span>
+                  </div>
+                )}
                 <div className="border-b border-ink-100 p-3 space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">

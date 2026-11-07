@@ -35,7 +35,8 @@ interface Props {
   onMove: (uid: string, x: number, z: number, y: number, rot?: number) => void;
   onBatchMove?: (moves: Array<{ uid: string; x: number; z: number; y: number; rot: number }>) => void;
   onDelete?: (uid: string) => void;
-  onDragStateChange?: (dragging: boolean, overDeleteZone: boolean) => void;
+  onDragStateChange?: (dragging: boolean, overDeleteZone: boolean, uid: string | null) => void;
+  checkDeleteZone?: (clientX: number, clientY: number) => boolean;
 }
 
 interface SelectionAngleGizmo {
@@ -337,7 +338,19 @@ function shouldHideWallForCamera(
  * รองรับห้องสี่เหลี่ยม ห้องตัว L ห้องตัว U และทรงหลายเหลี่ยมทุกแบบ หมุนมองจากมุมไหน กำแพงที่บังสายตาจะหลบลงอัตโนมัติ 360°
  */
 export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D(
-  { room, items, selected, night, sunSettings, onSelect, onMove, onBatchMove, onDelete, onDragStateChange },
+  {
+    room,
+    items,
+    selected,
+    night,
+    sunSettings,
+    onSelect,
+    onMove,
+    onBatchMove,
+    onDelete,
+    onDragStateChange,
+    checkDeleteZone,
+  },
   ref
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -359,10 +372,40 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     fit: () => void;
     resetView: () => void;
   } | null>(null);
-  const propsRef = useRef({ room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange });
+  const propsRef = useRef({
+    room,
+    items,
+    selected,
+    onSelect,
+    onMove,
+    onBatchMove,
+    onDelete,
+    onDragStateChange,
+    checkDeleteZone,
+  });
   useEffect(() => {
-    propsRef.current = { room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange };
-  }, [room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange]);
+    propsRef.current = {
+      room,
+      items,
+      selected,
+      onSelect,
+      onMove,
+      onBatchMove,
+      onDelete,
+      onDragStateChange,
+      checkDeleteZone,
+    };
+  }, [
+    room,
+    items,
+    selected,
+    onSelect,
+    onMove,
+    onBatchMove,
+    onDelete,
+    onDragStateChange,
+    checkDeleteZone,
+  ]);
 
   // ---------- ตั้งฉากครั้งเดียว ----------
   useEffect(() => {
@@ -699,7 +742,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
       propsRef.current.onSelect(uid);
-      propsRef.current.onDragStateChange?.(true, false);
+      propsRef.current.onDragStateChange?.(true, false, uid);
     };
     const onMoveEv = (e: PointerEvent) => {
       // 1) โหมดหมุนด้วยเมาส์ (Mouse Rotation)
@@ -786,10 +829,15 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
 
       // 3) โหมดเลื่อนตำแหน่งสิ่งของ (Move Drag)
       const rect = renderer.domElement.getBoundingClientRect();
-      const isOverDelete = e.clientX >= rect.right - 90;
+      const isOverDelete = Boolean(
+        propsRef.current.checkDeleteZone?.(e.clientX, e.clientY) ||
+        e.clientX >= rect.right - 80 ||
+        (typeof document !== "undefined" &&
+          document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-catalog-sidebar='true'], [data-drop-delete-zone='true']"))
+      );
       if (drag.isOverDelete !== isOverDelete) {
         drag.isOverDelete = isOverDelete;
-        propsRef.current.onDragStateChange?.(true, isOverDelete);
+        propsRef.current.onDragStateChange?.(true, isOverDelete, drag.uid);
         const curApi = api.current;
         if (curApi) {
           (curApi.selBox.material as THREE.LineBasicMaterial).color.setHex(isOverDelete ? 0xf43f5e : 0x2563eb);
@@ -940,16 +988,22 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       // ข. โหมดเลื่อนตำแหน่ง (Move Drag) สิ้นสุด
       const d = drag;
       if (d) {
-        propsRef.current.onDragStateChange?.(false, false);
+        propsRef.current.onDragStateChange?.(false, false, null);
         const curApi = api.current;
         if (curApi) {
           (curApi.selBox.material as THREE.LineBasicMaterial).color.setHex(0x2563eb);
         }
 
         const rect = renderer.domElement.getBoundingClientRect();
-        const isOverDelete = e.clientX >= rect.right - 90;
+        const isOverDelete = Boolean(
+          d.isOverDelete ||
+          propsRef.current.checkDeleteZone?.(e.clientX, e.clientY) ||
+          e.clientX >= rect.right - 80 ||
+          (typeof document !== "undefined" &&
+            document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-catalog-sidebar='true'], [data-drop-delete-zone='true']"))
+        );
         if (isOverDelete) {
-          // ลากตัวสินค้าออกไปทางขวาแล้วลบทันที!
+          // ลากตัวสินค้ามาปล่อยที่คลังสินค้า/ขอบขวาเพื่อลบทันที!
           const deletedUid = d.uid;
           drag = null;
           downAt = null;
@@ -1073,10 +1127,21 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
     };
     window.addEventListener("keydown", onDragKeyRotate, true);
+    const onCancelEv = () => {
+      if (drag) {
+        propsRef.current.onDragStateChange?.(false, false, null);
+        drag = null;
+      }
+      rotDrag = null;
+      downAt = null;
+      controls.enabled = true;
+      renderer.domElement.style.cursor = "default";
+    };
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointermove", onMoveEv);
     renderer.domElement.addEventListener("pointerup", onUp);
+    renderer.domElement.addEventListener("pointercancel", onCancelEv);
     const ro = new ResizeObserver(fit);
     ro.observe(el);
 
@@ -1088,6 +1153,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointermove", onMoveEv);
       renderer.domElement.removeEventListener("pointerup", onUp);
+      renderer.domElement.removeEventListener("pointercancel", onCancelEv);
       controls.dispose();
       for (const { group } of api.current?.meshes.values() ?? []) disposeGroup(group);
       selGizmo.group.traverse((o) => {
