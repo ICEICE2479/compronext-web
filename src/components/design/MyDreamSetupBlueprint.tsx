@@ -51,9 +51,11 @@ import {
   setPolygonEdgeLength,
   hasSelfIntersection,
   type CanvasInteriorWall,
+  type OpeningObstacleRange,
   isPointInOrNearRoom,
   snapPointToRoomWalls,
   resolveInteriorWallDrag,
+  clampOpeningOnSegment,
 } from "@/lib/blueprint-geometry";
 
 export interface BlueprintDoor {
@@ -577,14 +579,138 @@ export function MyDreamSetupBlueprint({
     return { sx, sy, xCm, zCm };
   }, []);
 
-  // ค้นหาผนังที่ใกล้ที่สุด (รองรับทั้งผนังนอกห้อง และกำแพงกั้นในห้องสำหรับประตู)
+  // จัดระเบียบตำแหน่งหน้าต่างและประตูไม่ให้ชิดมุมกำแพง ทะลุกำแพงกั้นในห้อง หรือซ้อนทับกันอัตโนมัติ (ทั้งตอนโหลดห้องเดิมและเมื่อปรับผนัง/กั้นกำแพงใหม่)
+  useEffect(() => {
+    if (isBlankCanvas || canvasPolyCm.length < 3) return;
+
+    setWindows((prevWins) => {
+      let changed = false;
+      const placedByEdge = new Map<number, OpeningObstacleRange[]>();
+      const nextWins = prevWins.map((w) => {
+        const edgeIdx =
+          w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length ? w.edgeIndex : 0;
+        const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+        const sibs = placedByEdge.get(edgeIdx) ?? [];
+        const clamped = clampOpeningOnSegment({
+          rawPos: w.pos,
+          desiredWidthCm: w.width,
+          minWidthCm: 55,
+          segX1: info.x1,
+          segZ1: info.z1,
+          segEx: info.ex,
+          segEz: info.ez,
+          segLenCm: info.lengthCm,
+          cornerClearanceCm: 24,
+          interiorWalls,
+          siblingRangesCm: sibs,
+        });
+        if (!clamped) return w;
+        const centerCm = clamped.pos * info.lengthCm;
+        sibs.push({
+          startCm: centerCm - clamped.widthCm / 2 - 14,
+          endCm: centerCm + clamped.widthCm / 2 + 14,
+        });
+        placedByEdge.set(edgeIdx, sibs);
+        if (Math.abs(clamped.pos - w.pos) > 0.001 || clamped.widthCm !== w.width) {
+          changed = true;
+          return { ...w, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
+        }
+        return w;
+      });
+      return changed ? nextWins : prevWins;
+    });
+
+    setDoors((prevDoors) => {
+      let changed = false;
+      const placedByKey = new Map<string, OpeningObstacleRange[]>();
+      const nextDoors = prevDoors.map((d) => {
+        if (d.interiorWallId) {
+          const iw = interiorWalls.find((item) => item.id === d.interiorWallId);
+          if (!iw) return d;
+          const dx = iw.x2 - iw.x1;
+          const dz = iw.z2 - iw.z1;
+          const lenCm = Math.hypot(dx, dz);
+          if (lenCm < 50) return d;
+          const key = `iw:${iw.id}`;
+          const sibs = placedByKey.get(key) ?? [];
+          const clamped = clampOpeningOnSegment({
+            rawPos: d.pos,
+            desiredWidthCm: d.width,
+            minWidthCm: 55,
+            segX1: iw.x1,
+            segZ1: iw.z1,
+            segEx: dx / lenCm,
+            segEz: dz / lenCm,
+            segLenCm: lenCm,
+            cornerClearanceCm: 16,
+            interiorWalls,
+            excludeInteriorWallId: iw.id,
+            siblingRangesCm: sibs,
+          });
+          if (!clamped) return d;
+          const centerCm = clamped.pos * lenCm;
+          sibs.push({
+            startCm: centerCm - clamped.widthCm / 2 - 12,
+            endCm: centerCm + clamped.widthCm / 2 + 12,
+          });
+          placedByKey.set(key, sibs);
+          if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
+            changed = true;
+            return { ...d, pos: clamped.pos, width: clamped.widthCm };
+          }
+          return d;
+        }
+
+        const edgeIdx =
+          d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length ? d.edgeIndex : 0;
+        const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+        const key = `edge:${edgeIdx}`;
+        const sibs = placedByKey.get(key) ?? [];
+        const clamped = clampOpeningOnSegment({
+          rawPos: d.pos,
+          desiredWidthCm: d.width,
+          minWidthCm: 55,
+          segX1: info.x1,
+          segZ1: info.z1,
+          segEx: info.ex,
+          segEz: info.ez,
+          segLenCm: info.lengthCm,
+          cornerClearanceCm: 16,
+          interiorWalls,
+          siblingRangesCm: sibs,
+        });
+        if (!clamped) return d;
+        const centerCm = clamped.pos * info.lengthCm;
+        sibs.push({
+          startCm: centerCm - clamped.widthCm / 2 - 12,
+          endCm: centerCm + clamped.widthCm / 2 + 12,
+        });
+        placedByKey.set(key, sibs);
+        if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
+          changed = true;
+          return { ...d, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
+        }
+        return d;
+      });
+      return changed ? nextDoors : prevDoors;
+    });
+  }, [canvasPolyCm, interiorWalls, isBlankCanvas]);
+
+  // ค้นหาผนังที่ใกล้ที่สุดพร้อมกันชนมุมกำแพง + กันชนกำแพงกั้นในห้อง + กันซ้อนทับบานอื่น
   const findClosestTargetWall = useCallback(
-    (xCm: number, zCm: number, openingWidthCm: number, allowInterior: boolean) => {
-      const outerHit = findClosestWallEdge(canvasPolyCm, xCm, zCm, openingWidthCm);
+    (
+      xCm: number,
+      zCm: number,
+      openingWidthCm: number,
+      allowInterior: boolean,
+      excludeOpeningId?: string
+    ) => {
+      const cornerClearanceCm = allowInterior ? 16 : 24;
       let best: {
         edgeIndex?: number;
         interiorWallId?: string;
         pos: number;
+        fittedWidthCm: number;
         distCm: number;
         wallCardinal: "top" | "bottom" | "left" | "right";
         lengthCm: number;
@@ -592,45 +718,109 @@ export function MyDreamSetupBlueprint({
         z1: number;
         ex: number;
         ez: number;
-      } | null = outerHit
-        ? (() => {
-            const info = getEdgeInfo(canvasPolyCm, outerHit.edgeIndex);
-            return {
-              edgeIndex: outerHit.edgeIndex,
-              pos: outerHit.pos,
-              distCm: outerHit.distCm,
-              wallCardinal: outerHit.wallCardinal,
-              lengthCm: outerHit.lengthCm,
-              x1: info.x1,
-              z1: info.z1,
-              ex: info.ex,
-              ez: info.ez,
-            };
-          })()
-        : null;
+      } | null = null;
+
+      for (let i = 0; i < canvasPolyCm.length; i++) {
+        const info = getEdgeInfo(canvasPolyCm, i);
+        if (info.lengthCm < 65) continue;
+        const px = xCm - info.x1;
+        const pz = zCm - info.z1;
+        const rawPos = (px * info.ex + pz * info.ez) / info.lengthCm;
+        const clampedSegT = Math.max(0, Math.min(1, rawPos));
+        const distCm = Math.hypot(
+          xCm - (info.x1 + info.ex * info.lengthCm * clampedSegT),
+          zCm - (info.z1 + info.ez * info.lengthCm * clampedSegT)
+        );
+
+        const siblingRangesCm: OpeningObstacleRange[] = [
+          ...windows
+            .filter((w) => w.id !== excludeOpeningId && !w.interiorWallId && (w.edgeIndex ?? 0) === i)
+            .map((w) => {
+              const c = w.pos * info.lengthCm;
+              return { startCm: c - w.width / 2 - 14, endCm: c + w.width / 2 + 14 };
+            }),
+          ...doors
+            .filter((d) => d.id !== excludeOpeningId && !d.interiorWallId && (d.edgeIndex ?? 0) === i)
+            .map((d) => {
+              const c = d.pos * info.lengthCm;
+              return { startCm: c - d.width / 2 - 14, endCm: c + d.width / 2 + 14 };
+            }),
+        ];
+
+        const clamped = clampOpeningOnSegment({
+          rawPos,
+          desiredWidthCm: openingWidthCm,
+          minWidthCm: 55,
+          segX1: info.x1,
+          segZ1: info.z1,
+          segEx: info.ex,
+          segEz: info.ez,
+          segLenCm: info.lengthCm,
+          cornerClearanceCm,
+          interiorWalls,
+          siblingRangesCm,
+        });
+        if (!clamped) continue;
+
+        if (!best || distCm < best.distCm) {
+          best = {
+            edgeIndex: i,
+            pos: clamped.pos,
+            fittedWidthCm: clamped.widthCm,
+            distCm,
+            wallCardinal: info.wallCardinal,
+            lengthCm: info.lengthCm,
+            x1: info.x1,
+            z1: info.z1,
+            ex: info.ex,
+            ez: info.ez,
+          };
+        }
+      }
 
       if (allowInterior) {
         for (const iw of interiorWalls) {
           const dx = iw.x2 - iw.x1;
           const dz = iw.z2 - iw.z1;
           const lenCm = Math.hypot(dx, dz);
-          if (lenCm < Math.max(60, openingWidthCm * 0.6)) continue;
+          if (lenCm < 65) continue;
           const ex = dx / lenCm;
           const ez = dz / lenCm;
           const proj = (xCm - iw.x1) * ex + (zCm - iw.z1) * ez;
-          const clamped = Math.max(0, Math.min(lenCm, proj));
-          const distCm = Math.hypot(xCm - (iw.x1 + ex * clamped), zCm - (iw.z1 + ez * clamped));
-          const halfRatio = Math.min(0.42, (openingWidthCm / 2 + 10) / lenCm);
-          const safePos = Number(
-            Math.max(halfRatio, Math.min(1 - halfRatio, proj / lenCm)).toFixed(3)
-          );
+          const clampedProj = Math.max(0, Math.min(lenCm, proj));
+          const distCm = Math.hypot(xCm - (iw.x1 + ex * clampedProj), zCm - (iw.z1 + ez * clampedProj));
+
+          const siblingRangesCm: OpeningObstacleRange[] = doors
+            .filter((d) => d.id !== excludeOpeningId && d.interiorWallId === iw.id)
+            .map((d) => {
+              const c = d.pos * lenCm;
+              return { startCm: c - d.width / 2 - 12, endCm: c + d.width / 2 + 12 };
+            });
+
+          const clamped = clampOpeningOnSegment({
+            rawPos: proj / lenCm,
+            desiredWidthCm: openingWidthCm,
+            minWidthCm: 55,
+            segX1: iw.x1,
+            segZ1: iw.z1,
+            segEx: ex,
+            segEz: ez,
+            segLenCm: lenCm,
+            cornerClearanceCm: 16,
+            interiorWalls,
+            excludeInteriorWallId: iw.id,
+            siblingRangesCm,
+          });
+          if (!clamped) continue;
+
           const wallCardinal: "top" | "bottom" | "left" | "right" =
             Math.abs(dx) >= Math.abs(dz) ? "top" : "right";
 
           if (!best || distCm < best.distCm) {
             best = {
               interiorWallId: iw.id,
-              pos: safePos,
+              pos: clamped.pos,
+              fittedWidthCm: clamped.widthCm,
               distCm,
               wallCardinal,
               lengthCm: lenCm,
@@ -644,7 +834,7 @@ export function MyDreamSetupBlueprint({
       }
       return best;
     },
-    [canvasPolyCm, interiorWalls]
+    [canvasPolyCm, interiorWalls, windows, doors]
   );
 
   // คำนวณดวงอาทิตย์และอุณหภูมิห้องตามเวลา + ทิศจริงของหน้าต่างแต่ละบาน
@@ -676,7 +866,7 @@ export function MyDreamSetupBlueprint({
     const wCm = activeTool === "window" ? 120 : 80;
     const hit = findClosestTargetWall(cursorCm[0], cursorCm[1], wCm, activeTool === "door");
     if (!hit || hit.distCm > 55) return null;
-    return { ...hit, widthCm: wCm, type: activeTool };
+    return { ...hit, widthCm: hit.fittedWidthCm, type: activeTool };
   }, [activeTool, cursorCm, isBlankCanvas, draggingOpening, findClosestTargetWall]);
 
   // พรีเซ็ตทรงห้องด่วน
@@ -928,7 +1118,7 @@ export function MyDreamSetupBlueprint({
     const pt = clientToSvgAndCm(e.clientX, e.clientY);
     if (!pt) return;
 
-    // 1) โหมดวางหน้าต่าง หรือ ประตู: คลิกใกล้ผนังนอกหรือกำแพงในห้องเพื่อวางทันที
+    // 1) โหมดวางหน้าต่าง หรือ ประตู: คลิกใกล้ผนังนอกหรือกำแพงในห้องเพื่อวางทันที (ล็อกระยะกันทะลุกำแพงอัตโนมัติ)
     if (activeTool === "window" || activeTool === "door") {
       if (isBlankCanvas) return;
       const wCm = activeTool === "window" ? 120 : 80;
@@ -941,7 +1131,7 @@ export function MyDreamSetupBlueprint({
             interiorWallId: hit.interiorWallId,
             wall: hit.wallCardinal,
             pos: hit.pos,
-            width: Math.min(120, Math.max(60, Math.round(hit.lengthCm - 30))),
+            width: hit.fittedWidthCm,
           };
           setWindows((prev) => [...prev, nw]);
           setSelectedElement({ type: "window", id: nw.id });
@@ -953,7 +1143,7 @@ export function MyDreamSetupBlueprint({
             interiorWallId: hit.interiorWallId,
             wall: hit.wallCardinal,
             pos: hit.pos,
-            width: Math.min(80, Math.max(60, Math.round(hit.lengthCm - 25))),
+            width: hit.fittedWidthCm,
           };
           setDoors((prev) => [...prev, nd]);
           setSelectedElement({ type: "door", id: nd.id });
@@ -1040,7 +1230,7 @@ export function MyDreamSetupBlueprint({
       const pt = clientToSvgAndCm(e.clientX, e.clientY);
       if (!pt) return;
 
-      // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง (และกำแพงกั้นในห้องสำหรับประตู)
+      // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง (กันทะลุกำแพงมุมห้องและกำแพงกั้นในห้องอัตโนมัติ)
       if (draggingOpening && canvasPolyCm.length >= 3) {
         const curItem =
           draggingOpening.type === "door"
@@ -1051,7 +1241,8 @@ export function MyDreamSetupBlueprint({
           pt.xCm,
           pt.zCm,
           wCm,
-          draggingOpening.type === "door"
+          draggingOpening.type === "door",
+          draggingOpening.id
         );
         if (!hit) return;
 
@@ -1065,6 +1256,7 @@ export function MyDreamSetupBlueprint({
                     interiorWallId: hit.interiorWallId,
                     wall: hit.wallCardinal,
                     pos: hit.pos,
+                    width: hit.fittedWidthCm,
                   }
                 : d
             )
@@ -1079,6 +1271,7 @@ export function MyDreamSetupBlueprint({
                     interiorWallId: undefined,
                     wall: hit.wallCardinal,
                     pos: hit.pos,
+                    width: hit.fittedWidthCm,
                   }
                 : w
             )
@@ -1423,18 +1616,118 @@ export function MyDreamSetupBlueprint({
 
   const changeSelectedWidth = useCallback(
     (newWidthCm: number) => {
-      if (!selectedElement) return;
+      if (!selectedElement || canvasPolyCm.length < 3) return;
       if (selectedElement.type === "door") {
         setDoors((prev) =>
-          prev.map((d) => (d.id === selectedElement.id ? { ...d, width: newWidthCm } : d))
+          prev.map((d) => {
+            if (d.id !== selectedElement.id) return d;
+            if (d.interiorWallId) {
+              const iw = interiorWalls.find((item) => item.id === d.interiorWallId);
+              if (!iw) return { ...d, width: newWidthCm };
+              const dx = iw.x2 - iw.x1;
+              const dz = iw.z2 - iw.z1;
+              const lenCm = Math.hypot(dx, dz);
+              const sibs = prev
+                .filter((o) => o.id !== d.id && o.interiorWallId === iw.id)
+                .map((o) => {
+                  const c = o.pos * lenCm;
+                  return { startCm: c - o.width / 2 - 12, endCm: c + o.width / 2 + 12 };
+                });
+              const clamped = clampOpeningOnSegment({
+                rawPos: d.pos,
+                desiredWidthCm: newWidthCm,
+                minWidthCm: 55,
+                segX1: iw.x1,
+                segZ1: iw.z1,
+                segEx: dx / lenCm,
+                segEz: dz / lenCm,
+                segLenCm: lenCm,
+                cornerClearanceCm: 16,
+                interiorWalls,
+                excludeInteriorWallId: iw.id,
+                siblingRangesCm: sibs,
+              });
+              return clamped
+                ? { ...d, pos: clamped.pos, width: clamped.widthCm }
+                : { ...d, width: newWidthCm };
+            }
+            const edgeIdx =
+              d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length ? d.edgeIndex : 0;
+            const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+            const sibs: OpeningObstacleRange[] = [
+              ...windows
+                .filter((w) => !w.interiorWallId && (w.edgeIndex ?? 0) === edgeIdx)
+                .map((w) => {
+                  const c = w.pos * info.lengthCm;
+                  return { startCm: c - w.width / 2 - 14, endCm: c + w.width / 2 + 14 };
+                }),
+              ...prev
+                .filter((o) => o.id !== d.id && !o.interiorWallId && (o.edgeIndex ?? 0) === edgeIdx)
+                .map((o) => {
+                  const c = o.pos * info.lengthCm;
+                  return { startCm: c - o.width / 2 - 14, endCm: c + o.width / 2 + 14 };
+                }),
+            ];
+            const clamped = clampOpeningOnSegment({
+              rawPos: d.pos,
+              desiredWidthCm: newWidthCm,
+              minWidthCm: 55,
+              segX1: info.x1,
+              segZ1: info.z1,
+              segEx: info.ex,
+              segEz: info.ez,
+              segLenCm: info.lengthCm,
+              cornerClearanceCm: 16,
+              interiorWalls,
+              siblingRangesCm: sibs,
+            });
+            return clamped
+              ? { ...d, pos: clamped.pos, width: clamped.widthCm }
+              : { ...d, width: newWidthCm };
+          })
         );
       } else {
         setWindows((prev) =>
-          prev.map((w) => (w.id === selectedElement.id ? { ...w, width: newWidthCm } : w))
+          prev.map((w) => {
+            if (w.id !== selectedElement.id) return w;
+            const edgeIdx =
+              w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length ? w.edgeIndex : 0;
+            const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+            const sibs: OpeningObstacleRange[] = [
+              ...prev
+                .filter((o) => o.id !== w.id && !o.interiorWallId && (o.edgeIndex ?? 0) === edgeIdx)
+                .map((o) => {
+                  const c = o.pos * info.lengthCm;
+                  return { startCm: c - o.width / 2 - 14, endCm: c + o.width / 2 + 14 };
+                }),
+              ...doors
+                .filter((d) => !d.interiorWallId && (d.edgeIndex ?? 0) === edgeIdx)
+                .map((d) => {
+                  const c = d.pos * info.lengthCm;
+                  return { startCm: c - d.width / 2 - 14, endCm: c + d.width / 2 + 14 };
+                }),
+            ];
+            const clamped = clampOpeningOnSegment({
+              rawPos: w.pos,
+              desiredWidthCm: newWidthCm,
+              minWidthCm: 55,
+              segX1: info.x1,
+              segZ1: info.z1,
+              segEx: info.ex,
+              segEz: info.ez,
+              segLenCm: info.lengthCm,
+              cornerClearanceCm: 24,
+              interiorWalls,
+              siblingRangesCm: sibs,
+            });
+            return clamped
+              ? { ...w, pos: clamped.pos, width: clamped.widthCm }
+              : { ...w, width: newWidthCm };
+          })
         );
       }
     },
-    [selectedElement]
+    [selectedElement, canvasPolyCm, interiorWalls, windows, doors]
   );
 
   const selectedDoor = useMemo(

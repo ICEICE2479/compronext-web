@@ -490,10 +490,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     const winH = Math.min(1.2, H * 0.45);
     const winLight = new THREE.Vector3(W * winPos, wy, 0.5);
     let hasWin = winWall !== "none";
-    const buildWindow = (along: number, customWidthM?: number) => {
+    const buildWindow = (maxSpanM: number, customWidthM?: number, maxSideOverhangM = 0.11) => {
       const winW = customWidthM
-        ? Math.min(Math.max(0.45, customWidthM), Math.max(0.45, along - 0.16))
-        : Math.min(1.4, along * 0.4);
+        ? Math.min(Math.max(0.4, customWidthM), Math.max(0.4, maxSpanM - maxSideOverhangM * 2))
+        : Math.min(1.4, Math.max(0.4, maxSpanM * 0.4));
       const grp = new THREE.Group();
       const local = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
         const m = new THREE.Mesh(geo, mat);
@@ -510,25 +510,27 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       );
       const slat = new THREE.MeshStandardMaterial({ color: "#f3efe6", roughness: 0.6 });
       for (let i = 0; i < 12; i++) local(new THREE.BoxGeometry(winW, 0.012, 0.03), slat, 0, winH / 2 - (i + 0.5) * (winH / 12), 0.03);
-      // ผ้าม่านสองข้างหน้าต่าง (จับจีบ)
+      // ผ้าม่านสองข้างหน้าต่าง (พับเก็บชิดขอบวงกบในระยะปลอดภัย ไม่ยื่นทะลุกำแพงข้างเคียง)
       const curtainTex = fabricTex(night ? "#5b4b6e" : "#d9cbb5").clone();
       curtainTex.needsUpdate = true;
       curtainTex.repeat.set(3, 1);
       const curtain = new THREE.MeshStandardMaterial({ map: curtainTex, roughness: 0.95, side: THREE.DoubleSide });
-      const cw = Math.min(0.35, winW * 0.3);
+      const cw = Math.min(0.24, Math.max(0.12, winW * 0.2));
       const ch = Math.min(H - 0.15, winH + 0.6);
+      const curtainOut = Math.min(cw * 0.3, Math.max(0.02, maxSideOverhangM - 0.035));
       for (const side of [-1, 1]) {
         const geo = new THREE.PlaneGeometry(cw, ch, 24, 1);
         const pos = geo.attributes.position;
         for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin((pos.getX(i) / cw) * Math.PI * 6) * 0.018);
         geo.computeVertexNormals();
         const m = new THREE.Mesh(geo, curtain);
-        m.position.set(side * (winW / 2 + cw / 2 - 0.02), (wy + winH / 2 + 0.12) - ch / 2 - wy, 0.07);
+        m.position.set(side * (winW / 2 - cw / 2 + curtainOut), (wy + winH / 2 + 0.12) - ch / 2 - wy, 0.07);
         m.castShadow = true;
         grp.add(m);
       }
-      local(new THREE.CylinderGeometry(0.012, 0.012, winW + cw * 2 + 0.1, 12).rotateZ(Math.PI / 2), trim, 0, winH / 2 + 0.14, 0.08);
-      return grp;
+      const rodLen = winW + (curtainOut + 0.03) * 2;
+      local(new THREE.CylinderGeometry(0.012, 0.012, rodLen, 12).rotateZ(Math.PI / 2), trim, 0, winH / 2 + 0.14, 0.08);
+      return { grp, winW };
     };
 
     const buildWallDoor = (along: number, customWidthM: number, fullWall: boolean) => {
@@ -787,7 +789,116 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       a.roomRoot.add(lw, ld, lh);
     }
 
-    // ---------- วางหน้าต่างทุกบาน (สลับแสดงบานเต็ม/ขอบเตี้ยตามการหมุนกล้องอัตโนมัติ) ----------
+    // ตัวช่วยคำนวณช่วงวางหน้าต่าง/ประตูใน 3D ให้ไม่ชนมุมกำแพง ไม่ทะลุกำแพงกั้นในห้อง และไม่ซ้อนทับบานอื่น
+    const usedWallSpans = new Map<string, Array<[number, number]>>();
+    const fitOpening3D = (
+      wallKey: string,
+      segX1: number,
+      segZ1: number,
+      segEx: number,
+      segEz: number,
+      segLenM: number,
+      rawPos: number,
+      desiredWidthM: number,
+      cornerPadM: number,
+      sideOverhangM: number,
+      excludeIwId?: string
+    ): { sM: number; widthM: number; spanM: number } | null => {
+      const minW = 0.42;
+      const baseStart = cornerPadM;
+      const baseEnd = segLenM - cornerPadM;
+      if (baseEnd - baseStart < minW + sideOverhangM * 2) return null;
+
+      const blocked: Array<[number, number]> = [...(usedWallSpans.get(wallKey) ?? [])];
+
+      if (room.interiorWalls) {
+        for (const iw of room.interiorWalls) {
+          if (excludeIwId && iw.id === excludeIwId) continue;
+          const ix1 = iw.x1 * CM;
+          const iz1 = iw.z1 * CM;
+          const ix2 = iw.x2 * CM;
+          const iz2 = iw.z2 * CM;
+          const idx = ix2 - ix1;
+          const idz = iz2 - iz1;
+          const iLen = Math.hypot(idx, idz);
+          if (iLen < 0.1) continue;
+          const iex = idx / iLen;
+          const iez = idz / iLen;
+          const cross = segEx * iez - segEz * iex;
+          if (Math.abs(cross) <= 0.2) continue;
+
+          for (const [px, pz] of [
+            [ix1, iz1],
+            [ix2, iz2],
+          ]) {
+            const rx = px - segX1;
+            const rz = pz - segZ1;
+            const proj = rx * segEx + rz * segEz;
+            const perp = Math.abs(rx * -segEz + rz * segEx);
+            if (perp <= 0.2 && proj > 0.04 && proj < segLenM - 0.04) {
+              blocked.push([proj - (T / 2 + 0.1), proj + (T / 2 + 0.1)]);
+            }
+          }
+
+          const qpx = ix1 - segX1;
+          const qpz = iz1 - segZ1;
+          const t = (qpx * iez - qpz * iex) / cross;
+          const u = (qpx * segEz - qpz * segEx) / cross;
+          if (u >= -0.04 && u <= iLen + 0.04 && t > 0.04 && t < segLenM - 0.04) {
+            blocked.push([t - (T / 2 + 0.1), t + (T / 2 + 0.1)]);
+          }
+        }
+      }
+
+      blocked.sort((a, b) => a[0] - b[0]);
+      const merged: Array<[number, number]> = [];
+      for (const [b0, b1] of blocked) {
+        const c0 = Math.max(baseStart, b0);
+        const c1 = Math.min(baseEnd, b1);
+        if (c1 <= c0) continue;
+        if (merged.length === 0 || c0 > merged[merged.length - 1][1]) {
+          merged.push([c0, c1]);
+        } else {
+          merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], c1);
+        }
+      }
+
+      const minTotal = minW + sideOverhangM * 2;
+      const freeSpans: Array<[number, number]> = [];
+      let cur = baseStart;
+      for (const [m0, m1] of merged) {
+        if (m0 - cur >= minTotal) freeSpans.push([cur, m0]);
+        cur = Math.max(cur, m1);
+      }
+      if (baseEnd - cur >= minTotal) freeSpans.push([cur, baseEnd]);
+      if (freeSpans.length === 0) return null;
+
+      const targetS = Math.max(0, Math.min(segLenM, rawPos * segLenM));
+      const fullSpans = freeSpans.filter(([a, b]) => b - a >= desiredWidthM + sideOverhangM * 2);
+      const pool = fullSpans.length > 0 ? fullSpans : freeSpans;
+
+      let best: { sM: number; widthM: number; spanM: number; dist: number } | null = null;
+      for (const [spanA, spanB] of pool) {
+        const spanM = spanB - spanA;
+        const widthM = Math.max(minW, Math.min(desiredWidthM, spanM - sideOverhangM * 2));
+        const halfTotal = widthM / 2 + sideOverhangM;
+        const sM = Math.max(spanA + halfTotal, Math.min(spanB - halfTotal, targetS));
+        const dist = Math.abs(sM - targetS);
+        if (!best || dist < best.dist) {
+          best = { sM, widthM, spanM, dist };
+        }
+      }
+      if (!best) return null;
+
+      const used = usedWallSpans.get(wallKey) ?? [];
+      const halfTotal = best.widthM / 2 + sideOverhangM;
+      used.push([best.sM - halfTotal - 0.02, best.sM + halfTotal + 0.02]);
+      usedWallSpans.set(wallKey, used);
+
+      return { sM: best.sM, widthM: best.widthM, spanM: best.spanM };
+    };
+
+    // ---------- วางหน้าต่างทุกบาน (สลับแสดงบานเต็ม/ขอบเตี้ยตามการหมุนกล้องอัตโนมัติ + กันทะลุกำแพง 100%) ----------
     if (room.windows && room.windows.length > 0) {
       hasWin = false;
       for (const winSpec of room.windows) {
@@ -804,19 +915,34 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             ? winSpec.edgeIndex
             : Math.max(0, fallbackIdx);
         const ww = walls[idx];
-        if (!ww || ww.len < 0.45) continue;
-        const px = ww.x1 + ww.ex * ww.len * winSpec.pos;
-        const pz = ww.z1 + ww.ez * ww.len * winSpec.pos;
+        if (!ww || ww.len < 0.7) continue;
+
+        const sideOverhangM = 0.11;
+        const fit = fitOpening3D(
+          `outer:${idx}`,
+          ww.x1,
+          ww.z1,
+          ww.ex,
+          ww.ez,
+          ww.len,
+          winSpec.pos,
+          (winSpec.width || 120) * CM,
+          0.14,
+          sideOverhangM
+        );
+        if (!fit) continue;
+
+        const px = ww.x1 + ww.ex * fit.sM;
+        const pz = ww.z1 + ww.ez * fit.sM;
         const rotY = Math.atan2(-ww.nx, -ww.nz);
 
-        const grp = buildWindow(ww.len, (winSpec.width || 120) * CM);
+        const { grp, winW } = buildWindow(fit.spanM, fit.widthM, sideOverhangM);
         grp.rotation.y = rotY;
         grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
         ww.seg.decorGroup.add(grp);
 
-        const sillW = Math.min(Math.max(0.45, (winSpec.width || 120) * CM), Math.max(0.45, ww.len - 0.14));
         const sill = new THREE.Mesh(
-          new THREE.BoxGeometry(sillW, 0.05, T + 0.05),
+          new THREE.BoxGeometry(winW, 0.05, T + 0.05),
           new THREE.MeshStandardMaterial({ color: "#f87171", emissive: "#fca5a5", emissiveIntensity: 0.35 })
         );
         sill.rotation.y = rotY;
@@ -829,51 +955,84 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         }
       }
     } else if (hasWin) {
-      const candidates = walls.filter((w) => w.len > 0.6);
+      const candidates = walls.filter((w) => w.len > 0.75);
       const side = candidates.filter((w) => (winWall === "left" ? w.nx < -0.7 : w.nz < -0.7));
       const ww = (side.length ? side : candidates).sort((p, q) => q.len - p.len)[0];
       if (ww) {
-        const px = ww.x1 + ww.ex * ww.len * winPos;
-        const pz = ww.z1 + ww.ez * ww.len * winPos;
-        const rotY = Math.atan2(-ww.nx, -ww.nz);
-
-        const grp = buildWindow(ww.len);
-        grp.rotation.y = rotY;
-        grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
-        ww.seg.decorGroup.add(grp);
-
-        const sillW = Math.min(1.2, Math.max(0.45, ww.len - 0.14));
-        const sill = new THREE.Mesh(
-          new THREE.BoxGeometry(sillW, 0.05, T + 0.05),
-          new THREE.MeshStandardMaterial({ color: "#f87171", emissive: "#fca5a5", emissiveIntensity: 0.35 })
+        const wIdx = walls.indexOf(ww);
+        const sideOverhangM = 0.11;
+        const desiredW = Math.min(1.4, ww.len * 0.4);
+        const fit = fitOpening3D(
+          `outer:${wIdx}`,
+          ww.x1,
+          ww.z1,
+          ww.ex,
+          ww.ez,
+          ww.len,
+          winPos,
+          desiredW,
+          0.14,
+          sideOverhangM
         );
-        sill.rotation.y = rotY;
-        sill.position.set(px + (ww.nx * T) / 2, curbH + 0.025, pz + (ww.nz * T) / 2);
-        ww.seg.cutGroup.add(sill);
+        if (fit) {
+          const px = ww.x1 + ww.ex * fit.sM;
+          const pz = ww.z1 + ww.ez * fit.sM;
+          const rotY = Math.atan2(-ww.nx, -ww.nz);
 
-        winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
+          const { grp, winW } = buildWindow(fit.spanM, fit.widthM, sideOverhangM);
+          grp.rotation.y = rotY;
+          grp.position.set(px - ww.nx * 0.03, wy, pz - ww.nz * 0.03);
+          ww.seg.decorGroup.add(grp);
+
+          const sill = new THREE.Mesh(
+            new THREE.BoxGeometry(winW, 0.05, T + 0.05),
+            new THREE.MeshStandardMaterial({ color: "#f87171", emissive: "#fca5a5", emissiveIntensity: 0.35 })
+          );
+          sill.rotation.y = rotY;
+          sill.position.set(px + (ww.nx * T) / 2, curbH + 0.025, pz + (ww.nz * T) / 2);
+          ww.seg.cutGroup.add(sill);
+
+          winLight.set(px - ww.nx * 0.5, wy, pz - ww.nz * 0.5);
+        } else {
+          hasWin = false;
+        }
       } else {
         hasWin = false;
       }
     }
 
-    // ---------- วางประตูทุกบาน (สลับบานประตูเต็ม/ธรณีประตูตามการหมุนกล้องอัตโนมัติ + รองรับกำแพงกั้นในห้อง) ----------
+    // ---------- วางประตูทุกบาน (สลับบานประตูเต็ม/ธรณีประตูตามการหมุนกล้องอัตโนมัติ + กันชนกำแพง 100%) ----------
     if (room.doors && room.doors.length > 0) {
       for (const doorSpec of room.doors) {
         if (doorSpec.interiorWallId && interiorWallMap.has(doorSpec.interiorWallId)) {
           const iw = interiorWallMap.get(doorSpec.interiorWallId)!;
-          if (iw.len < 0.55) continue;
-          const px = iw.x1 + iw.ex * iw.len * doorSpec.pos;
-          const pz = iw.z1 + iw.ez * iw.len * doorSpec.pos;
+          if (iw.len < 0.6) continue;
+          const fit = fitOpening3D(
+            `iw:${doorSpec.interiorWallId}`,
+            iw.x1,
+            iw.z1,
+            iw.ex,
+            iw.ez,
+            iw.len,
+            doorSpec.pos,
+            (doorSpec.width || 80) * CM,
+            0.08,
+            0.06,
+            doorSpec.interiorWallId
+          );
+          const sM = fit ? fit.sM : iw.len * doorSpec.pos;
+          const doorWM = fit ? fit.widthM : (doorSpec.width || 80) * CM;
+          const px = iw.x1 + iw.ex * sM;
+          const pz = iw.z1 + iw.ez * sM;
           for (const side of [-1, 1]) {
             const rotY = Math.atan2(-iw.nx * side, -iw.nz * side);
-            const dFull = buildWallDoor(iw.len, (doorSpec.width || 80) * CM, true);
+            const dFull = buildWallDoor(iw.len, doorWM, true);
             dFull.rotation.y = rotY;
             dFull.position.set(px + iw.nx * side * (T / 2 - 0.01), 0, pz + iw.nz * side * (T / 2 - 0.01));
             iw.seg.decorGroup.add(dFull);
           }
           const rotCut = Math.atan2(-iw.nx, -iw.nz);
-          const dCut = buildWallDoor(iw.len, (doorSpec.width || 80) * CM, false);
+          const dCut = buildWallDoor(iw.len, doorWM, false);
           dCut.rotation.y = rotCut;
           dCut.position.set(px + iw.nx * (T / 2), 0, pz + iw.nz * (T / 2));
           iw.seg.cutGroup.add(dCut);
@@ -893,17 +1052,30 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             ? doorSpec.edgeIndex
             : Math.max(0, fallbackIdx);
         const dw = walls[idx];
-        if (!dw || dw.len < 0.55) continue;
-        const px = dw.x1 + dw.ex * dw.len * doorSpec.pos;
-        const pz = dw.z1 + dw.ez * dw.len * doorSpec.pos;
+        if (!dw || dw.len < 0.6) continue;
+        const fit = fitOpening3D(
+          `outer:${idx}`,
+          dw.x1,
+          dw.z1,
+          dw.ex,
+          dw.ez,
+          dw.len,
+          doorSpec.pos,
+          (doorSpec.width || 80) * CM,
+          0.12,
+          0.06
+        );
+        if (!fit) continue;
+        const px = dw.x1 + dw.ex * fit.sM;
+        const pz = dw.z1 + dw.ez * fit.sM;
         const rotY = Math.atan2(-dw.nx, -dw.nz);
 
-        const dFull = buildWallDoor(dw.len, (doorSpec.width || 80) * CM, true);
+        const dFull = buildWallDoor(fit.spanM, fit.widthM, true);
         dFull.rotation.y = rotY;
         dFull.position.set(px - dw.nx * 0.01, 0, pz - dw.nz * 0.01);
         dw.seg.decorGroup.add(dFull);
 
-        const dCut = buildWallDoor(dw.len, (doorSpec.width || 80) * CM, false);
+        const dCut = buildWallDoor(fit.spanM, fit.widthM, false);
         dCut.rotation.y = rotY;
         dCut.position.set(px - dw.nx * 0.01, 0, pz - dw.nz * 0.01);
         dw.seg.cutGroup.add(dCut);

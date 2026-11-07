@@ -314,13 +314,19 @@ export function getEdgeInfo(poly: Pt2[], edgeIndex: number) {
 }
 
 /** หาผนังห้องที่อยู่ใกล้จุดเมาส์ (xCm, zCm) ที่สุด สำหรับวาง/ลากหน้าต่างและประตูได้ทุกผนัง */
-export function findClosestWallEdge(poly: Pt2[], xCm: number, zCm: number, itemWidthCm = 80): EdgeHit | null {
+export function findClosestWallEdge(
+  poly: Pt2[],
+  xCm: number,
+  zCm: number,
+  itemWidthCm = 80,
+  cornerPadCm = 22
+): EdgeHit | null {
   if (poly.length < 3) return null;
   let best: EdgeHit | null = null;
 
   for (let i = 0; i < poly.length; i++) {
     const info = getEdgeInfo(poly, i);
-    if (info.lengthCm < 50) continue; // ข้ามผนังสั้นกว่า 50 ซม.
+    if (info.lengthCm < 55) continue; // ข้ามผนังสั้นกว่า 55 ซม.
 
     const px = xCm - info.x1;
     const pz = zCm - info.z1;
@@ -330,7 +336,7 @@ export function findClosestWallEdge(poly: Pt2[], xCm: number, zCm: number, itemW
     const projZ = info.z1 + info.ez * info.lengthCm * clampedSegT;
     const distCm = Math.hypot(xCm - projX, zCm - projZ);
 
-    const margin = Math.min(0.42, Math.max(0.08, (itemWidthCm / 2 + 8) / info.lengthCm));
+    const margin = Math.min(0.45, Math.max(0.1, (itemWidthCm / 2 + cornerPadCm) / info.lengthCm));
     const safePos = Math.max(margin, Math.min(1 - margin, rawT));
 
     if (!best || distCm < best.distCm) {
@@ -719,6 +725,152 @@ export function resolveInteriorWallDrag(
     x2: targetX,
     z2: targetZ,
     lengthCm,
+  };
+}
+
+export interface OpeningObstacleRange {
+  startCm: number;
+  endCm: number;
+}
+
+/**
+ * คำนวณช่วงว่างจริงบนผนัง (หักระยะมุมกำแพง + จุดชนกำแพงกั้นในห้อง T-junction + บานอื่นบนผนังเดียวกัน)
+ * เพื่อป้องกันไม่ให้หน้าต่าง/ผ้าม่าน/ราวผ้าม่าน หรือประตู ยื่นทะลุกำแพงหรือซ้อนทับกันเด็ดขาด
+ */
+export function clampOpeningOnSegment(params: {
+  rawPos: number;
+  desiredWidthCm: number;
+  minWidthCm?: number;
+  segX1: number;
+  segZ1: number;
+  segEx: number;
+  segEz: number;
+  segLenCm: number;
+  cornerClearanceCm: number;
+  interiorWalls?: CanvasInteriorWall[];
+  excludeInteriorWallId?: string;
+  siblingRangesCm?: OpeningObstacleRange[];
+}): { pos: number; widthCm: number; spanWidthCm: number } | null {
+  const {
+    rawPos,
+    desiredWidthCm,
+    minWidthCm = 50,
+    segX1,
+    segZ1,
+    segEx,
+    segEz,
+    segLenCm,
+    cornerClearanceCm,
+    interiorWalls = [],
+    excludeInteriorWallId,
+    siblingRangesCm = [],
+  } = params;
+
+  const baseStart = cornerClearanceCm;
+  const baseEnd = segLenCm - cornerClearanceCm;
+  if (baseEnd - baseStart < minWidthCm) return null;
+
+  const blocked: Array<[number, number]> = [];
+
+  // 1) หักช่วงที่กำแพงกั้นในห้อง (Interior Partition Wall) พุ่งมาชนหรือตัดกับผนังด้านนี้
+  for (const iw of interiorWalls) {
+    if (excludeInteriorWallId && iw.id === excludeInteriorWallId) continue;
+    const idx = iw.x2 - iw.x1;
+    const idz = iw.z2 - iw.z1;
+    const iLen = Math.hypot(idx, idz);
+    if (iLen < 10) continue;
+    const iex = idx / iLen;
+    const iez = idz / iLen;
+    const cross = segEx * iez - segEz * iex;
+
+    // ตรวจจุดปลายทั้ง 2 ด้านของกำแพงในห้องว่ามาชนผนังนี้หรือไม่
+    for (const [px, pz] of [
+      [iw.x1, iw.z1],
+      [iw.x2, iw.z2],
+    ]) {
+      const rx = px - segX1;
+      const rz = pz - segZ1;
+      const proj = rx * segEx + rz * segEz;
+      const perp = Math.abs(rx * -segEz + rz * segEx);
+      if (perp <= 20 && proj > 4 && proj < segLenCm - 4 && Math.abs(cross) > 0.2) {
+        blocked.push([proj - 22, proj + 22]);
+      }
+    }
+
+    // ตรวจกรณีเส้นกำแพงในห้องตัดผ่านผนังนี้โดยตรง
+    if (Math.abs(cross) > 0.2) {
+      const qpx = iw.x1 - segX1;
+      const qpz = iw.z1 - segZ1;
+      const t = (qpx * iez - qpz * iex) / cross;
+      const u = (qpx * segEz - qpz * segEx) / cross;
+      if (u >= -4 && u <= iLen + 4 && t > 4 && t < segLenCm - 4) {
+        blocked.push([t - 22, t + 22]);
+      }
+    }
+  }
+
+  // 2) หักช่วงของหน้าต่าง/ประตูบานอื่นบนผนังเดียวกัน
+  for (const sib of siblingRangesCm) {
+    if (sib.endCm > sib.startCm) {
+      blocked.push([sib.startCm, sib.endCm]);
+    }
+  }
+
+  blocked.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const [b0, b1] of blocked) {
+    const c0 = Math.max(baseStart, b0);
+    const c1 = Math.min(baseEnd, b1);
+    if (c1 <= c0) continue;
+    if (merged.length === 0 || c0 > merged[merged.length - 1][1]) {
+      merged.push([c0, c1]);
+    } else {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], c1);
+    }
+  }
+
+  const freeSpans: Array<[number, number]> = [];
+  let cursor = baseStart;
+  for (const [m0, m1] of merged) {
+    if (m0 - cursor >= minWidthCm) {
+      freeSpans.push([cursor, m0]);
+    }
+    cursor = Math.max(cursor, m1);
+  }
+  if (baseEnd - cursor >= minWidthCm) {
+    freeSpans.push([cursor, baseEnd]);
+  }
+  if (freeSpans.length === 0) return null;
+
+  const targetS = Math.max(0, Math.min(segLenCm, rawPos * segLenCm));
+  const fullFitSpans = freeSpans.filter(([a, b]) => b - a >= desiredWidthCm);
+  const pool = fullFitSpans.length > 0 ? fullFitSpans : freeSpans;
+
+  let bestChoice: { pos: number; widthCm: number; spanWidthCm: number; dist: number } | null = null;
+  for (const [spanA, spanB] of pool) {
+    const spanW = spanB - spanA;
+    const widthCm =
+      spanW >= desiredWidthCm
+        ? desiredWidthCm
+        : Math.max(minWidthCm, Math.floor(spanW / 5) * 5);
+    const halfW = widthCm / 2;
+    const center = Math.max(spanA + halfW, Math.min(spanB - halfW, targetS));
+    const dist = Math.abs(center - targetS);
+    if (!bestChoice || dist < bestChoice.dist) {
+      bestChoice = {
+        pos: Number((center / segLenCm).toFixed(4)),
+        widthCm,
+        spanWidthCm: spanW,
+        dist,
+      };
+    }
+  }
+
+  if (!bestChoice) return null;
+  return {
+    pos: bestChoice.pos,
+    widthCm: bestChoice.widthCm,
+    spanWidthCm: bestChoice.spanWidthCm,
   };
 }
 
