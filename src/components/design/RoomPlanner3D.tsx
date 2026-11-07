@@ -870,10 +870,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         );
       if (!e.shiftKey && !isChairNearDesk) {
         const probe = clampToRoom({ ...base, x: rawX, z: rawZ, rot: drag.curRot }, curRoom);
-        const nearWall = findNearestWallForItem(probe, curRoom, 14);
+        const nearWall = findNearestWallForItem(probe, curRoom, 14, drag.activeWallKey);
         if (!nearWall) {
           // ปลดล็อกการเกาะกำแพงเมื่อดึงสิ่งของออกมาห่างกำแพงเกิน 24 ซม.
-          if (!findNearestWallForItem(probe, curRoom, 24)) {
+          if (!findNearestWallForItem(probe, curRoom, 24, drag.activeWallKey)) {
             drag.activeWallKey = null;
           }
         } else {

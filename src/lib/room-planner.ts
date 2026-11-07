@@ -596,7 +596,8 @@ export function inRoom(it: PlanItem, room: RoomSize): boolean {
 export function findNearestWallForItem(
   it: Pick<PlanItem, "x" | "z" | "w" | "d" | "rot" | "category">,
   room: RoomSize,
-  maxGapCm = 14
+  maxGapCm = 14,
+  preferWallKey?: string | null
 ): { key: string; targetRot: number; gapCm: number } | null {
   if (it.category === "door") return null;
   const { outer, interior } = getRoomWallSegments(room);
@@ -604,7 +605,14 @@ export function findNearestWallForItem(
   const hw = it.w * 0.5;
   const hd = it.d * 0.5;
 
-  let best: { key: string; targetRot: number; gapCm: number; distCenter: number } | null = null;
+  interface Candidate {
+    key: string;
+    targetRot: number;
+    gapCm: number;
+    distCenter: number;
+    angleDiff: number;
+  }
+  const candidates: Candidate[] = [];
 
   for (const seg of [...outer, ...interior]) {
     if (seg.len < 15) continue;
@@ -640,17 +648,38 @@ export function findNearestWallForItem(
     const effectiveGap = Math.max(0, currentGap);
     if (effectiveGap > maxGapCm) continue;
 
-    if (!best || distToSeg < best.distCenter) {
-      best = {
-        key: seg.key,
-        targetRot: wallBaseRot,
-        gapCm: Math.round(effectiveGap * 10) / 10,
-        distCenter: distToSeg,
-      };
+    const rawDiff = Math.abs((wallBaseRot - it.rot + 180) % 360 - 180);
+    candidates.push({
+      key: seg.key,
+      targetRot: wallBaseRot,
+      gapCm: Math.round(effectiveGap * 10) / 10,
+      distCenter: distToSeg,
+      angleDiff: rawDiff,
+    });
+  }
+
+  if (candidates.length === 0) return null;
+
+  // 1. ถ้ามีกำแพงเดิมที่เกาะอยู่ (preferWallKey / Hysteresis) และยังอยู่ในระยะสแนป -> ให้เกาะกำแพงเดิมต่อ เพื่อแก้บัคการสลับมุมสั่นไปมาที่มุมห้อง
+  if (preferWallKey) {
+    const pref = candidates.find((c) => c.key === preferWallKey);
+    if (pref) {
+      return { key: pref.key, targetRot: pref.targetRot, gapCm: pref.gapCm };
     }
   }
 
-  return best ? { key: best.key, targetRot: best.targetRot, gapCm: best.gapCm } : null;
+  // 2. ถ้าไม่มีกำแพงเดิม หรือหลุดออกจากกำแพงเดิมแล้ว:
+  // ในมุมห้องที่มีกำแพง 2 ด้านชิดกัน (เช่น gap ห่างกันไม่เกิน 8 ซม.) ให้เลือกกำแพงที่องศาใกล้เคียงกับองศาปัจจุบันของสิ่งของที่สุด (หมุนน้อยสุด / ไม่กระตุก)
+  candidates.sort((a, b) => {
+    const gapDelta = a.gapCm - b.gapCm;
+    if (Math.abs(gapDelta) > 8) {
+      return gapDelta;
+    }
+    return a.angleDiff - b.angleDiff || a.distCenter - b.distCenter;
+  });
+
+  const best = candidates[0];
+  return { key: best.key, targetRot: best.targetRot, gapCm: best.gapCm };
 }
 
 /** ปรับหมุนสิ่งของเข้าหาองศากำแพงที่ใกล้ที่สุดอัตโนมัติ (ยกเว้นเก้าอี้ที่กำลังวางคู่หน้าโต๊ะคอม) */
