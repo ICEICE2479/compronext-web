@@ -6,11 +6,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { fabricTex, plasterTex } from "./room3d-textures";
 import {
-   clampToRoom,
+  clampToRoom,
   dragTo,
   findNearestWallForItem,
   getItemAxes,
   normalizeRotDeg,
+  rotateItemSafely,
   settleOnTop,
   type PlanItem,
   type RoomSize,
@@ -110,8 +111,46 @@ function buildSelectionAngleGizmo(): SelectionAngleGizmo {
   const tip = new THREE.Mesh(new THREE.ConeGeometry(0.095, 0.2, 3).rotateX(Math.PI / 2), arrowMat);
   tip.position.set(0, 0.003, 1.07);
   tip.renderOrder = 9;
-  pointerPivot.add(shaft, tip);
+
+  // หัวปุ่มลูกบิดหมุนสีส้มทองที่ปลายลูกศรสำหรับเอาเมาส์คลิกจับหมุนได้ง่าย
+  const knobGeo = new THREE.SphereGeometry(0.14, 24, 24);
+  const knobMat = new THREE.MeshBasicMaterial({
+    color: "#f59e0b",
+    depthTest: false,
+  });
+  const handleKnob = new THREE.Mesh(knobGeo, knobMat);
+  handleKnob.position.set(0, 0.015, 1.12);
+  handleKnob.renderOrder = 12;
+  handleKnob.userData = { isRotateHandle: true };
+
+  // วงแหวนเรืองแสงรอบหัวลูกบิด
+  const knobHalo = new THREE.Mesh(
+    new THREE.RingGeometry(0.15, 0.22, 24).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: "#fef08a", transparent: true, opacity: 0.85, depthTest: false })
+  );
+  knobHalo.position.set(0, 0.016, 1.12);
+  knobHalo.renderOrder = 13;
+  knobHalo.userData = { isRotateHandle: true };
+
+  shaft.userData = { isRotateHandle: true };
+  tip.userData = { isRotateHandle: true };
+  pointerPivot.userData = { isRotateHandle: true };
+  pointerPivot.add(shaft, tip, handleKnob, knobHalo);
   ringWrap.add(pointerPivot);
+
+  // วงแหวนโปร่งใสสำหรับจับคลิกหมุนด้วยเมาส์ได้สะดวกทุกมุมรอบสิ่งของ (กว้าง 0.70 ถึง 1.35)
+  // หมายเหตุ: ต้องใช้ transparent: true, opacity: 0 เพื่อให้ Three.js Raycaster สามารถดักจับการคลิกได้สมบูรณ์แบบ
+  const hitRingGeo = new THREE.RingGeometry(0.70, 1.35, 48).rotateX(-Math.PI / 2);
+  const hitRingMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const hitRing = new THREE.Mesh(hitRingGeo, hitRingMat);
+  hitRing.userData = { isRotateHandle: true };
+  outerRing.userData = { isRotateHandle: true };
+  ringWrap.add(hitRing);
 
   const canvas = document.createElement("canvas");
   canvas.width = 340;
@@ -124,6 +163,7 @@ function buildSelectionAngleGizmo(): SelectionAngleGizmo {
   );
   badge.scale.set(0.82, 0.21, 1);
   badge.renderOrder = 14;
+  badge.userData = { isRotateHandle: true, isBadge: true };
 
   group.add(ringWrap, badge);
   return { group, ringWrap, pointerPivot, badge, canvas, ctx, tex, lastText: "" };
@@ -337,10 +377,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     fit: () => void;
     resetView: () => void;
   } | null>(null);
-  const propsRef = useRef({ room, items, onSelect, onMove, onBatchMove });
+  const propsRef = useRef({ room, items, selected, onSelect, onMove, onBatchMove });
   useEffect(() => {
-    propsRef.current = { room, items, onSelect, onMove, onBatchMove };
-  }, [room, items, onSelect, onMove, onBatchMove]);
+    propsRef.current = { room, items, selected, onSelect, onMove, onBatchMove };
+  }, [room, items, selected, onSelect, onMove, onBatchMove]);
 
   // ---------- ตั้งฉากครั้งเดียว ----------
   useEffect(() => {
@@ -421,6 +461,18 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       riders: PlanItem[];
       activeWallKey: string | null;
       curRot: number;
+      preserveRot?: boolean;
+      last?: { x: number; z: number; y: number; rot: number };
+    } | null = null;
+    let rotDrag: {
+      uid: string;
+      centerX: number;
+      centerZ: number;
+      itemY: number;
+      initRot: number;
+      initPointerAngleRad: number;
+      riders: PlanItem[];
+      moved: boolean;
       last?: { x: number; z: number; y: number; rot: number };
     } | null = null;
     let raf = 0;
@@ -523,20 +575,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       for (let x = o; x; x = x.parent) if (x.userData.uid) return x.userData.uid as string;
       return null;
     };
-    const onDown = (e: PointerEvent) => {
-      downAt = { x: e.clientX, y: e.clientY };
-      toNdc(e);
-      const hits = ray.intersectObjects(itemsRoot.children, true);
-      // ของบนโต๊ะอยู่หน้าโต๊ะ → เลือกตัวที่อยู่สูงกว่าก่อน
-      const uid = hits.length ? uidOf(hits[0].object) : null;
-      if (!uid) return;
-      const it = propsRef.current.items.find((i) => i.uid === uid);
-      if (!it) return;
-      plane.constant = -it.y * CM;
-      if (!ray.ray.intersectPlane(plane, hit)) return;
-      // ของที่วางอยู่บนชิ้นนี้ ย้ายและหมุนตามไปด้วย
+    const getRiders = (it: PlanItem) => {
       const itAxes = getItemAxes(it.rot);
-      const riders = propsRef.current.items.filter((o) => {
+      return propsRef.current.items.filter((o) => {
         if (o.uid === it.uid || o.y <= 0 || Math.abs(o.y - (it.y + it.h)) > 2) return false;
         const rx = o.x - it.x;
         const rz = o.z - it.z;
@@ -544,24 +585,220 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         const lz = Math.abs(rx * itAxes.vx + rz * itAxes.vz);
         return lx <= it.w * 0.55 && lz <= it.d * 0.55;
       });
+    };
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    const onDown = (e: PointerEvent) => {
+      downAt = { x: e.clientX, y: e.clientY };
+      toNdc(e);
+
+      // 1) ตรวจสอบว่าผู้ใช้คลิกที่ Rotation Gizmo หรือป้ายบอกมุมรอบสิ่งของที่เลือกอยู่หรือไม่
+      const curSel = propsRef.current.selected;
+      const selItem = curSel ? propsRef.current.items.find((i) => i.uid === curSel) : null;
+      let clickedGizmo = false;
+      let clickedBadge = false;
+      if (selItem && selGizmo.group.visible) {
+        const gizmoHits = ray.intersectObjects(selGizmo.ringWrap.children, true);
+        if (gizmoHits.length > 0 && gizmoHits[0].object.userData?.isRotateHandle) {
+          clickedGizmo = true;
+        }
+        if (!clickedGizmo) {
+          const badgeHits = ray.intersectObject(selGizmo.badge, false);
+          if (badgeHits.length > 0) {
+            clickedBadge = true;
+          }
+        }
+      }
+
+      // 2) ตรวจสอบว่าคลิกที่โมเดลสิ่งของใดในห้องหรือไม่
+      const hits = ray.intersectObjects(itemsRoot.children, true);
+      const uid = hits.length ? uidOf(hits[0].object) : null;
+      const isRightClick = e.button === 2 || e.altKey;
+
+      // ก. หากคลิกที่ป้ายบอกมุม ↻ หมุน X° -> หมุนเพิ่มทีละ +45° ทันที
+      if (clickedBadge && selItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = rotateItemSafely(selItem, selItem.rot + 45, propsRef.current.items, propsRef.current.room);
+        propsRef.current.onMove(selItem.uid, next.x, next.z, next.y, next.rot);
+        return;
+      }
+
+      // ข. หากคลิกที่ปุ่ม/วงแหวนหมุนรอบสิ่งของ → เข้าสู่โหมดหมุนด้วยเมาส์ 360° ทันที
+      if (clickedGizmo && selItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(e.pointerId);
+        plane.constant = -selItem.y * CM;
+        if (!ray.ray.intersectPlane(plane, hit)) return;
+
+        const centerX = selItem.x * CM;
+        const centerZ = selItem.z * CM;
+        rotDrag = {
+          uid: selItem.uid,
+          centerX,
+          centerZ,
+          itemY: selItem.y,
+          initRot: selItem.rot,
+          initPointerAngleRad: Math.atan2(hit.x - centerX, hit.z - centerZ),
+          riders: getRiders(selItem),
+          moved: false,
+          last: { x: selItem.x, z: selItem.z, y: selItem.y, rot: selItem.rot },
+        };
+        renderer.domElement.style.cursor = "grabbing";
+        return;
+      }
+
+      // ค. หากคลิกขวาที่ตัวสิ่งของ → หมุนสิ่งของด้วยเมาส์ 360° ทันที
+      if (uid && isRightClick) {
+        const it = propsRef.current.items.find((i) => i.uid === uid);
+        if (!it) return;
+        e.preventDefault();
+        e.stopPropagation();
+        propsRef.current.onSelect(uid);
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(e.pointerId);
+        plane.constant = -it.y * CM;
+        if (!ray.ray.intersectPlane(plane, hit)) return;
+
+        const centerX = it.x * CM;
+        const centerZ = it.z * CM;
+        rotDrag = {
+          uid: it.uid,
+          centerX,
+          centerZ,
+          itemY: it.y,
+          initRot: it.rot,
+          initPointerAngleRad: Math.atan2(hit.x - centerX, hit.z - centerZ),
+          riders: getRiders(it),
+          moved: false,
+          last: { x: it.x, z: it.z, y: it.y, rot: it.rot },
+        };
+        renderer.domElement.style.cursor = "grabbing";
+        return;
+      }
+
+      // ง. หากคลิกซ้ายที่ตัวสิ่งของ → โหมดเลื่อนตำแหน่ง
+      if (!uid) return;
+      const it = propsRef.current.items.find((i) => i.uid === uid);
+      if (!it) return;
+      plane.constant = -it.y * CM;
+      if (!ray.ray.intersectPlane(plane, hit)) return;
+
       const initProbe = clampToRoom({ ...it }, propsRef.current.room);
-      const initWall = findNearestWallForItem(initProbe, propsRef.current.room, 14);
+      const initWall = findNearestWallForItem(initProbe, propsRef.current.room, 28);
+
+      const angleDiff = initWall
+        ? Math.abs((((normalizeRotDeg(it.rot) - initWall.targetRot + 180) % 360 + 360) % 360) - 180)
+        : 0;
+
+      // ถ้าสิ่งของปัจจุบันมีองศาที่แตกต่างจากองศากำแพงเกิน 5° แสดงว่าเป็นองศาที่ผู้ใช้ตั้งใจหมุนไว้เอง (เช่น กั้นห้อง, หมุนเข้ามุม)
+      // หรือหากผู้ใช้ได้ตั้งองศาไว้ ไม่ให้กำแพงดูดหมุนกลับไปเองเด็ดขาด ("ไม่ยึดติดหรือหมุนไปเอง")
+      const isCustomRot = initWall ? angleDiff > 5 : it.rot !== 0;
+
       drag = {
         uid,
         dx: it.x - hit.x / CM,
         dz: it.z - hit.z / CM,
         y: it.y,
         moved: false,
-        riders,
+        riders: getRiders(it),
         activeWallKey: initWall?.key ?? null,
         curRot: it.rot,
+        preserveRot: isCustomRot,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
       propsRef.current.onSelect(uid);
     };
     const onMoveEv = (e: PointerEvent) => {
-      if (!drag) return;
+      // 1) โหมดหมุนด้วยเมาส์ (Mouse Rotation)
+      if (rotDrag) {
+        toNdc(e);
+        plane.constant = -rotDrag.itemY * CM;
+        if (!ray.ray.intersectPlane(plane, hit)) return;
+
+        const curAngleRad = Math.atan2(hit.x - rotDrag.centerX, hit.z - rotDrag.centerZ);
+        const deltaRad = curAngleRad - rotDrag.initPointerAngleRad;
+        const deltaDeg = (deltaRad * 180) / Math.PI;
+        let newRot = normalizeRotDeg(rotDrag.initRot + deltaDeg);
+        if (e.shiftKey) {
+          // กด Shift สแนปทีละ 15 องศา
+          newRot = Math.round(newRot / 15) * 15;
+        }
+
+        const curRoom = propsRef.current.room;
+        const allItems = propsRef.current.items;
+        const base = allItems.find((i) => i.uid === rotDrag!.uid);
+        if (!base) return;
+
+        const riderIds = new Set(rotDrag.riders.map((r) => r.uid));
+        const nonRiders = riderIds.size > 0 ? allItems.filter((o) => !riderIds.has(o.uid)) : allItems;
+        const next = rotateItemSafely(base, newRot, nonRiders, curRoom);
+
+        rotDrag.last = { x: next.x, z: next.z, y: next.y, rot: next.rot };
+        rotDrag.moved = true;
+
+        const curApi = api.current;
+        const m = curApi?.meshes.get(base.uid);
+        if (m && curApi) {
+          m.group.position.x = next.x * CM;
+          m.group.position.z = next.z * CM;
+          m.group.rotation.y = (-next.rot * Math.PI) / 180;
+          m.group.updateMatrixWorld(true);
+          curApi.selBox.box.setFromObject(m.group).expandByScalar(0.02);
+          updateSelectionAngleGizmo(curApi.selGizmo, next);
+        }
+
+        const dRad = ((next.rot - base.rot) * Math.PI) / 180;
+        const cosD = Math.cos(dRad);
+        const sinD = Math.sin(dRad);
+        for (const r of rotDrag.riders) {
+          const rm = curApi?.meshes.get(r.uid);
+          if (!rm) continue;
+          const rx = r.x - base.x;
+          const rz = r.z - base.z;
+          const rnx = next.x + rx * cosD - rz * sinD;
+          const rnz = next.z + rx * sinD + rz * cosD;
+          const rRot = normalizeRotDeg(r.rot + (next.rot - base.rot));
+          rm.group.position.x = rnx * CM;
+          rm.group.position.z = rnz * CM;
+          rm.group.userData.ty = (r.y + next.y - base.y) * CM;
+          rm.group.rotation.y = (-rRot * Math.PI) / 180;
+        }
+        return;
+      }
+
+      // 2) เมาส์ชี้ผ่าน (Hover Effect เปลี่ยน Cursor)
+      if (!drag) {
+        toNdc(e);
+        const curSel = propsRef.current.selected;
+        const selItem = curSel ? propsRef.current.items.find((i) => i.uid === curSel) : null;
+        let hoverGizmo = false;
+        if (selItem && selGizmo.group.visible) {
+          const gizmoHits = ray.intersectObjects(selGizmo.ringWrap.children, true);
+          if (gizmoHits.length > 0 && gizmoHits[0].object.userData?.isRotateHandle) {
+            hoverGizmo = true;
+          }
+          if (!hoverGizmo) {
+            const bHits = ray.intersectObject(selGizmo.badge, false);
+            if (bHits.length > 0) hoverGizmo = true;
+          }
+        }
+        if (hoverGizmo) {
+          renderer.domElement.style.cursor = "grab";
+        } else {
+          const hits = ray.intersectObjects(itemsRoot.children, true);
+          renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "default";
+        }
+        return;
+      }
+
+      // 3) โหมดเลื่อนตำแหน่งสิ่งของ (Move Drag)
       toNdc(e);
       if (!ray.ray.intersectPlane(plane, hit)) return;
       const snap = (v: number) => Math.round(v * 2) / 2;
@@ -574,8 +811,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const allItems = propsRef.current.items;
 
       // เมื่อลากสิ่งของเข้าไปชิด/ติดกำแพงห้องจริง (ระยะประชิด <= 14 ซม.) ถึงค่อยปรับหมุนตามกำแพง
-      // ใช้ clampToRoom ครอบ probe เพื่อให้ตรวจจับกำแพงได้แม่นยำ 100% แม้จะขยับเมาส์เร็วมากหรือเคอร์เซอร์หลุดนอกห้อง
-      // *ยกเว้น* ถ้ากด Shift ค้าง หรือเก้าอี้อยู่หน้าโต๊ะ
+      // ถ้าผู้ใช้เคยตั้งองศาไว้เอง (preserveRot) จะไม่หมุนตามกำแพงกลับไปเองเด็ดขาด ("ไม่ยึดติดหรือหมุนไปเอง")
       const isChairNearDesk =
         base.category === "chair" &&
         allItems.some(
@@ -584,7 +820,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             o.category === "desk" &&
             Math.hypot(o.x - rawX, o.z - rawZ) <= Math.max(o.w, o.d) * 0.72 + 45
         );
-      if (!e.shiftKey && !isChairNearDesk) {
+      if (!drag.preserveRot && !e.shiftKey && !isChairNearDesk) {
         const probe = clampToRoom({ ...base, x: rawX, z: rawZ, rot: drag.curRot }, curRoom);
         const nearWall = findNearestWallForItem(probe, curRoom, 14);
         if (!nearWall) {
@@ -639,6 +875,58 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       drag.last = { x: next.x, z: next.z, y: next.y, rot: next.rot };
     };
     const onUp = (e: PointerEvent) => {
+      // ก. โหมดหมุนด้วยเมาส์ (Mouse Rotation) สิ้นสุด
+      if (rotDrag) {
+        if (rotDrag.moved && rotDrag.last) {
+          const curRoom = propsRef.current.room;
+          const base = propsRef.current.items.find((i) => i.uid === rotDrag!.uid);
+          if (base) {
+            if (rotDrag.riders.length > 0) {
+              const dRad = ((rotDrag.last.rot - base.rot) * Math.PI) / 180;
+              const cosD = Math.cos(dRad);
+              const sinD = Math.sin(dRad);
+              const moves: Array<{ uid: string; x: number; z: number; y: number; rot: number }> = [
+                { uid: base.uid, x: rotDrag.last.x, z: rotDrag.last.z, y: rotDrag.last.y, rot: rotDrag.last.rot },
+              ];
+              for (const r of rotDrag.riders) {
+                const rx = r.x - base.x;
+                const rz = r.z - base.z;
+                const rClamped = clampToRoom(
+                  {
+                    ...r,
+                    x: Math.round((rotDrag.last.x + rx * cosD - rz * sinD) * 10) / 10,
+                    z: Math.round((rotDrag.last.z + rx * sinD + rz * cosD) * 10) / 10,
+                    y: r.y + (rotDrag.last.y - base.y),
+                    rot: normalizeRotDeg(r.rot + (rotDrag.last.rot - base.rot)),
+                  },
+                  curRoom
+                );
+                moves.push({
+                  uid: r.uid,
+                  x: rClamped.x,
+                  z: rClamped.z,
+                  y: rClamped.y,
+                  rot: rClamped.rot,
+                });
+              }
+              if (propsRef.current.onBatchMove) {
+                propsRef.current.onBatchMove(moves);
+              } else {
+                for (const mv of moves) propsRef.current.onMove(mv.uid, mv.x, mv.z, mv.y, mv.rot);
+              }
+            } else {
+              propsRef.current.onMove(base.uid, rotDrag.last.x, rotDrag.last.z, rotDrag.last.y, rotDrag.last.rot);
+            }
+          }
+        }
+        rotDrag = null;
+        downAt = null;
+        controls.enabled = true;
+        renderer.domElement.style.cursor = "default";
+        return;
+      }
+
+      // ข. โหมดเลื่อนตำแหน่ง (Move Drag) สิ้นสุด
       const d = drag;
       if (d?.moved && d.last) {
         const curRoom = propsRef.current.room;
@@ -689,6 +977,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       drag = null;
       downAt = null;
       controls.enabled = true;
+      renderer.domElement.style.cursor = "default";
     };
     const onDragKeyRotate = (e: KeyboardEvent) => {
       if (!drag) return;
@@ -700,6 +989,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         const delta = e.shiftKey ? -45 : 45;
         drag.curRot = normalizeRotDeg(drag.curRot + delta);
         drag.activeWallKey = null;
+        drag.preserveRot = true;
 
         const curRoom = propsRef.current.room;
         const allItems = propsRef.current.items;
@@ -746,6 +1036,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
     };
     window.addEventListener("keydown", onDragKeyRotate, true);
+    renderer.domElement.addEventListener("contextmenu", onContextMenu);
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointermove", onMoveEv);
     renderer.domElement.addEventListener("pointerup", onUp);
@@ -756,6 +1047,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("keydown", onDragKeyRotate, true);
+      renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       renderer.domElement.removeEventListener("pointerdown", onDown);
       renderer.domElement.removeEventListener("pointermove", onMoveEv);
       renderer.domElement.removeEventListener("pointerup", onUp);

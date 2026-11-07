@@ -935,7 +935,7 @@ export function Room3DStudioClient() {
 
               {/* Instruction pill */}
               <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-                🖱️ ลากของเพื่อขยับ (ใกล้กำแพงปรับองศาอัตโนมัติ) · กด R หมุนของ · ลากพื้นที่ว่างหมุนกล้อง · กด F เต็มจอ
+                🖱️ ลากของเพื่อขยับ · ลากวงแหวน/คลิกขวาเพื่อหมุน (360°) · กด R หมุน 45° · ลากพื้นว่างหมุนกล้อง
               </div>
 
               {/* Floating button to reopen Catalog when hidden */}
