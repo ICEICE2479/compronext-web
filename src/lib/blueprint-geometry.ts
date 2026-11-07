@@ -537,3 +537,189 @@ export function setPolygonEdgeLength(
   return validateCandidate(cand4);
 }
 
+export interface CanvasInteriorWall {
+  id: string;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+}
+
+/** หาระยะห่างสั้นสุดจากจุด (xCm, zCm) ไปยังเส้นขอบผนังนอกของห้อง */
+export function minDistToPolyBoundary(
+  xCm: number,
+  zCm: number,
+  poly: Pt2[]
+): { distCm: number; projX: number; projZ: number; edgeIndex: number } {
+  if (poly.length < 3) {
+    return { distCm: Infinity, projX: xCm, projZ: zCm, edgeIndex: -1 };
+  }
+  let bestDist = Infinity;
+  let bestPx = xCm;
+  let bestPz = zCm;
+  let bestIdx = 0;
+
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, z1] = poly[i];
+    const [x2, z2] = poly[(i + 1) % poly.length];
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const lenSq = dx * dx + dz * dz;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, ((xCm - x1) * dx + (zCm - z1) * dz) / lenSq)) : 0;
+    const px = x1 + dx * t;
+    const pz = z1 + dz * t;
+    const d = Math.hypot(xCm - px, zCm - pz);
+    if (d < bestDist) {
+      bestDist = d;
+      bestPx = px;
+      bestPz = pz;
+      bestIdx = i;
+    }
+  }
+  return { distCm: bestDist, projX: bestPx, projZ: bestPz, edgeIndex: bestIdx };
+}
+
+/** ตรวจว่าจุดอยู่ในห้อง หรืออยู่ชิดเส้นผนังห้องภายในระยะ tolCm */
+export function isPointInOrNearRoom(xCm: number, zCm: number, poly: Pt2[], tolCm = 18): boolean {
+  if (poly.length < 3) return false;
+  if (pointInShape(xCm, zCm, poly)) return true;
+  return minDistToPolyBoundary(xCm, zCm, poly).distCm <= tolCm;
+}
+
+/** ดูดจุดปลายกำแพงกั้นในห้องให้แนบสนิทกับผนังนอกหรือกำแพงในห้องที่มีอยู่แล้ว (ละเอียด 10 ซม. = 0.1 ม.) */
+export function snapPointToRoomWalls(
+  rawX: number,
+  rawZ: number,
+  poly: Pt2[],
+  interiorWalls: CanvasInteriorWall[] = [],
+  snapTolCm = 22
+): Pt2 {
+  const maxX = GRID_COLS * GRID_CELL_CM;
+  const maxZ = GRID_ROWS * GRID_CELL_CM;
+  let sx = Math.max(0, Math.min(maxX, Math.round(rawX / 10) * 10));
+  let sz = Math.max(0, Math.min(maxZ, Math.round(rawZ / 10) * 10));
+
+  // ดูดเข้าหามุมห้องก่อนถ้าใกล้มาก
+  for (const [vx, vz] of poly) {
+    if (Math.hypot(sx - vx, sz - vz) <= snapTolCm) {
+      return [vx, vz];
+    }
+  }
+  for (const iw of interiorWalls) {
+    if (Math.hypot(sx - iw.x1, sz - iw.z1) <= snapTolCm) return [iw.x1, iw.z1];
+    if (Math.hypot(sx - iw.x2, sz - iw.z2) <= snapTolCm) return [iw.x2, iw.z2];
+  }
+
+  // ดูดเข้าหาเส้นผนังนอกห้อง
+  const outer = minDistToPolyBoundary(sx, sz, poly);
+  if (outer.distCm <= snapTolCm) {
+    sx = Math.round(outer.projX / 10) * 10;
+    sz = Math.round(outer.projZ / 10) * 10;
+    return [sx, sz];
+  }
+
+  // ดูดเข้าหากำแพงกั้นในห้องเส้นอื่น
+  for (const iw of interiorWalls) {
+    const dx = iw.x2 - iw.x1;
+    const dz = iw.z2 - iw.z1;
+    const lenSq = dx * dx + dz * dz;
+    if (lenSq < 1) continue;
+    const t = Math.max(0, Math.min(1, ((sx - iw.x1) * dx + (sz - iw.z1) * dz) / lenSq));
+    const px = iw.x1 + dx * t;
+    const pz = iw.z1 + dz * t;
+    if (Math.hypot(sx - px, sz - pz) <= snapTolCm) {
+      return [Math.round(px / 10) * 10, Math.round(pz / 10) * 10];
+    }
+  }
+
+  return [sx, sz];
+}
+
+/**
+ * คำนวณเส้นกำแพงกั้นในห้องเมื่อลูกค้าคลิกลากเข้าไปในตัวห้องที่มีอยู่แล้ว:
+ * - หากลากอยู่ภายในตัวห้อง -> คืน isInteriorWall = true พร้อมจุดเริ่ม-จบที่ตั้งฉาก 90° (หรืออิสระเมื่อกด Shift) ละเอียด 0.1 ม.
+ * - หากลากทะลุออกไปนอกห้อง -> คืน isInteriorWall = false เพื่อให้ระบบสลับเป็นการวาดต่อเติมขยายพื้นที่ห้องอัตโนมัติ
+ */
+export function resolveInteriorWallDrag(
+  startRawCm: Pt2,
+  curRawCm: Pt2,
+  poly: Pt2[],
+  interiorWalls: CanvasInteriorWall[] = [],
+  freeAngle = false
+): {
+  isInteriorWall: boolean;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  lengthCm: number;
+} {
+  if (poly.length < 3) {
+    return { isInteriorWall: false, x1: 0, z1: 0, x2: 0, z2: 0, lengthCm: 0 };
+  }
+
+  const startedInside = isPointInOrNearRoom(startRawCm[0], startRawCm[1], poly, 22);
+  const curInside = isPointInOrNearRoom(curRawCm[0], curRawCm[1], poly, 22);
+  if (!startedInside || !curInside) {
+    return { isInteriorWall: false, x1: 0, z1: 0, x2: 0, z2: 0, lengthCm: 0 };
+  }
+
+  const [x1, z1] = snapPointToRoomWalls(startRawCm[0], startRawCm[1], poly, interiorWalls, 22);
+  let targetX = Math.round(curRawCm[0] / 10) * 10;
+  let targetZ = Math.round(curRawCm[1] / 10) * 10;
+
+  if (!freeAngle) {
+    if (Math.abs(targetX - x1) >= Math.abs(targetZ - z1)) {
+      targetZ = z1;
+      // ดูดปลายแนวนอนให้ชนผนังนอกหรือกำแพงในห้องอัตโนมัติถ้าระยะห่างไม่เกิน 22 ซม.
+      const snapped = snapPointToRoomWalls(targetX, z1, poly, interiorWalls, 22);
+      if (Math.abs(snapped[1] - z1) <= 10) {
+        targetX = snapped[0];
+      }
+    } else {
+      targetX = x1;
+      // ดูดปลายแนวตั้งให้ชนผนังนอกหรือกำแพงในห้องอัตโนมัติถ้าระยะห่างไม่เกิน 22 ซม.
+      const snapped = snapPointToRoomWalls(x1, targetZ, poly, interiorWalls, 22);
+      if (Math.abs(snapped[0] - x1) <= 10) {
+        targetZ = snapped[1];
+      }
+    }
+  } else {
+    const snappedEnd = snapPointToRoomWalls(targetX, targetZ, poly, interiorWalls, 20);
+    targetX = snappedEnd[0];
+    targetZ = snappedEnd[1];
+  }
+
+  const lengthCm = Math.hypot(targetX - x1, targetZ - z1);
+  if (lengthCm < 15) {
+    // เพิ่งเริ่มคลิกในห้อง ยังลากไม่ถึง 15 ซม.
+    return { isInteriorWall: true, x1, z1, x2: targetX, z2: targetZ, lengthCm };
+  }
+
+  // ตรวจจุดระหว่างทางว่าอยู่ในห้องทั้งหมด และจุดกึ่งกลางไม่ได้ทับซ้อนบนเส้นผนังนอกห้องเดิม
+  for (const t of [0.2, 0.5, 0.8]) {
+    const px = x1 + (targetX - x1) * t;
+    const pz = z1 + (targetZ - z1) * t;
+    if (!isPointInOrNearRoom(px, pz, poly, 12)) {
+      return { isInteriorWall: false, x1, z1, x2: targetX, z2: targetZ, lengthCm };
+    }
+  }
+
+  const mx = (x1 + targetX) * 0.5;
+  const mz = (z1 + targetZ) * 0.5;
+  const midBoundary = minDistToPolyBoundary(mx, mz, poly);
+  if (!pointInShape(mx, mz, poly) || midBoundary.distCm <= 12) {
+    return { isInteriorWall: false, x1, z1, x2: targetX, z2: targetZ, lengthCm };
+  }
+
+  return {
+    isInteriorWall: true,
+    x1,
+    z1,
+    x2: targetX,
+    z2: targetZ,
+    lengthCm,
+  };
+}
+
+

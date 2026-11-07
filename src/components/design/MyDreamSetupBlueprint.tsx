@@ -24,7 +24,7 @@ import {
   Ruler,
 } from "lucide-react";
 import type { RoomSize } from "@/lib/room-planner";
-import { signedArea, type Pt2 } from "@/lib/room-shape";
+import { pointInShape, signedArea, type Pt2 } from "@/lib/room-shape";
 import {
   type SunSettings,
   DEFAULT_SUN_SETTINGS,
@@ -40,7 +40,6 @@ import {
   GRID_ORIGIN_X,
   GRID_ORIGIN_Y,
   cellKey,
-  makeRectCells,
   cellsToRoomPolygon,
   normalizeCanvasPolygon,
   polygonToCells,
@@ -51,11 +50,16 @@ import {
   movePolygonEdge,
   setPolygonEdgeLength,
   hasSelfIntersection,
+  type CanvasInteriorWall,
+  isPointInOrNearRoom,
+  snapPointToRoomWalls,
+  resolveInteriorWallDrag,
 } from "@/lib/blueprint-geometry";
 
 export interface BlueprintDoor {
   id: string;
   edgeIndex?: number;
+  interiorWallId?: string;
   wall: "top" | "bottom" | "left" | "right";
   /** Position from 0.08 to 0.92 along the wall segment */
   pos: number;
@@ -65,10 +69,17 @@ export interface BlueprintDoor {
 export interface BlueprintWindow {
   id: string;
   edgeIndex?: number;
+  interiorWallId?: string;
   wall: "top" | "bottom" | "left" | "right";
   /** Position from 0.08 to 0.92 along the wall segment */
   pos: number;
   width: number; // in cm (e.g. 120cm)
+}
+
+interface BlueprintHistoryItem {
+  poly: Pt2[];
+  interiorWalls: CanvasInteriorWall[];
+  isBlank: boolean;
 }
 
 type PenDrawMode = "paint-add" | "paint-erase" | "point-pen";
@@ -139,6 +150,23 @@ function initialCanvasPolyFromRoom(room: RoomSize): Pt2[] {
   ];
 }
 
+function initialCanvasInteriorWallsFromRoom(room: RoomSize): CanvasInteriorWall[] {
+  if (!room.interiorWalls || room.interiorWalls.length === 0) return [];
+  const w = room.w || 350;
+  const d = room.d || 400;
+  const totalW = GRID_COLS * GRID_CELL_CM;
+  const totalD = GRID_ROWS * GRID_CELL_CM;
+  const ox = Math.max(50, Math.round((totalW - w) / 2 / GRID_CELL_CM) * GRID_CELL_CM);
+  const oz = Math.max(50, Math.round((totalD - d) / 2 / GRID_CELL_CM) * GRID_CELL_CM);
+  return room.interiorWalls.map((iw) => ({
+    id: iw.id,
+    x1: ox + iw.x1,
+    z1: oz + iw.z1,
+    x2: ox + iw.x2,
+    z2: oz + iw.z2,
+  }));
+}
+
 export function MyDreamSetupBlueprint({
   room,
   doors: initialDoors = [{ id: "d-1", edgeIndex: 1, wall: "right", pos: 0.7, width: 80 }],
@@ -155,9 +183,12 @@ export function MyDreamSetupBlueprint({
   // โหมดย่อยของปากกาวาดห้อง: วาด/ต่อเติมบล็อก | เว้ามุม | คลิกจุดต่อจุด
   const [penMode, setPenMode] = useState<PenDrawMode>("paint-add");
 
-  // รูปทรงห้องปัจจุบันบนกระดาษพิมพ์เขียว (หน่วย ซม. บนตารางคงที่ -> ไม่เด้ง ไม่ซูมเอง)
+  // รูปทรงห้องปัจจุบันบนกระดาษพิมพ์เขียว + กำแพงกั้นภายในห้อง
   const [canvasPolyCm, setCanvasPolyCm] = useState<Pt2[]>(() => initialCanvasPolyFromRoom(room));
-  const [polyHistory, setPolyHistory] = useState<Pt2[][]>([]);
+  const [interiorWalls, setInteriorWalls] = useState<CanvasInteriorWall[]>(() =>
+    initialCanvasInteriorWallsFromRoom(room)
+  );
+  const [polyHistory, setPolyHistory] = useState<BlueprintHistoryItem[]>([]);
   const [isBlankCanvas, setIsBlankCanvas] = useState(false);
 
   // จุดที่กำลังวาดในโหมดคลิกจุดต่อจุด (Point-to-Point Wall Pen)
@@ -180,7 +211,11 @@ export function MyDreamSetupBlueprint({
     id: string;
   } | null>(null);
 
-  // ผนังที่กำลังคลิกพิมพ์ตัวเลขความยาว (ละเอียดระดับ 0.1 เมตร / 0.01 เมตร)
+  // กำแพงกั้นในห้องที่กำลังเลือกแก้ไข
+  const [selectedInteriorWallId, setSelectedInteriorWallId] = useState<string | null>(null);
+  const [interiorWallLenInput, setInteriorWallLenInput] = useState("");
+
+  // ผนังนอกที่กำลังคลิกพิมพ์ตัวเลขความยาว (ละเอียดระดับ 0.1 เมตร / 0.01 เมตร)
   const [editingWallIndex, setEditingWallIndex] = useState<number | null>(null);
   const [wallLenInput, setWallLenInput] = useState("");
 
@@ -192,19 +227,23 @@ export function MyDreamSetupBlueprint({
   const [sunPanelOpen, setSunPanelOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
 
-  // สถานะการลากวาดบล็อกบนตาราง (Grid Box Drag)
+  // สถานะการลากวาดบล็อกบนตาราง หรือลากกั้นกำแพงในห้องอัตโนมัติ
   const [boxDrag, setBoxDrag] = useState<{
     mode: "add" | "erase";
     startGx: number;
     startGz: number;
     curGx: number;
     curGz: number;
+    startRawCm: Pt2;
+    curRawCm: Pt2;
+    shiftKey: boolean;
   } | null>(null);
 
-  // สถานะการลากจุดมุมห้องหรือเส้นผนัง (Zero-jitter SVG drag)
+  // สถานะการลากจุดมุมห้อง เส้นผนังนอก หรือปลายกำแพงกั้นในห้อง
   const [handleDrag, setHandleDrag] = useState<
-    | { kind: "vertex"; index: number; startMouseCm: Pt2; basePoly: Pt2[] }
-    | { kind: "edge"; index: number; startMouseCm: Pt2; basePoly: Pt2[] }
+    | { kind: "vertex"; index: number; startMouseCm: Pt2; basePoly: Pt2[]; baseInteriorWalls: CanvasInteriorWall[] }
+    | { kind: "edge"; index: number; startMouseCm: Pt2; basePoly: Pt2[]; baseInteriorWalls: CanvasInteriorWall[] }
+    | { kind: "interior-end"; wallId: string; end: 1 | 2; startMouseCm: Pt2; basePoly: Pt2[]; baseInteriorWalls: CanvasInteriorWall[] }
     | null
   >(null);
 
@@ -267,60 +306,79 @@ export function MyDreamSetupBlueprint({
   const depthCm = normalizedRoom?.depthCm ?? 400;
 
   // ย้ายประตู/หน้าต่างให้เกาะผนังที่ใกล้ที่สุดเสมอเมื่อรูปทรงห้องเปลี่ยน
-  const reattachOpeningsToPoly = useCallback((oldPoly: Pt2[], nextPoly: Pt2[]) => {
-    if (nextPoly.length < 3) return;
+  const reattachOpeningsToPoly = useCallback(
+    (oldPoly: Pt2[], nextPoly: Pt2[], nextInteriorWalls?: CanvasInteriorWall[]) => {
+      if (nextPoly.length < 3) return;
+      const validIwIds = new Set((nextInteriorWalls ?? interiorWalls).map((iw) => iw.id));
 
-    const mapOpening = <T extends BlueprintDoor | BlueprintWindow>(item: T): T => {
-      let wx = nextPoly[0][0];
-      let wz = nextPoly[0][1];
-      if (oldPoly.length >= 3) {
-        const edgeIdx =
-          item.edgeIndex !== undefined && item.edgeIndex < oldPoly.length ? item.edgeIndex : 0;
-        const info = getEdgeInfo(oldPoly, edgeIdx);
-        wx = info.x1 + info.ex * info.lengthCm * item.pos;
-        wz = info.z1 + info.ez * info.lengthCm * item.pos;
-      }
-      const hit = findClosestWallEdge(nextPoly, wx, wz, item.width);
-      if (!hit) return item;
-      return {
-        ...item,
-        edgeIndex: hit.edgeIndex,
-        wall: hit.wallCardinal,
-        pos: hit.pos,
+      const mapOpening = <T extends BlueprintDoor | BlueprintWindow>(item: T): T => {
+        if (item.interiorWallId && validIwIds.has(item.interiorWallId)) {
+          return item;
+        }
+        let wx = nextPoly[0][0];
+        let wz = nextPoly[0][1];
+        if (oldPoly.length >= 3) {
+          const edgeIdx =
+            item.edgeIndex !== undefined && item.edgeIndex < oldPoly.length ? item.edgeIndex : 0;
+          const info = getEdgeInfo(oldPoly, edgeIdx);
+          wx = info.x1 + info.ex * info.lengthCm * item.pos;
+          wz = info.z1 + info.ez * info.lengthCm * item.pos;
+        }
+        const hit = findClosestWallEdge(nextPoly, wx, wz, item.width);
+        if (!hit) return item;
+        return {
+          ...item,
+          interiorWallId: undefined,
+          edgeIndex: hit.edgeIndex,
+          wall: hit.wallCardinal,
+          pos: hit.pos,
+        };
       };
-    };
 
-    setWindows((prev) => prev.map(mapOpening));
-    setDoors((prev) => prev.map(mapOpening));
-  }, []);
-
-  // อัปเดต Polygon พร้อมเก็บประวัติ Undo
-  const commitNewPoly = useCallback(
-    (nextPolyRaw: Pt2[]) => {
-      const norm = normalizeCanvasPolygon(nextPolyRaw);
-      if (!norm) return;
-      setCanvasPolyCm((prev) => {
-        setPolyHistory((h) => [...h.slice(-19), prev]);
-        reattachOpeningsToPoly(prev, norm.canvasPolyCm);
-        return norm.canvasPolyCm;
-      });
-      setIsBlankCanvas(false);
+      setWindows((prev) => prev.map(mapOpening));
+      setDoors((prev) => prev.map(mapOpening));
     },
-    [reattachOpeningsToPoly]
+    [interiorWalls]
   );
 
-  const handleUndoRoomShape = () => {
+  // อัปเดต Polygon พร้อมเก็บประวัติ Undo (รวมกำแพงกั้นในห้องด้วย)
+  const commitNewPoly = useCallback(
+    (nextPolyRaw: Pt2[], customInteriorWalls?: CanvasInteriorWall[]) => {
+      const norm = normalizeCanvasPolygon(nextPolyRaw);
+      if (!norm) return;
+      setPolyHistory((h) => [
+        ...h.slice(-19),
+        { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+      ]);
+      const filteredIw = (customInteriorWalls ?? interiorWalls).filter((iw) => {
+        const mx = (iw.x1 + iw.x2) * 0.5;
+        const mz = (iw.z1 + iw.z2) * 0.5;
+        return pointInShape(mx, mz, norm.canvasPolyCm);
+      });
+      setInteriorWalls(filteredIw);
+      reattachOpeningsToPoly(canvasPolyCm, norm.canvasPolyCm, filteredIw);
+      setCanvasPolyCm(norm.canvasPolyCm);
+      setIsBlankCanvas(false);
+    },
+    [canvasPolyCm, interiorWalls, isBlankCanvas, reattachOpeningsToPoly]
+  );
+
+  const handleUndoRoomShape = useCallback(() => {
     setPolyHistory((h) => {
       if (h.length === 0) return h;
       const last = h[h.length - 1];
+      setInteriorWalls(last.interiorWalls);
       setCanvasPolyCm((cur) => {
-        reattachOpeningsToPoly(cur, last);
-        return last;
+        if (!last.isBlank && last.poly.length >= 3) {
+          reattachOpeningsToPoly(cur, last.poly, last.interiorWalls);
+        }
+        return last.poly;
       });
-      setIsBlankCanvas(false);
+      setIsBlankCanvas(last.isBlank);
+      setSelectedInteriorWallId(null);
       return h.slice(0, -1);
     });
-  };
+  }, [reattachOpeningsToPoly]);
 
   // Sync ข้อมูลห้องออกไปยังหน้าหลักเฉพาะเมื่อค่าจริงเปลี่ยน (ไม่มีทางเกิด loop)
   useEffect(() => {
@@ -343,18 +401,31 @@ export function MyDreamSetupBlueprint({
         }
       : { wall: "none", pos: 0.5 };
 
+    const [ox, oz] = normalizedRoom.originCm;
+    const localInteriorWalls = interiorWalls
+      .filter((iw) => Math.hypot(iw.x2 - iw.x1, iw.z2 - iw.z1) >= 30)
+      .map((iw) => ({
+        id: iw.id,
+        x1: Math.round(iw.x1 - ox),
+        z1: Math.round(iw.z1 - oz),
+        x2: Math.round(iw.x2 - ox),
+        z2: Math.round(iw.z2 - oz),
+      }));
+
     const nextRoom: RoomSize = {
       ...roomBaseRef.current,
       w: normalizedRoom.widthCm,
       d: normalizedRoom.depthCm,
       h: heightCm,
       shape: normalizedRoom.isSimpleRect ? undefined : normalizedRoom.localShapeCm,
+      interiorWalls: localInteriorWalls.length > 0 ? localInteriorWalls : undefined,
       orientation: sun.orientationDeg,
       sunSettings: sun,
       win: winConfig,
       windows: windows.map((w) => ({
         id: w.id,
         edgeIndex: w.edgeIndex,
+        interiorWallId: w.interiorWallId,
         wall: w.wall,
         pos: w.pos,
         width: w.width,
@@ -362,6 +433,7 @@ export function MyDreamSetupBlueprint({
       doors: doors.map((d) => ({
         id: d.id,
         edgeIndex: d.edgeIndex,
+        interiorWallId: d.interiorWallId,
         wall: d.wall,
         pos: d.pos,
         width: d.width,
@@ -369,7 +441,7 @@ export function MyDreamSetupBlueprint({
     };
 
     onChangeRef.current(nextRoom, doors, windows, sun);
-  }, [normalizedRoom, isBlankCanvas, heightCm, doors, windows, sun]);
+  }, [normalizedRoom, isBlankCanvas, heightCm, doors, windows, sun, interiorWalls]);
 
   // พื้นที่และตัวเลขขนาดห้อง
   const areaM2 = useMemo(() => {
@@ -380,18 +452,84 @@ export function MyDreamSetupBlueprint({
   const widthM = String(Number((widthCm / 100).toFixed(2)));
   const depthM = String(Number((depthCm / 100).toFixed(2)));
 
-  // เปิดกล่องแก้ไขความยาวผนังด้านที่เลือก (หน่วย เมตร ละเอียดระดับ 0.1 ม.)
+  // เปิดกล่องแก้ไขความยาวผนังนอกด้านที่เลือก (หน่วย เมตร ละเอียดระดับ 0.1 ม.)
   const openWallEditor = useCallback(
     (edgeIdx: number) => {
       if (isBlankCanvas || canvasPolyCm.length < 3) return;
       const safeIdx = ((edgeIdx % canvasPolyCm.length) + canvasPolyCm.length) % canvasPolyCm.length;
       const info = getEdgeInfo(canvasPolyCm, safeIdx);
       setSelectedElement(null);
+      setSelectedInteriorWallId(null);
       setEditingWallIndex(safeIdx);
       setWallLenInput(String(Number((info.lengthCm / 100).toFixed(2))));
     },
     [canvasPolyCm, isBlankCanvas]
   );
+
+  // เลือกแก้ไขกำแพงกั้นภายในห้อง (ละเอียด 0.1 ม.)
+  const selectInteriorWall = useCallback(
+    (wallId: string) => {
+      const iw = interiorWalls.find((w) => w.id === wallId);
+      if (!iw) return;
+      const lenCm = Math.hypot(iw.x2 - iw.x1, iw.z2 - iw.z1);
+      setSelectedElement(null);
+      setEditingWallIndex(null);
+      setSelectedInteriorWallId(wallId);
+      setInteriorWallLenInput(String(Number((lenCm / 100).toFixed(2))));
+    },
+    [interiorWalls]
+  );
+
+  const applyInteriorWallLengthMeters = useCallback(
+    (wallId: string, meters: number) => {
+      if (!Number.isFinite(meters) || meters < 0.4 || meters > 13) return false;
+      const iw = interiorWalls.find((w) => w.id === wallId);
+      if (!iw) return false;
+      const curLen = Math.hypot(iw.x2 - iw.x1, iw.z2 - iw.z1);
+      if (curLen < 1) return false;
+      const targetCm = Math.round(meters * 100);
+      const ex = (iw.x2 - iw.x1) / curLen;
+      const ez = (iw.z2 - iw.z1) / curLen;
+      const nx2 = Math.round(iw.x1 + ex * targetCm);
+      const nz2 = Math.round(iw.z1 + ez * targetCm);
+      if (!isPointInOrNearRoom(nx2, nz2, canvasPolyCm, 20)) return false;
+
+      setPolyHistory((h) => [
+        ...h.slice(-19),
+        { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+      ]);
+      setInteriorWalls((prev) =>
+        prev.map((w) => (w.id === wallId ? { ...w, x2: nx2, z2: nz2 } : w))
+      );
+      setInteriorWallLenInput(String(Number((targetCm / 100).toFixed(2))));
+      return true;
+    },
+    [interiorWalls, canvasPolyCm, isBlankCanvas]
+  );
+
+  const nudgeInteriorWallLength = useCallback(
+    (deltaM: number) => {
+      if (!selectedInteriorWallId) return;
+      const iw = interiorWalls.find((w) => w.id === selectedInteriorWallId);
+      if (!iw) return;
+      const curM = Math.hypot(iw.x2 - iw.x1, iw.z2 - iw.z1) / 100;
+      const nextM = Math.max(0.4, Math.min(13, Math.round((curM + deltaM) * 10) / 10));
+      applyInteriorWallLengthMeters(selectedInteriorWallId, nextM);
+    },
+    [selectedInteriorWallId, interiorWalls, applyInteriorWallLengthMeters]
+  );
+
+  const deleteSelectedInteriorWall = useCallback(() => {
+    if (!selectedInteriorWallId) return;
+    setPolyHistory((h) => [
+      ...h.slice(-19),
+      { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+    ]);
+    setInteriorWalls((prev) => prev.filter((w) => w.id !== selectedInteriorWallId));
+    setDoors((prev) => prev.filter((d) => d.interiorWallId !== selectedInteriorWallId));
+    setWindows((prev) => prev.filter((w) => w.interiorWallId !== selectedInteriorWallId));
+    setSelectedInteriorWallId(null);
+  }, [selectedInteriorWallId, canvasPolyCm, interiorWalls, isBlankCanvas]);
 
   const applyWallLengthMeters = useCallback(
     (edgeIdx: number, meters: number) => {
@@ -439,6 +577,76 @@ export function MyDreamSetupBlueprint({
     return { sx, sy, xCm, zCm };
   }, []);
 
+  // ค้นหาผนังที่ใกล้ที่สุด (รองรับทั้งผนังนอกห้อง และกำแพงกั้นในห้องสำหรับประตู)
+  const findClosestTargetWall = useCallback(
+    (xCm: number, zCm: number, openingWidthCm: number, allowInterior: boolean) => {
+      const outerHit = findClosestWallEdge(canvasPolyCm, xCm, zCm, openingWidthCm);
+      let best: {
+        edgeIndex?: number;
+        interiorWallId?: string;
+        pos: number;
+        distCm: number;
+        wallCardinal: "top" | "bottom" | "left" | "right";
+        lengthCm: number;
+        x1: number;
+        z1: number;
+        ex: number;
+        ez: number;
+      } | null = outerHit
+        ? (() => {
+            const info = getEdgeInfo(canvasPolyCm, outerHit.edgeIndex);
+            return {
+              edgeIndex: outerHit.edgeIndex,
+              pos: outerHit.pos,
+              distCm: outerHit.distCm,
+              wallCardinal: outerHit.wallCardinal,
+              lengthCm: outerHit.lengthCm,
+              x1: info.x1,
+              z1: info.z1,
+              ex: info.ex,
+              ez: info.ez,
+            };
+          })()
+        : null;
+
+      if (allowInterior) {
+        for (const iw of interiorWalls) {
+          const dx = iw.x2 - iw.x1;
+          const dz = iw.z2 - iw.z1;
+          const lenCm = Math.hypot(dx, dz);
+          if (lenCm < Math.max(60, openingWidthCm * 0.6)) continue;
+          const ex = dx / lenCm;
+          const ez = dz / lenCm;
+          const proj = (xCm - iw.x1) * ex + (zCm - iw.z1) * ez;
+          const clamped = Math.max(0, Math.min(lenCm, proj));
+          const distCm = Math.hypot(xCm - (iw.x1 + ex * clamped), zCm - (iw.z1 + ez * clamped));
+          const halfRatio = Math.min(0.42, (openingWidthCm / 2 + 10) / lenCm);
+          const safePos = Number(
+            Math.max(halfRatio, Math.min(1 - halfRatio, proj / lenCm)).toFixed(3)
+          );
+          const wallCardinal: "top" | "bottom" | "left" | "right" =
+            Math.abs(dx) >= Math.abs(dz) ? "top" : "right";
+
+          if (!best || distCm < best.distCm) {
+            best = {
+              interiorWallId: iw.id,
+              pos: safePos,
+              distCm,
+              wallCardinal,
+              lengthCm: lenCm,
+              x1: iw.x1,
+              z1: iw.z1,
+              ex,
+              ez,
+            };
+          }
+        }
+      }
+      return best;
+    },
+    [canvasPolyCm, interiorWalls]
+  );
+
   // คำนวณดวงอาทิตย์และอุณหภูมิห้องตามเวลา + ทิศจริงของหน้าต่างแต่ละบาน
   const sunState = useMemo(() => {
     return calculateSunState(sun, widthCm, depthCm, heightCm);
@@ -466,10 +674,10 @@ export function MyDreamSetupBlueprint({
       return null;
     }
     const wCm = activeTool === "window" ? 120 : 80;
-    const hit = findClosestWallEdge(canvasPolyCm, cursorCm[0], cursorCm[1], wCm);
+    const hit = findClosestTargetWall(cursorCm[0], cursorCm[1], wCm, activeTool === "door");
     if (!hit || hit.distCm > 55) return null;
     return { ...hit, widthCm: wCm, type: activeTool };
-  }, [activeTool, cursorCm, isBlankCanvas, draggingOpening, canvasPolyCm]);
+  }, [activeTool, cursorCm, isBlankCanvas, draggingOpening, findClosestTargetWall]);
 
   // พรีเซ็ตทรงห้องด่วน
   const applyQuickShape = (preset: "rect" | "L-left" | "L-right" | "U" | "alcove") => {
@@ -529,17 +737,23 @@ export function MyDreamSetupBlueprint({
     }
     setDraftPointsCm([]);
     setEditingWallIndex(null);
-    commitNewPoly(pts);
+    setSelectedInteriorWallId(null);
+    commitNewPoly(pts, []);
   };
 
   // ล้างกระดานเพื่อเริ่มวาดห้องเองจากหน้าว่างเปล่า
   const clearCanvasForFreshDraw = () => {
     if (!isBlankCanvas && canvasPolyCm.length >= 3) {
-      setPolyHistory((h) => [...h.slice(-19), canvasPolyCm]);
+      setPolyHistory((h) => [
+        ...h.slice(-19),
+        { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+      ]);
     }
     setIsBlankCanvas(true);
+    setInteriorWalls([]);
     setDraftPointsCm([]);
     setSelectedElement(null);
+    setSelectedInteriorWallId(null);
     setEditingWallIndex(null);
     setActiveTool("pencil");
     if (penMode === "paint-erase") setPenMode("paint-add");
@@ -549,6 +763,7 @@ export function MyDreamSetupBlueprint({
   const resetBlueprint = () => {
     const defPoly = initialCanvasPolyFromRoom({ w: 350, d: 400, h: 260 });
     setCanvasPolyCm(defPoly);
+    setInteriorWalls([]);
     setIsBlankCanvas(false);
     setDraftPointsCm([]);
     setHeightCm(260);
@@ -558,12 +773,88 @@ export function MyDreamSetupBlueprint({
     setSun(DEFAULT_SUN_SETTINGS);
     setCompassInput("0.0");
     setSelectedElement(null);
+    setSelectedInteriorWallId(null);
     setEditingWallIndex(null);
   };
 
-  // ปิดเส้นผนังในโหมดวาดจุดต่อจุด (Point-to-Point)
+  // ยกเลิก/ลบเส้นที่กำลังวาดอยู่ทันที (เมื่อกดคลิกขวา หรือกดปุ่ม Esc)
+  const cancelActiveDrawing = useCallback(() => {
+    let canceled = false;
+    if (draftPointsCm.length > 0) {
+      setDraftPointsCm([]);
+      canceled = true;
+    }
+    if (boxDrag) {
+      setBoxDrag(null);
+      canceled = true;
+    }
+    if (handleDrag) {
+      setCanvasPolyCm(handleDrag.basePoly);
+      setInteriorWalls(handleDrag.baseInteriorWalls);
+      setPolyHistory((h) => (h.length > 0 ? h.slice(0, -1) : h));
+      setHandleDrag(null);
+      canceled = true;
+    }
+    if (draggingOpening) {
+      setDraggingOpening(null);
+      canceled = true;
+    }
+    return canceled;
+  }, [draftPointsCm.length, boxDrag, handleDrag, draggingOpening]);
+
+  // ตรวจว่าเส้นในโหมดคลิกจุดต่อจุด (point-pen) วาดอยู่ภายในตัวห้องที่มีอยู่แล้วหรือไม่
+  const isDraftInsideRoom = useMemo(() => {
+    if (isBlankCanvas || canvasPolyCm.length < 3 || draftPointsCm.length === 0) return false;
+    return draftPointsCm.every(([x, z]) => isPointInOrNearRoom(x, z, canvasPolyCm, 22));
+  }, [isBlankCanvas, canvasPolyCm, draftPointsCm]);
+
+  // บันทึกชุดเส้นที่วาดเข้าไปในห้องให้เป็นกำแพงกั้นภายในห้อง
+  const commitDraftInteriorWalls = useCallback(
+    (pts: Pt2[], closeLoop = false) => {
+      if (pts.length < 2) return;
+      const newWalls: CanvasInteriorWall[] = [];
+      const count = closeLoop && pts.length >= 3 ? pts.length : pts.length - 1;
+      const now = Date.now();
+      for (let i = 0; i < count; i++) {
+        const [x1, z1] = pts[i];
+        const [x2, z2] = pts[(i + 1) % pts.length];
+        if (Math.hypot(x2 - x1, z2 - z1) >= 35) {
+          newWalls.push({
+            id: `iw-${now}-${i}`,
+            x1,
+            z1,
+            x2,
+            z2,
+          });
+        }
+      }
+      if (newWalls.length > 0) {
+        setPolyHistory((h) => [
+          ...h.slice(-19),
+          { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+        ]);
+        setInteriorWalls((prev) => [...prev, ...newWalls]);
+        setSelectedInteriorWallId(newWalls[newWalls.length - 1].id);
+        const last = newWalls[newWalls.length - 1];
+        setInteriorWallLenInput(
+          String(Number((Math.hypot(last.x2 - last.x1, last.z2 - last.z1) / 100).toFixed(2)))
+        );
+      }
+      setDraftPointsCm([]);
+    },
+    [canvasPolyCm, interiorWalls, isBlankCanvas]
+  );
+
+  // ปิดเส้นผนังในโหมดวาดจุดต่อจุด (Point-to-Point): ถ้าร่างในห้อง -> เพิ่มกำแพงกั้นในห้อง, ถ้าร่างนอกห้อง -> สร้างกรอบห้อง
   const finishPointPenPolygon = useCallback(
-    (pts: Pt2[]) => {
+    (pts: Pt2[], closeLoop = true) => {
+      if (!isBlankCanvas && canvasPolyCm.length >= 3) {
+        const allInside = pts.every(([x, z]) => isPointInOrNearRoom(x, z, canvasPolyCm, 22));
+        if (allInside && pts.length >= 2) {
+          commitDraftInteriorWalls(pts, closeLoop && pts.length >= 3);
+          return;
+        }
+      }
       if (pts.length < 3) return;
       if (hasSelfIntersection(pts)) return;
       const norm = normalizeCanvasPolygon(pts);
@@ -571,43 +862,102 @@ export function MyDreamSetupBlueprint({
       commitNewPoly(pts);
       setDraftPointsCm([]);
     },
-    [commitNewPoly]
+    [isBlankCanvas, canvasPolyCm, commitDraftInteriorWalls, commitNewPoly]
   );
+
+  // ดักคลิกขวา (ขณะกำลังลากเมาส์ซ้ายค้างอยู่) และปุ่มคีย์บอร์ด Esc / Enter / Delete
+  useEffect(() => {
+    const onGlobalMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) {
+        if (cancelActiveDrawing()) {
+          e.preventDefault();
+        }
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "Escape") {
+        if (cancelActiveDrawing()) {
+          e.preventDefault();
+          return;
+        }
+        setSelectedElement(null);
+        setSelectedInteriorWallId(null);
+        setEditingWallIndex(null);
+      } else if (!isTyping && e.key === "Enter" && draftPointsCm.length >= 2) {
+        e.preventDefault();
+        finishPointPenPolygon(draftPointsCm, false);
+      } else if (!isTyping && (e.key === "Delete" || e.key === "Backspace")) {
+        if (draftPointsCm.length > 0) {
+          e.preventDefault();
+          setDraftPointsCm((prev) => prev.slice(0, -1));
+        } else if (selectedInteriorWallId) {
+          e.preventDefault();
+          deleteSelectedInteriorWall();
+        }
+      }
+    };
+    window.addEventListener("mousedown", onGlobalMouseDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onGlobalMouseDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [
+    cancelActiveDrawing,
+    draftPointsCm,
+    finishPointPenPolygon,
+    selectedInteriorWallId,
+    deleteSelectedInteriorWall,
+  ]);
 
   // คลิกหรือเริ่มลากบนพื้นกระดาษพิมพ์เขียว
   const handleCanvasMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
     setSunPanelOpen(false);
     setShapeMenuOpen(false);
-    if (e.button !== 0 && e.button !== 2) return;
+
+    // คลิกขวา = ยกเลิกและลบเส้นที่กำลังวาดอยู่ทันที
+    if (e.button === 2) {
+      e.preventDefault();
+      cancelActiveDrawing();
+      return;
+    }
+    if (e.button !== 0) return;
+
     const pt = clientToSvgAndCm(e.clientX, e.clientY);
     if (!pt) return;
 
-    // 1) โหมดวางหน้าต่าง หรือ ประตู: คลิกใกล้ผนังเพื่อวางทันที
+    // 1) โหมดวางหน้าต่าง หรือ ประตู: คลิกใกล้ผนังนอกหรือกำแพงในห้องเพื่อวางทันที
     if (activeTool === "window" || activeTool === "door") {
       if (isBlankCanvas) return;
       const wCm = activeTool === "window" ? 120 : 80;
-      const hit = findClosestWallEdge(canvasPolyCm, pt.xCm, pt.zCm, wCm);
+      const hit = findClosestTargetWall(pt.xCm, pt.zCm, wCm, activeTool === "door");
       if (hit && hit.distCm <= 55) {
         if (activeTool === "window") {
           const nw: BlueprintWindow = {
             id: `w-${Date.now()}`,
             edgeIndex: hit.edgeIndex,
+            interiorWallId: hit.interiorWallId,
             wall: hit.wallCardinal,
             pos: hit.pos,
             width: Math.min(120, Math.max(60, Math.round(hit.lengthCm - 30))),
           };
           setWindows((prev) => [...prev, nw]);
           setSelectedElement({ type: "window", id: nw.id });
+          setSelectedInteriorWallId(null);
         } else {
           const nd: BlueprintDoor = {
             id: `d-${Date.now()}`,
             edgeIndex: hit.edgeIndex,
+            interiorWallId: hit.interiorWallId,
             wall: hit.wallCardinal,
             pos: hit.pos,
             width: Math.min(80, Math.max(60, Math.round(hit.lengthCm - 25))),
           };
           setDoors((prev) => [...prev, nd]);
           setSelectedElement({ type: "door", id: nd.id });
+          setSelectedInteriorWallId(null);
         }
       } else {
         setSelectedElement(null);
@@ -617,34 +967,43 @@ export function MyDreamSetupBlueprint({
 
     // 2) โหมดปากกา -> วาดเส้นทีละจุด (Point-to-Point ละเอียดทุก 0.1 เมตร = 10 ซม.)
     if (activeTool === "pencil" && penMode === "point-pen") {
-      const snapCm = 10;
-      const maxX = GRID_COLS * GRID_CELL_CM;
-      const maxZ = GRID_ROWS * GRID_CELL_CM;
-      const sx = Math.max(0, Math.min(maxX, Math.round(pt.xCm / snapCm) * snapCm));
-      const sz = Math.max(0, Math.min(maxZ, Math.round(pt.zCm / snapCm) * snapCm));
+      const [sx, sz] = !isBlankCanvas
+        ? snapPointToRoomWalls(pt.xCm, pt.zCm, canvasPolyCm, interiorWalls, 18)
+        : [
+            Math.max(0, Math.min(GRID_COLS * GRID_CELL_CM, Math.round(pt.xCm / 10) * 10)),
+            Math.max(0, Math.min(GRID_ROWS * GRID_CELL_CM, Math.round(pt.zCm / 10) * 10)),
+          ];
 
       if (draftPointsCm.length >= 3) {
         const [fx, fz] = draftPointsCm[0];
         if (Math.hypot(sx - fx, sz - fz) <= 35) {
-          finishPointPenPolygon(draftPointsCm);
+          finishPointPenPolygon(draftPointsCm, true);
           return;
         }
       }
-      setDraftPointsCm((prev) => [...prev, [sx, sz]]);
+      setDraftPointsCm((prev) => {
+        if (prev.length > 0) {
+          const [lx, lz] = prev[prev.length - 1];
+          if (Math.hypot(sx - lx, sz - lz) < 10) return prev;
+        }
+        return [...prev, [sx, sz]];
+      });
       setSelectedElement(null);
+      setSelectedInteriorWallId(null);
       setEditingWallIndex(null);
       return;
     }
 
-    // 3) โหมดปากกา -> ลากคลุมช่องตารางเพื่อวาดห้องใหม่ / ต่อเติม (+) / เว้ามุม (-)
+    // 3) โหมดปากกา -> ลากคลุมช่องตารางเพื่อวาดห้อง/ต่อเติม (+) หรือเมื่อลากเข้าไปในตัวห้องจะเป็นการเพิ่มกำแพงกั้นอัตโนมัติ!
     if (activeTool === "pencil" && (penMode === "paint-add" || penMode === "paint-erase")) {
       const gx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(pt.xCm / GRID_CELL_CM)));
       const gz = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(pt.zCm / GRID_CELL_CM)));
       if (pt.xCm < -25 || pt.xCm > GRID_COLS * GRID_CELL_CM + 25 || pt.zCm < -25 || pt.zCm > GRID_ROWS * GRID_CELL_CM + 25) {
         return;
       }
-      const erase = penMode === "paint-erase" || e.altKey || e.button === 2;
+      const erase = penMode === "paint-erase" || e.altKey;
       setSelectedElement(null);
+      setSelectedInteriorWallId(null);
       setEditingWallIndex(null);
       setBoxDrag({
         mode: erase ? "erase" : "add",
@@ -652,6 +1011,9 @@ export function MyDreamSetupBlueprint({
         startGz: gz,
         curGx: gx,
         curGz: gz,
+        startRawCm: [pt.xCm, pt.zCm],
+        curRawCm: [pt.xCm, pt.zCm],
+        shiftKey: e.shiftKey,
       });
     }
   };
@@ -678,21 +1040,32 @@ export function MyDreamSetupBlueprint({
       const pt = clientToSvgAndCm(e.clientX, e.clientY);
       if (!pt) return;
 
-      // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง
+      // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง (และกำแพงกั้นในห้องสำหรับประตู)
       if (draggingOpening && canvasPolyCm.length >= 3) {
         const curItem =
           draggingOpening.type === "door"
             ? doors.find((d) => d.id === draggingOpening.id)
             : windows.find((w) => w.id === draggingOpening.id);
         const wCm = curItem?.width ?? 80;
-        const hit = findClosestWallEdge(canvasPolyCm, pt.xCm, pt.zCm, wCm);
+        const hit = findClosestTargetWall(
+          pt.xCm,
+          pt.zCm,
+          wCm,
+          draggingOpening.type === "door"
+        );
         if (!hit) return;
 
         if (draggingOpening.type === "door") {
           setDoors((prev) =>
             prev.map((d) =>
               d.id === draggingOpening.id
-                ? { ...d, edgeIndex: hit.edgeIndex, wall: hit.wallCardinal, pos: hit.pos }
+                ? {
+                    ...d,
+                    edgeIndex: hit.edgeIndex,
+                    interiorWallId: hit.interiorWallId,
+                    wall: hit.wallCardinal,
+                    pos: hit.pos,
+                  }
                 : d
             )
           );
@@ -700,7 +1073,13 @@ export function MyDreamSetupBlueprint({
           setWindows((prev) =>
             prev.map((w) =>
               w.id === draggingOpening.id
-                ? { ...w, edgeIndex: hit.edgeIndex, wall: hit.wallCardinal, pos: hit.pos }
+                ? {
+                    ...w,
+                    edgeIndex: hit.edgeIndex,
+                    interiorWallId: undefined,
+                    wall: hit.wallCardinal,
+                    pos: hit.pos,
+                  }
                 : w
             )
           );
@@ -708,18 +1087,68 @@ export function MyDreamSetupBlueprint({
         return;
       }
 
-      // C. ลากคลุมตารางเพื่อวาดห้อง / ต่อเติม / ตัดเว้า
+      // C. ลากคลุมตารางเพื่อวาดห้อง / ต่อเติม / ตัดเว้า หรือลากกั้นกำแพงในห้อง
       if (boxDrag) {
         const gx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(pt.xCm / GRID_CELL_CM)));
         const gz = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(pt.zCm / GRID_CELL_CM)));
-        setBoxDrag((prev) => (prev ? { ...prev, curGx: gx, curGz: gz } : null));
+        setBoxDrag((prev) =>
+          prev
+            ? {
+                ...prev,
+                curGx: gx,
+                curGz: gz,
+                curRawCm: [pt.xCm, pt.zCm],
+                shiftKey: e.shiftKey,
+              }
+            : null
+        );
         return;
       }
 
-      // D. ลากจุดมุมห้อง (Vertex) หรือขอบผนัง (Wall Edge) ละเอียดทีละ 0.1 เมตร (10 ซม.)
+      // D. ลากจุดมุมห้อง (Vertex), ขอบผนัง (Wall Edge), หรือจุดปลายกำแพงในห้อง ละเอียดทีละ 0.1 ม. (10 ซม.)
       if (handleDrag) {
         const dxCm = pt.xCm - handleDrag.startMouseCm[0];
         const dzCm = pt.zCm - handleDrag.startMouseCm[1];
+
+        if (handleDrag.kind === "interior-end") {
+          const baseWall = handleDrag.baseInteriorWalls.find((w) => w.id === handleDrag.wallId);
+          if (!baseWall) return;
+          const otherOtherWalls = handleDrag.baseInteriorWalls.filter(
+            (w) => w.id !== handleDrag.wallId
+          );
+          const rawX = (handleDrag.end === 1 ? baseWall.x1 : baseWall.x2) + dxCm;
+          const rawZ = (handleDrag.end === 1 ? baseWall.z1 : baseWall.z2) + dzCm;
+          const anchorX = handleDrag.end === 1 ? baseWall.x2 : baseWall.x1;
+          const anchorZ = handleDrag.end === 1 ? baseWall.z2 : baseWall.z1;
+
+          let [nx, nz] = snapPointToRoomWalls(
+            rawX,
+            rawZ,
+            canvasPolyCm,
+            otherOtherWalls,
+            20
+          );
+          if (!e.shiftKey) {
+            if (Math.abs(nx - anchorX) < 15) nx = anchorX;
+            if (Math.abs(nz - anchorZ) < 15) nz = anchorZ;
+          }
+          const newLen = Math.hypot(nx - anchorX, nz - anchorZ);
+          if (newLen >= 40 && isPointInOrNearRoom(nx, nz, canvasPolyCm, 20)) {
+            setInteriorWalls((prev) =>
+              prev.map((w) =>
+                w.id === handleDrag.wallId
+                  ? handleDrag.end === 1
+                    ? { ...w, x1: nx, z1: nz }
+                    : { ...w, x2: nx, z2: nz }
+                  : w
+              )
+            );
+            if (selectedInteriorWallId === handleDrag.wallId) {
+              setInteriorWallLenInput(String(Number((newLen / 100).toFixed(2))));
+            }
+          }
+          return;
+        }
 
         if (handleDrag.kind === "edge") {
           const moved = movePolygonEdge(handleDrag.basePoly, handleDrag.index, dxCm, dzCm, 10);
@@ -789,6 +1218,40 @@ export function MyDreamSetupBlueprint({
 
     const onMouseUp = () => {
       if (boxDrag) {
+        // กรณีวาดเข้าไปในตัวห้องที่มีอยู่แล้ว -> เพิ่มกำแพงกั้นภายในห้องแทน!
+        if (boxDrag.mode === "add" && !isBlankCanvas && canvasPolyCm.length >= 3) {
+          const iwRes = resolveInteriorWallDrag(
+            boxDrag.startRawCm,
+            boxDrag.curRawCm,
+            canvasPolyCm,
+            interiorWalls,
+            boxDrag.shiftKey
+          );
+          if (iwRes.isInteriorWall) {
+            if (iwRes.lengthCm >= 40) {
+              const nw: CanvasInteriorWall = {
+                id: `iw-${Date.now()}`,
+                x1: iwRes.x1,
+                z1: iwRes.z1,
+                x2: iwRes.x2,
+                z2: iwRes.z2,
+              };
+              setPolyHistory((h) => [
+                ...h.slice(-19),
+                { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+              ]);
+              setInteriorWalls((prev) => [...prev, nw]);
+              setSelectedInteriorWallId(nw.id);
+              setInteriorWallLenInput(String(Number((iwRes.lengthCm / 100).toFixed(2))));
+            }
+            setBoxDrag(null);
+            setHandleDrag(null);
+            setDraggingOpening(null);
+            setDraggingCompass(false);
+            return;
+          }
+        }
+
         const minGx = Math.min(boxDrag.startGx, boxDrag.curGx);
         const maxGx = Math.max(boxDrag.startGx, boxDrag.curGx);
         const minGz = Math.min(boxDrag.startGz, boxDrag.curGz);
@@ -820,13 +1283,13 @@ export function MyDreamSetupBlueprint({
             });
 
           if (touchesExisting) {
-            // ต่อเติมขยายห้องเดิม (คลิก 1 ช่องขึ้นไปก็ขยายได้ทันที)
+            // ต่อเติมขยายห้องเดิม
             const merged = new Set(baseCells);
             for (const k of strokeCells) merged.add(k);
             const res = cellsToRoomPolygon(merged, strokeCells[0]);
             if (res) commitNewPoly(res.canvasPolyCm);
           } else if (strokeW >= 2 && strokeD >= 2) {
-            // วาดห้องใหม่ตรงจุดที่ลาก (ต้องใหญ่ตั้งแต่ 1.0 x 1.0 ม. ขึ้นไปเพื่อกันการเผลอคลิกพลาด)
+            // วาดห้องใหม่ตรงจุดที่ลาก
             const fresh = new Set(strokeCells);
             const res = cellsToRoomPolygon(fresh, strokeCells[0]);
             if (res) commitNewPoly(res.canvasPolyCm);
@@ -862,14 +1325,17 @@ export function MyDreamSetupBlueprint({
     draggingOpening,
     draggingCompass,
     canvasPolyCm,
+    interiorWalls,
     isBlankCanvas,
     doors,
     windows,
     clientToSvgAndCm,
+    findClosestTargetWall,
     commitNewPoly,
     reattachOpeningsToPoly,
     setOrientationDeg01,
     editingWallIndex,
+    selectedInteriorWallId,
   ]);
 
   // ลบ/คัดลอก/เปลี่ยนความกว้างหน้าต่างหรือประตูที่เลือก
@@ -895,6 +1361,7 @@ export function MyDreamSetupBlueprint({
         ...cur,
         id: `d-${Date.now()}`,
         edgeIndex: nextEdge,
+        interiorWallId: undefined,
         wall: info.wallCardinal,
         pos: 0.5,
       };
@@ -909,6 +1376,7 @@ export function MyDreamSetupBlueprint({
         ...cur,
         id: `w-${Date.now()}`,
         edgeIndex: nextEdge,
+        interiorWallId: undefined,
         wall: info.wallCardinal,
         pos: 0.5,
       };
@@ -926,7 +1394,13 @@ export function MyDreamSetupBlueprint({
           if (d.id !== selectedElement.id) return d;
           const nextEdge = ((d.edgeIndex ?? 0) + 1) % n;
           const info = getEdgeInfo(canvasPolyCm, nextEdge);
-          return { ...d, edgeIndex: nextEdge, wall: info.wallCardinal, pos: 0.5 };
+          return {
+            ...d,
+            edgeIndex: nextEdge,
+            interiorWallId: undefined,
+            wall: info.wallCardinal,
+            pos: 0.5,
+          };
         })
       );
     } else {
@@ -935,7 +1409,13 @@ export function MyDreamSetupBlueprint({
           if (w.id !== selectedElement.id) return w;
           const nextEdge = ((w.edgeIndex ?? 0) + 1) % n;
           const info = getEdgeInfo(canvasPolyCm, nextEdge);
-          return { ...w, edgeIndex: nextEdge, wall: info.wallCardinal, pos: 0.5 };
+          return {
+            ...w,
+            edgeIndex: nextEdge,
+            interiorWallId: undefined,
+            wall: info.wallCardinal,
+            pos: 0.5,
+          };
         })
       );
     }
@@ -965,10 +1445,32 @@ export function MyDreamSetupBlueprint({
     () => (selectedElement?.type === "window" ? windows.find((w) => w.id === selectedElement.id) : null),
     [selectedElement, windows]
   );
+  const selectedInteriorWall = useMemo(
+    () =>
+      selectedInteriorWallId
+        ? interiorWalls.find((w) => w.id === selectedInteriorWallId) || null
+        : null,
+    [selectedInteriorWallId, interiorWalls]
+  );
 
-  // พิกัด SVG ของกล่องลากวาด (Box Drag Preview)
+  // ตัวอย่างเส้นกำแพงกั้นในห้องขณะคลิกลากเข้าไปในตัวห้อง (Context-Aware Interior Wall Preview)
+  const interiorWallDragPreview = useMemo(() => {
+    if (!boxDrag || boxDrag.mode !== "add" || isBlankCanvas || canvasPolyCm.length < 3) {
+      return null;
+    }
+    const res = resolveInteriorWallDrag(
+      boxDrag.startRawCm,
+      boxDrag.curRawCm,
+      canvasPolyCm,
+      interiorWalls,
+      boxDrag.shiftKey
+    );
+    return res.isInteriorWall ? res : null;
+  }, [boxDrag, isBlankCanvas, canvasPolyCm, interiorWalls]);
+
+  // พิกัด SVG ของกล่องลากวาด (Box Drag Preview — ซ่อนอัตโนมัติเมื่อกำลังวาดกำแพงในห้อง)
   const boxDragPreview = useMemo(() => {
-    if (!boxDrag) return null;
+    if (!boxDrag || interiorWallDragPreview) return null;
     const minGx = Math.min(boxDrag.startGx, boxDrag.curGx);
     const maxGx = Math.max(boxDrag.startGx, boxDrag.curGx);
     const minGz = Math.min(boxDrag.startGz, boxDrag.curGz);
@@ -983,7 +1485,7 @@ export function MyDreamSetupBlueprint({
       (((maxGz - minGz + 1) * GRID_CELL_CM) / 100)
     ).toFixed(1);
     return { x, y, wPx, hPx, wM, dM, aM2, mode: boxDrag.mode };
-  }, [boxDrag]);
+  }, [boxDrag, interiorWallDragPreview]);
 
   const formattedTime = `${Math.floor(sun.timeHour)
     .toString()
@@ -1003,7 +1505,10 @@ export function MyDreamSetupBlueprint({
           ? "h-full flex-1 rounded-none border-0"
           : "min-h-[600px] lg:h-[calc(100dvh-5.25rem)] rounded-2xl border border-[#1d4ed8] shadow-xl"
       }`}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        cancelActiveDrawing();
+      }}
     >
       {/* แถบควบคุมหลักเพียงแถวเดียวด้านบน: เรียบ สะอาด จัดหมวดหมู่เป็นระเบียบ */}
       <div className="relative z-30 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-900/45 px-3.5 py-2 backdrop-blur-md sm:px-5">
@@ -1217,6 +1722,86 @@ export function MyDreamSetupBlueprint({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+          ) : selectedInteriorWall ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-300/60 bg-slate-950/75 px-2.5 py-1 text-white shadow-sm">
+              <span className="inline-flex items-center gap-1 border-r border-white/15 pr-2 text-[11px] font-bold text-amber-300">
+                <Ruler className="h-3.5 w-3.5" />
+                กำแพงในห้อง
+              </span>
+
+              <button
+                type="button"
+                onClick={() => nudgeInteriorWallLength(-0.1)}
+                title="ลดความยาวกำแพง 0.1 เมตร"
+                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+              >
+                -0.1
+              </button>
+
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0.4"
+                  max="13"
+                  step="0.1"
+                  value={interiorWallLenInput}
+                  onChange={(e) => setInteriorWallLenInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const val = parseFloat(interiorWallLenInput);
+                      if (Number.isFinite(val)) {
+                        applyInteriorWallLengthMeters(selectedInteriorWall.id, val);
+                      }
+                    } else if (e.key === "Escape") {
+                      setSelectedInteriorWallId(null);
+                    }
+                  }}
+                  className="w-14 rounded-md border border-amber-300/60 bg-slate-900 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <span className="text-[11px] text-slate-300">ม.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => nudgeInteriorWallLength(0.1)}
+                title="เพิ่มความยาวกำแพง 0.1 เมตร"
+                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+              >
+                +0.1
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const val = parseFloat(interiorWallLenInput);
+                  if (Number.isFinite(val)) {
+                    applyInteriorWallLengthMeters(selectedInteriorWall.id, val);
+                  }
+                }}
+                className="inline-flex items-center gap-0.5 rounded-md bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300"
+              >
+                <Check className="h-3 w-3" />
+                ตกลง
+              </button>
+
+              <button
+                type="button"
+                onClick={deleteSelectedInteriorWall}
+                title="ลบกำแพงในห้องนี้"
+                className="rounded-md bg-rose-500/90 p-1 text-white hover:bg-rose-500"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedInteriorWallId(null)}
+                title="ยกเลิกการเลือก"
+                className="rounded-md bg-white/10 p-1 text-white/80 hover:bg-white/20"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : activeTool === "pencil" ? (
             <>
               <div className="inline-flex items-center gap-0.5 rounded-xl border border-white/15 bg-slate-950/40 p-0.5">
@@ -1350,14 +1935,38 @@ export function MyDreamSetupBlueprint({
                 </button>
               )}
 
-              {penMode === "point-pen" && draftPointsCm.length >= 3 && (
+              {penMode === "point-pen" && isDraftInsideRoom && draftPointsCm.length >= 2 ? (
                 <button
                   type="button"
-                  onClick={() => finishPointPenPolygon(draftPointsCm)}
-                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                  onClick={() => finishPointPenPolygon(draftPointsCm, false)}
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-2.5 py-1.5 text-[11px] font-bold text-slate-950 shadow hover:bg-amber-300"
                 >
                   <Check className="h-3.5 w-3.5" />
-                  เชื่อมปิดห้อง ({draftPointsCm.length})
+                  สร้างกำแพงในห้อง ({draftPointsCm.length - 1})
+                </button>
+              ) : (
+                penMode === "point-pen" &&
+                draftPointsCm.length >= 3 && (
+                  <button
+                    type="button"
+                    onClick={() => finishPointPenPolygon(draftPointsCm, true)}
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    เชื่อมปิดห้อง ({draftPointsCm.length})
+                  </button>
+                )
+              )}
+
+              {penMode === "point-pen" && draftPointsCm.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => cancelActiveDrawing()}
+                  title="ยกเลิกและลบเส้นที่กำลังวาด (คลิกขวา หรือปุ่ม Esc)"
+                  className="inline-flex items-center gap-1 rounded-xl border border-rose-300/40 bg-rose-500/80 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-500"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  ยกเลิกเส้น (คลิกขวา)
                 </button>
               )}
             </>
@@ -1646,6 +2255,7 @@ export function MyDreamSetupBlueprint({
               setActiveTool("window");
               setDraftPointsCm([]);
               setSelectedElement(null);
+              setSelectedInteriorWallId(null);
             }}
             title="วางและขยับหน้าต่าง"
             className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
@@ -1664,8 +2274,9 @@ export function MyDreamSetupBlueprint({
               setActiveTool("door");
               setDraftPointsCm([]);
               setSelectedElement(null);
+              setSelectedInteriorWallId(null);
             }}
-            title="วางและขยับประตู"
+            title="วางและขยับประตู (วางได้ทั้งผนังนอกและกำแพงในห้อง)"
             className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "door"
                 ? "bg-sky-400 text-slate-950 ring-2 ring-sky-200"
@@ -1794,8 +2405,10 @@ export function MyDreamSetupBlueprint({
           onClick={() => {
             if (selectedElement) {
               deleteSelected();
+            } else if (selectedInteriorWallId) {
+              deleteSelectedInteriorWall();
             } else if (draftPointsCm.length > 0) {
-              setDraftPointsCm((prev) => prev.slice(0, -1));
+              setDraftPointsCm([]);
             } else {
               clearCanvasForFreshDraw();
             }
@@ -1803,6 +2416,10 @@ export function MyDreamSetupBlueprint({
           title={
             selectedElement
               ? "ลบประตู/หน้าต่างที่เลือก"
+              : selectedInteriorWallId
+              ? "ลบกำแพงในห้องที่เลือก"
+              : draftPointsCm.length > 0
+              ? "ลบเส้นที่กำลังวาด"
               : "ล้างผนังห้องเพื่อวาดห้องใหม่"
           }
           className="absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg hover:bg-rose-50 hover:text-rose-600 transition-colors"
@@ -1825,8 +2442,12 @@ export function MyDreamSetupBlueprint({
           }}
           onMouseLeave={() => setCursorCm(null)}
           onDoubleClick={() => {
-            if (activeTool === "pencil" && penMode === "point-pen" && draftPointsCm.length >= 3) {
-              finishPointPenPolygon(draftPointsCm);
+            if (activeTool === "pencil" && penMode === "point-pen") {
+              if (isDraftInsideRoom && draftPointsCm.length >= 2) {
+                finishPointPenPolygon(draftPointsCm, false);
+              } else if (draftPointsCm.length >= 3) {
+                finishPointPenPolygon(draftPointsCm, true);
+              }
             }
           }}
         >
@@ -2054,16 +2675,134 @@ export function MyDreamSetupBlueprint({
             </g>
           )}
 
-          {/* เงาตัวอย่างหน้าต่าง/ประตูก่อนคลิกวาง */}
+          {/* กำแพงกั้นภายในห้อง (Interior Partition Walls — วาดเพิ่มในห้อง พิมพ์ความยาว 0.1 ม. หรือคลิกขวา/ปุ่มลบได้) */}
+          {!isBlankCanvas && interiorWalls.length > 0 && (
+            <g pointerEvents={activeTool === "door" || activeTool === "window" ? "none" : "auto"}>
+              {interiorWalls.map((iw) => {
+                const dx = iw.x2 - iw.x1;
+                const dz = iw.z2 - iw.z1;
+                const lenCm = Math.hypot(dx, dz);
+                if (lenCm < 20) return null;
+                const [sx1, sy1] = cmToSvg(iw.x1, iw.z1);
+                const [sx2, sy2] = cmToSvg(iw.x2, iw.z2);
+                const isSel = selectedInteriorWallId === iw.id;
+                const isHov = hoveredHandle === `iw-${iw.id}`;
+                const nx = -dz / lenCm;
+                const nz = dx / lenCm;
+                const [lx, ly] = cmToSvg(
+                  (iw.x1 + iw.x2) / 2 + nx * 26,
+                  (iw.z1 + iw.z2) / 2 + nz * 26
+                );
+                const lenText = `${Number((lenCm / 100).toFixed(2))}m`;
+
+                return (
+                  <g key={iw.id}>
+                    {isSel && (
+                      <line
+                        x1={sx1}
+                        y1={sy1}
+                        x2={sx2}
+                        y2={sy2}
+                        stroke="#fbbf24"
+                        strokeWidth={14}
+                        strokeLinecap="round"
+                        pointerEvents="none"
+                      />
+                    )}
+                    <line
+                      x1={sx1}
+                      y1={sy1}
+                      x2={sx2}
+                      y2={sy2}
+                      stroke={isHov && !isSel ? "#fef08a" : "#ffffff"}
+                      strokeWidth={9.5}
+                      strokeLinecap="round"
+                      pointerEvents="none"
+                    />
+                    {activeTool === "pencil" && penMode !== "point-pen" && (
+                      <line
+                        x1={sx1}
+                        y1={sy1}
+                        x2={sx2}
+                        y2={sy2}
+                        stroke="transparent"
+                        strokeWidth={18}
+                        strokeLinecap="round"
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredHandle(`iw-${iw.id}`)}
+                        onMouseLeave={() => setHoveredHandle(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectInteriorWall(iw.id);
+                        }}
+                      />
+                    )}
+                    {lenCm >= 40 && (
+                      <g
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredHandle(`iw-${iw.id}`)}
+                        onMouseLeave={() => setHoveredHandle(null)}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectInteriorWall(iw.id);
+                        }}
+                      >
+                        <title>คลิกเพื่อแก้ไขความยาวกำแพงในห้อง (0.1 ม.) หรือลบออก</title>
+                        <rect
+                          x={lx - 26}
+                          y={ly - 9.5}
+                          width={52}
+                          height={19}
+                          rx={9.5}
+                          fill={
+                            isSel
+                              ? "#fbbf24"
+                              : isHov
+                              ? "rgba(15, 23, 42, 0.9)"
+                              : "rgba(15, 23, 42, 0.65)"
+                          }
+                          stroke={isSel ? "#ffffff" : isHov ? "#fbbf24" : "rgba(255,255,255,0.28)"}
+                          strokeWidth={isSel || isHov ? 1.5 : 1}
+                        />
+                        <text
+                          x={lx}
+                          y={ly + 0.5}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill={isSel ? "#0f172a" : isHov ? "#fde047" : "#f8fafc"}
+                          className="font-mono text-[9px] font-bold pointer-events-none"
+                        >
+                          {lenText}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
+          {/* เงาตัวอย่างหน้าต่าง/ประตูก่อนคลิกวาง (รองรับทั้งผนังนอกและกำแพงในห้อง) */}
           {openingPreview && !isBlankCanvas && (
             <g pointerEvents="none" opacity={0.7}>
               {(() => {
-                const info = getEdgeInfo(canvasPolyCm, openingPreview.edgeIndex);
-                const halfW = Math.min(openingPreview.widthCm / 2, info.lengthCm * 0.42);
-                const cxCm = info.x1 + info.ex * info.lengthCm * openingPreview.pos;
-                const czCm = info.z1 + info.ez * info.lengthCm * openingPreview.pos;
-                const [x1, y1] = cmToSvg(cxCm - info.ex * halfW, czCm - info.ez * halfW);
-                const [x2, y2] = cmToSvg(cxCm + info.ex * halfW, czCm + info.ez * halfW);
+                const halfW = Math.min(openingPreview.widthCm / 2, openingPreview.lengthCm * 0.42);
+                const cxCm =
+                  openingPreview.x1 + openingPreview.ex * openingPreview.lengthCm * openingPreview.pos;
+                const czCm =
+                  openingPreview.z1 + openingPreview.ez * openingPreview.lengthCm * openingPreview.pos;
+                const [x1, y1] = cmToSvg(
+                  cxCm - openingPreview.ex * halfW,
+                  czCm - openingPreview.ez * halfW
+                );
+                const [x2, y2] = cmToSvg(
+                  cxCm + openingPreview.ex * halfW,
+                  czCm + openingPreview.ez * halfW
+                );
                 return (
                   <line
                     x1={x1}
@@ -2083,14 +2822,34 @@ export function MyDreamSetupBlueprint({
           {!isBlankCanvas &&
             canvasPolyCm.length >= 3 &&
             windows.map((w) => {
-              const idx =
-                w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length ? w.edgeIndex : 0;
-              const info = getEdgeInfo(canvasPolyCm, idx);
-              const halfW = Math.min(w.width / 2, info.lengthCm * 0.44);
-              const cxCm = info.x1 + info.ex * info.lengthCm * w.pos;
-              const czCm = info.z1 + info.ez * info.lengthCm * w.pos;
-              const [x1, y1] = cmToSvg(cxCm - info.ex * halfW, czCm - info.ez * halfW);
-              const [x2, y2] = cmToSvg(cxCm + info.ex * halfW, czCm + info.ez * halfW);
+              const iw = w.interiorWallId
+                ? interiorWalls.find((item) => item.id === w.interiorWallId)
+                : null;
+              const geom = iw
+                ? (() => {
+                    const dx = iw.x2 - iw.x1;
+                    const dz = iw.z2 - iw.z1;
+                    const lengthCm = Math.max(1, Math.hypot(dx, dz));
+                    return {
+                      x1: iw.x1,
+                      z1: iw.z1,
+                      ex: dx / lengthCm,
+                      ez: dz / lengthCm,
+                      lengthCm,
+                    };
+                  })()
+                : (() => {
+                    const idx =
+                      w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length
+                        ? w.edgeIndex
+                        : 0;
+                    return getEdgeInfo(canvasPolyCm, idx);
+                  })();
+              const halfW = Math.min(w.width / 2, geom.lengthCm * 0.44);
+              const cxCm = geom.x1 + geom.ex * geom.lengthCm * w.pos;
+              const czCm = geom.z1 + geom.ez * geom.lengthCm * w.pos;
+              const [x1, y1] = cmToSvg(cxCm - geom.ex * halfW, czCm - geom.ez * halfW);
+              const [x2, y2] = cmToSvg(cxCm + geom.ex * halfW, czCm + geom.ez * halfW);
               const isSelected = selectedElement?.type === "window" && selectedElement.id === w.id;
               const isHovered = hoveredHandle === `win-${w.id}`;
 
@@ -2101,7 +2860,9 @@ export function MyDreamSetupBlueprint({
                   onMouseEnter={() => setHoveredHandle(`win-${w.id}`)}
                   onMouseLeave={() => setHoveredHandle(null)}
                   onMouseDown={(e) => {
+                    if (e.button !== 0) return;
                     e.stopPropagation();
+                    setSelectedInteriorWallId(null);
                     setSelectedElement({ type: "window", id: w.id });
                     setDraggingOpening({ type: "window", id: w.id });
                   }}
@@ -2141,18 +2902,38 @@ export function MyDreamSetupBlueprint({
               );
             })}
 
-          {/* ประตูทั้งหมดบนผนัง (ลากย้ายตำแหน่งไปตามผนังได้ทุกบาน) */}
+          {/* ประตูทั้งหมดบนผนังนอกและกำแพงในห้อง (ลากย้ายตำแหน่งไปตามผนังได้ทุกบาน) */}
           {!isBlankCanvas &&
             canvasPolyCm.length >= 3 &&
             doors.map((d) => {
-              const idx =
-                d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length ? d.edgeIndex : 0;
-              const info = getEdgeInfo(canvasPolyCm, idx);
-              const halfW = Math.min(d.width / 2, info.lengthCm * 0.44);
-              const cxCm = info.x1 + info.ex * info.lengthCm * d.pos;
-              const czCm = info.z1 + info.ez * info.lengthCm * d.pos;
-              const [x1, y1] = cmToSvg(cxCm - info.ex * halfW, czCm - info.ez * halfW);
-              const [x2, y2] = cmToSvg(cxCm + info.ex * halfW, czCm + info.ez * halfW);
+              const iw = d.interiorWallId
+                ? interiorWalls.find((item) => item.id === d.interiorWallId)
+                : null;
+              const geom = iw
+                ? (() => {
+                    const dx = iw.x2 - iw.x1;
+                    const dz = iw.z2 - iw.z1;
+                    const lengthCm = Math.max(1, Math.hypot(dx, dz));
+                    return {
+                      x1: iw.x1,
+                      z1: iw.z1,
+                      ex: dx / lengthCm,
+                      ez: dz / lengthCm,
+                      lengthCm,
+                    };
+                  })()
+                : (() => {
+                    const idx =
+                      d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length
+                        ? d.edgeIndex
+                        : 0;
+                    return getEdgeInfo(canvasPolyCm, idx);
+                  })();
+              const halfW = Math.min(d.width / 2, geom.lengthCm * 0.44);
+              const cxCm = geom.x1 + geom.ex * geom.lengthCm * d.pos;
+              const czCm = geom.z1 + geom.ez * geom.lengthCm * d.pos;
+              const [x1, y1] = cmToSvg(cxCm - geom.ex * halfW, czCm - geom.ez * halfW);
+              const [x2, y2] = cmToSvg(cxCm + geom.ex * halfW, czCm + geom.ez * halfW);
               const isSelected = selectedElement?.type === "door" && selectedElement.id === d.id;
               const isHovered = hoveredHandle === `door-${d.id}`;
 
@@ -2163,7 +2944,9 @@ export function MyDreamSetupBlueprint({
                   onMouseEnter={() => setHoveredHandle(`door-${d.id}`)}
                   onMouseLeave={() => setHoveredHandle(null)}
                   onMouseDown={(e) => {
+                    if (e.button !== 0) return;
                     e.stopPropagation();
+                    setSelectedInteriorWallId(null);
                     setSelectedElement({ type: "door", id: d.id });
                     setDraggingOpening({ type: "door", id: d.id });
                   }}
@@ -2193,13 +2976,72 @@ export function MyDreamSetupBlueprint({
               );
             })}
 
-          {/* จุดดึงขอบผนัง (สีฟ้า) และจุดดึงมุมห้อง (สีส้ม) — ไม่มี CSS scale จึงนิ่งสนิท 100% ไม่สั่น! */}
+          {/* จุดดึงขอบผนัง (สีฟ้า), จุดดึงมุมห้อง (สีส้ม), และจุดปลายกำแพงในห้อง — ไม่มี CSS scale จึงนิ่งสนิท 100%! */}
           {activeTool === "pencil" &&
             penMode !== "point-pen" &&
             !isBlankCanvas &&
             !boxDrag &&
             canvasPolyCm.length >= 3 && (
               <g>
+                {/* จุดดึงปลายกำแพงในห้อง (ปรับยืด/หดความยาวและมุมกำแพงกั้นในห้องละเอียด 0.1 ม.) */}
+                {interiorWalls.map((iw) =>
+                  ([1, 2] as const).map((end) => {
+                    const exCm = end === 1 ? iw.x1 : iw.x2;
+                    const ezCm = end === 1 ? iw.z1 : iw.z2;
+                    const [hx, hy] = cmToSvg(exCm, ezCm);
+                    const hid = `iw-end-${iw.id}-${end}`;
+                    const isHov = hoveredHandle === hid;
+                    const isSel = selectedInteriorWallId === iw.id;
+                    return (
+                      <g
+                        key={hid}
+                        className="cursor-move"
+                        onMouseEnter={() => setHoveredHandle(hid)}
+                        onMouseLeave={() => setHoveredHandle(null)}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.stopPropagation();
+                          const pt = clientToSvgAndCm(e.clientX, e.clientY);
+                          if (!pt) return;
+                          selectInteriorWall(iw.id);
+                          setPolyHistory((h) => [
+                            ...h.slice(-19),
+                            { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+                          ]);
+                          setHandleDrag({
+                            kind: "interior-end",
+                            wallId: iw.id,
+                            end,
+                            startMouseCm: [pt.xCm, pt.zCm],
+                            basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+                            baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
+                          });
+                        }}
+                      >
+                        <circle cx={hx} cy={hy} r={14} fill="transparent" />
+                        {(isHov || isSel) && (
+                          <circle
+                            cx={hx}
+                            cy={hy}
+                            r={10.5}
+                            fill="rgba(251, 191, 36, 0.35)"
+                            pointerEvents="none"
+                          />
+                        )}
+                        <circle
+                          cx={hx}
+                          cy={hy}
+                          r={isHov ? 7 : 5.5}
+                          fill={isSel ? "#fbbf24" : "#38bdf8"}
+                          stroke="#ffffff"
+                          strokeWidth={2.2}
+                          pointerEvents="none"
+                        />
+                      </g>
+                    );
+                  })
+                )}
+
                 {/* จุดสีฟ้าบนผนังแต่ละด้าน (หลบตำแหน่งประตู/หน้าต่างอัตโนมัติ ไม่ทับซ้อนกัน) */}
                 {canvasPolyCm.map((_, i) => {
                   const info = getEdgeInfo(canvasPolyCm, i);
@@ -2207,8 +3049,8 @@ export function MyDreamSetupBlueprint({
 
                   let handleT = 0.5;
                   const edgeOpenings = [
-                    ...windows.filter((w) => (w.edgeIndex ?? 0) === i),
-                    ...doors.filter((d) => (d.edgeIndex ?? 0) === i),
+                    ...windows.filter((w) => !w.interiorWallId && (w.edgeIndex ?? 0) === i),
+                    ...doors.filter((d) => !d.interiorWallId && (d.edgeIndex ?? 0) === i),
                   ];
                   const isBlocked = (t: number) =>
                     edgeOpenings.some(
@@ -2238,15 +3080,20 @@ export function MyDreamSetupBlueprint({
                       onMouseEnter={() => setHoveredHandle(hid)}
                       onMouseLeave={() => setHoveredHandle(null)}
                       onMouseDown={(e) => {
+                        if (e.button !== 0) return;
                         e.stopPropagation();
                         const pt = clientToSvgAndCm(e.clientX, e.clientY);
                         if (!pt) return;
-                        setPolyHistory((h) => [...h.slice(-19), canvasPolyCm]);
+                        setPolyHistory((h) => [
+                          ...h.slice(-19),
+                          { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+                        ]);
                         setHandleDrag({
                           kind: "edge",
                           index: i,
                           startMouseCm: [pt.xCm, pt.zCm],
                           basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+                          baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
                         });
                       }}
                     >
@@ -2287,15 +3134,20 @@ export function MyDreamSetupBlueprint({
                       onMouseEnter={() => setHoveredHandle(hid)}
                       onMouseLeave={() => setHoveredHandle(null)}
                       onMouseDown={(e) => {
+                        if (e.button !== 0) return;
                         e.stopPropagation();
                         const pt = clientToSvgAndCm(e.clientX, e.clientY);
                         if (!pt) return;
-                        setPolyHistory((h) => [...h.slice(-19), canvasPolyCm]);
+                        setPolyHistory((h) => [
+                          ...h.slice(-19),
+                          { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+                        ]);
                         setHandleDrag({
                           kind: "vertex",
                           index: i,
                           startMouseCm: [pt.xCm, pt.zCm],
                           basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+                          baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
                         });
                       }}
                     >
@@ -2324,6 +3176,73 @@ export function MyDreamSetupBlueprint({
               </g>
             )}
 
+          {/* เส้นแสดงตัวอย่างขณะลากวาดกำแพงเข้าไปในตัวห้อง (Interior Partition Wall Live Preview) */}
+          {interiorWallDragPreview && (
+            <g pointerEvents="none">
+              {(() => {
+                const [x1, y1] = cmToSvg(interiorWallDragPreview.x1, interiorWallDragPreview.z1);
+                const [x2, y2] = cmToSvg(interiorWallDragPreview.x2, interiorWallDragPreview.z2);
+                const mx = (x1 + x2) / 2;
+                const my = (y1 + y2) / 2 - 20;
+                const validLen = interiorWallDragPreview.lengthCm >= 40;
+                const labelText = validLen
+                  ? `+ กำแพง ${(interiorWallDragPreview.lengthCm / 100).toFixed(2)}m · คลิกขวายกเลิก`
+                  : `ลากในห้องเพื่อเพิ่มกำแพง · คลิกขวายกเลิก`;
+                return (
+                  <>
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="#fde047"
+                      strokeWidth={15}
+                      strokeLinecap="round"
+                      opacity={0.45}
+                    />
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="#ffffff"
+                      strokeWidth={9.5}
+                      strokeLinecap="round"
+                    />
+                    <circle cx={x1} cy={y1} r={6} fill="#f59e0b" stroke="#ffffff" strokeWidth={2} />
+                    <circle
+                      cx={x2}
+                      cy={y2}
+                      r={6.5}
+                      fill={validLen ? "#10b981" : "#fbbf24"}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                    />
+                    <rect
+                      x={mx - 102}
+                      y={my - 12}
+                      width={204}
+                      height={24}
+                      rx={8}
+                      fill="rgba(15, 23, 42, 0.92)"
+                      stroke="rgba(253, 224, 71, 0.65)"
+                    />
+                    <text
+                      x={mx}
+                      y={my + 0.5}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="#fde047"
+                      className="font-mono text-[10.5px] font-bold"
+                    >
+                      {labelText}
+                    </text>
+                  </>
+                );
+              })()}
+            </g>
+          )}
+
           {/* กรอบแสดงขนาดสดขณะคลิกลากวาดบล็อกห้อง (Grid Box Paint / Erase Preview) */}
           {boxDragPreview && (
             <g pointerEvents="none">
@@ -2343,9 +3262,9 @@ export function MyDreamSetupBlueprint({
                 strokeDasharray="8 5"
               />
               <rect
-                x={boxDragPreview.x + boxDragPreview.wPx / 2 - 76}
+                x={boxDragPreview.x + boxDragPreview.wPx / 2 - 96}
                 y={boxDragPreview.y + boxDragPreview.hPx / 2 - 13}
-                width={152}
+                width={192}
                 height={26}
                 rx={8}
                 fill="rgba(15, 23, 42, 0.9)"
@@ -2356,15 +3275,15 @@ export function MyDreamSetupBlueprint({
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill={boxDragPreview.mode === "erase" ? "#fda4af" : "#fde047"}
-                className="font-mono text-xs font-bold"
+                className="font-mono text-[11px] font-bold"
               >
                 {boxDragPreview.mode === "erase" ? "ตัดออก " : ""}
-                {boxDragPreview.wM}×{boxDragPreview.dM}m ({boxDragPreview.aM2}ตร.ม.)
+                {boxDragPreview.wM}×{boxDragPreview.dM}m · คลิกขวายกเลิก
               </text>
             </g>
           )}
 
-          {/* เส้นกำลังวาดในโหมดคลิกจุดต่อจุด (Point-to-Point Wall Pen) */}
+          {/* เส้นกำลังวาดในโหมดคลิกจุดต่อจุด (Point-to-Point Wall Pen — คลิกขวาเพื่อลบเส้นที่กำลังวาดได้ทันที) */}
           {activeTool === "pencil" && penMode === "point-pen" && draftPointsCm.length > 0 && (
             <g pointerEvents="none">
               <polyline
@@ -2377,11 +3296,13 @@ export function MyDreamSetupBlueprint({
               />
               {cursorCm && (() => {
                 const last = draftPointsCm[draftPointsCm.length - 1];
-                const sxCm = Math.round(cursorCm[0] / 10) * 10;
-                const szCm = Math.round(cursorCm[1] / 10) * 10;
+                const [sxCm, szCm] = !isBlankCanvas
+                  ? snapPointToRoomWalls(cursorCm[0], cursorCm[1], canvasPolyCm, interiorWalls, 18)
+                  : [Math.round(cursorCm[0] / 10) * 10, Math.round(cursorCm[1] / 10) * 10];
                 const [x1, y1] = cmToSvg(last[0], last[1]);
                 const [x2, y2] = cmToSvg(sxCm, szCm);
                 const distM = (Math.hypot(sxCm - last[0], szCm - last[1]) / 100).toFixed(2);
+                const badgeText = `${distM}m · คลิกขวาลบเส้น`;
                 return (
                   <g>
                     <line
@@ -2393,23 +3314,30 @@ export function MyDreamSetupBlueprint({
                       strokeWidth={4}
                       strokeDasharray="8 6"
                     />
-                    <rect x={(x1 + x2) / 2 - 28} y={(y1 + y2) / 2 - 11} width={56} height={20} rx={5} fill="rgba(15,23,42,0.88)" />
+                    <rect
+                      x={(x1 + x2) / 2 - 64}
+                      y={(y1 + y2) / 2 - 11}
+                      width={128}
+                      height={21}
+                      rx={6}
+                      fill="rgba(15,23,42,0.9)"
+                    />
                     <text
                       x={(x1 + x2) / 2}
                       y={(y1 + y2) / 2}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill="#fde047"
-                      className="font-mono text-[11px] font-bold"
+                      className="font-mono text-[10.5px] font-bold"
                     >
-                      {distM}m
+                      {badgeText}
                     </text>
                   </g>
                 );
               })()}
               {draftPointsCm.map(([px, pz], idx) => {
                 const [sx, sy] = cmToSvg(px, pz);
-                const isFirst = idx === 0 && draftPointsCm.length >= 3;
+                const isFirst = idx === 0 && draftPointsCm.length >= 3 && !isDraftInsideRoom;
                 return (
                   <circle
                     key={`dp-${idx}`}

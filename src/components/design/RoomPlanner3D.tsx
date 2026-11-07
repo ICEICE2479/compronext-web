@@ -80,6 +80,7 @@ function floorTexture(room: RoomSize) {
 
 interface DynamicWallSeg {
   edgeIndex: number;
+  isInterior?: boolean;
   x1: number;
   z1: number;
   x2: number;
@@ -102,6 +103,7 @@ const SAMPLES_WHEN_DOWN = [0.006, 0.08, 0.2, 0.35, 0.5, 0.65, 0.8, 0.92, 0.994];
  * ตรวจสอบว่ากำแพงด้านนี้ควรซ่อนหลบลงหรือไม่เมื่อมองจากกล้อง (camX, camZ):
  * 1) กำแพงหันด้านนอกเข้าหากล้อง หรือทำมุมเฉียดแนวสายตา (dot > threshold)
  * 2) สำหรับห้องตัว L / ตัว U / ทรงหลายเหลี่ยม: หากแนวสายตาจากกล้องพุ่งทะลุกำแพงนี้ไปเจอพื้นที่ห้องส่วนอื่นที่อยู่ด้านหลัง (แปลว่ากำแพงนี้ตั้งขวางบังห้องอีกโซนอยู่) ให้ซ่อนกำแพงนี้ลงอัตโนมัติ!
+ * 3) สำหรับกำแพงกั้นภายในห้อง (isInterior): ตั้งแสดงให้เห็นโซนกั้นห้องชัดเจน และหลบลงเฉพาะตอนซูมกล้องเข้าไปใกล้ประชิด
  */
 function shouldHideWallForCamera(
   seg: DynamicWallSeg,
@@ -110,6 +112,17 @@ function shouldHideWallForCamera(
   polyM: Array<[number, number]>,
   currentlyFull: boolean
 ): boolean {
+  if (seg.isInterior) {
+    const dx = seg.x2 - seg.x1;
+    const dz = seg.z2 - seg.z1;
+    const lenSq = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((camX - seg.x1) * dx + (camZ - seg.z1) * dz) / lenSq));
+    const px = seg.x1 + dx * t;
+    const pz = seg.z1 + dz * t;
+    const dist = Math.hypot(camX - px, camZ - pz);
+    return dist < (currentlyFull ? 1.05 : 1.25);
+  }
+
   const dotThreshold = currentlyFull ? -0.14 : -0.22;
   for (const t of [0.1, 0.5, 0.9]) {
     const px = seg.x1 + (seg.x2 - seg.x1) * t;
@@ -296,7 +309,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
           seg.decorGroup.visible = showFullDecor;
           seg.cutGroup.visible = !showFullDecor;
 
-          if (!anchorSeg && seg.factor > 0.75) {
+          if (!anchorSeg && !seg.isInterior && seg.factor > 0.75) {
             anchorSeg = seg;
           }
         }
@@ -678,10 +691,87 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       return { x1: x1M, z1: z1M, len, cm: lenCm, ex, ez, nx, nz, seg };
     });
 
+    // ---------- สร้างกำแพงกั้นภายในห้อง (Interior Partition Walls) ----------
+    const interiorWallMap = new Map<
+      string,
+      { x1: number; z1: number; len: number; cm: number; ex: number; ez: number; nx: number; nz: number; seg: DynamicWallSeg }
+    >();
+    if (room.interiorWalls && room.interiorWalls.length > 0) {
+      room.interiorWalls.forEach((iw, idx) => {
+        const lenCm = Math.hypot(iw.x2 - iw.x1, iw.z2 - iw.z1);
+        if (lenCm < 25) return;
+        const ex = (iw.x2 - iw.x1) / lenCm;
+        const ez = (iw.z2 - iw.z1) / lenCm;
+        const nx = ez;
+        const nz = -ex;
+        const len = lenCm * CM;
+        const x1M = iw.x1 * CM;
+        const z1M = iw.z1 * CM;
+        const x2M = iw.x2 * CM;
+        const z2M = iw.z2 * CM;
+        const mx = (x1M + x2M) * 0.5;
+        const mz = (z1M + z2M) * 0.5;
+        const rot = Math.atan2(-ez, ex);
+
+        const curb = add(new THREE.BoxGeometry(len, curbH, T), wallMat, mx, curbH / 2, mz);
+        curb.rotation.y = rot;
+
+        const upperPivot = new THREE.Group();
+        upperPivot.position.set(mx, curbH, mz);
+        upperPivot.rotation.y = rot;
+        const upperMesh = new THREE.Mesh(new THREE.BoxGeometry(len, upperH, T), wallMat);
+        upperMesh.position.set(0, upperH / 2, 0);
+        upperMesh.castShadow = true;
+        upperMesh.receiveShadow = true;
+        upperPivot.add(upperMesh);
+        a.roomRoot.add(upperPivot);
+
+        const decorGroup = new THREE.Group();
+        const cutGroup = new THREE.Group();
+        a.roomRoot.add(decorGroup, cutGroup);
+
+        // บัวพื้นทั้งสองฝั่งของกำแพงกั้นในห้อง
+        for (const side of [-1, 1]) {
+          const tr = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.015), trim);
+          tr.position.set(mx + nx * side * (T / 2 + 0.006), 0.04, mz + nz * side * (T / 2 + 0.006));
+          tr.rotation.y = rot;
+          decorGroup.add(tr);
+        }
+
+        const seg: DynamicWallSeg = {
+          edgeIndex: -100 - idx,
+          isInterior: true,
+          x1: x1M,
+          z1: z1M,
+          x2: x2M,
+          z2: z2M,
+          mx,
+          mz,
+          nx,
+          nz,
+          factor: 1,
+          targetFull: true,
+          upperPivot,
+          decorGroup,
+          cutGroup,
+        };
+        const initHide = shouldHideWallForCamera(seg, camPos.x, camPos.z, polyM, true);
+        seg.targetFull = !initHide;
+        seg.factor = initHide ? 0 : 1;
+        upperPivot.visible = !initHide;
+        upperPivot.scale.y = !initHide ? 1 : 0.01;
+        decorGroup.visible = !initHide;
+        cutGroup.visible = initHide;
+        a.wallSegments.push(seg);
+
+        interiorWallMap.set(iw.id, { x1: x1M, z1: z1M, len, cm: lenCm, ex, ez, nx, nz, seg });
+      });
+    }
+
     if (isCustomShape) {
       const lh = labelSprite(`สูง ${m(room.h)}`, night);
       lh.scale.multiplyScalar(lk);
-      const firstUp = a.wallSegments.find((s) => s.targetFull) || a.wallSegments[0];
+      const firstUp = a.wallSegments.find((s) => !s.isInterior && s.targetFull) || a.wallSegments[0];
       lh.position.set(firstUp ? firstUp.x1 : 0, H + 0.16, firstUp ? firstUp.z1 : 0);
       a.heightSprite = lh;
       a.roomRoot.add(lh);
@@ -691,7 +781,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const ld = labelSprite(m(room.d), night);
       ld.position.set(W + 0.35, 0.05, D / 2);
       const lh = labelSprite(`สูง ${m(room.h)}`, night);
-      const firstUp = a.wallSegments.find((s) => s.targetFull) || a.wallSegments[0];
+      const firstUp = a.wallSegments.find((s) => !s.isInterior && s.targetFull) || a.wallSegments[0];
       lh.position.set(firstUp ? firstUp.x1 : -0.05, H + 0.16, firstUp ? firstUp.z1 : 0);
       a.heightSprite = lh;
       a.roomRoot.add(lw, ld, lh);
@@ -767,9 +857,29 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
     }
 
-    // ---------- วางประตูทุกบาน (สลับบานประตูเต็ม/ธรณีประตูตามการหมุนกล้องอัตโนมัติ) ----------
+    // ---------- วางประตูทุกบาน (สลับบานประตูเต็ม/ธรณีประตูตามการหมุนกล้องอัตโนมัติ + รองรับกำแพงกั้นในห้อง) ----------
     if (room.doors && room.doors.length > 0) {
       for (const doorSpec of room.doors) {
+        if (doorSpec.interiorWallId && interiorWallMap.has(doorSpec.interiorWallId)) {
+          const iw = interiorWallMap.get(doorSpec.interiorWallId)!;
+          if (iw.len < 0.55) continue;
+          const px = iw.x1 + iw.ex * iw.len * doorSpec.pos;
+          const pz = iw.z1 + iw.ez * iw.len * doorSpec.pos;
+          for (const side of [-1, 1]) {
+            const rotY = Math.atan2(-iw.nx * side, -iw.nz * side);
+            const dFull = buildWallDoor(iw.len, (doorSpec.width || 80) * CM, true);
+            dFull.rotation.y = rotY;
+            dFull.position.set(px + iw.nx * side * (T / 2 - 0.01), 0, pz + iw.nz * side * (T / 2 - 0.01));
+            iw.seg.decorGroup.add(dFull);
+          }
+          const rotCut = Math.atan2(-iw.nx, -iw.nz);
+          const dCut = buildWallDoor(iw.len, (doorSpec.width || 80) * CM, false);
+          dCut.rotation.y = rotCut;
+          dCut.position.set(px + iw.nx * (T / 2), 0, pz + iw.nz * (T / 2));
+          iw.seg.cutGroup.add(dCut);
+          continue;
+        }
+
         const fallbackIdx =
           doorSpec.wall === "top"
             ? walls.findIndex((w) => w.nz < -0.5)

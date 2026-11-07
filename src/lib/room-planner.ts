@@ -9,9 +9,20 @@ import type { SunSettings } from "./sun-simulation";
 export interface RoomOpeningSpec {
   id: string;
   edgeIndex?: number;
+  /** หากวางประตู/หน้าต่างบนกำแพงกั้นภายในห้อง */
+  interiorWallId?: string;
   wall: "top" | "bottom" | "left" | "right";
   pos: number;
   width: number;
+}
+
+export interface InteriorWallSpec {
+  id: string;
+  /** พิกัดจุดเริ่มและจุดจบในหน่วย ซม. เทียบจากมุมบนซ้าย (0,0) ของห้อง */
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
 }
 
 export interface RoomSize {
@@ -33,6 +44,8 @@ export interface RoomSize {
   windows?: RoomOpeningSpec[];
   /** รายการประตูทั้งหมดตามด้านผนัง */
   doors?: RoomOpeningSpec[];
+  /** รายการกำแพงกั้นภายในห้อง (เมื่อลูกค้าลากวาดเข้าไปในตัวห้อง) */
+  interiorWalls?: InteriorWallSpec[];
 }
 
 export const DEFAULT_ROOM: RoomSize = { w: 300, d: 300, h: 260 };
