@@ -142,9 +142,10 @@ function buildSelectionAngleGizmo(): SelectionAngleGizmo {
   const badge = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })
   );
-  badge.scale.set(0.82, 0.21, 1);
+  badge.scale.set(0.72, 0.20, 1);
   badge.renderOrder = 14;
-  badge.userData = { isRotateHandle: true, isBadge: true };
+  badge.userData = { isRotateHandle: false, isBadge: true };
+  badge.raycast = () => {}; // แสดงค่าองศาอย่างเดียว ไม่ดักคลิก ปล่อยให้คลิกทะลุไปจับขยับตัวสินค้าได้โดยตรง
 
   group.add(ringWrap, badge);
   return { group, ringWrap, pointerPivot, badge, canvas, ctx, tex, lastText: "" };
@@ -163,7 +164,7 @@ function updateSelectionAngleGizmo(gizmo: SelectionAngleGizmo, it: PlanItem | nu
   gizmo.pointerPivot.rotation.y = (-norm * Math.PI) / 180;
 
   const degStr = Number.isInteger(norm) ? `${norm}°` : `${norm.toFixed(1)}°`;
-  const text = `↻ หมุน ${degStr}`;
+  const text = `มุม ${degStr}`;
   if (gizmo.lastText !== text) {
     gizmo.lastText = text;
     const { ctx, canvas } = gizmo;
@@ -624,17 +625,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const curSel = propsRef.current.selected;
       const selItem = curSel ? propsRef.current.items.find((i) => i.uid === curSel) : null;
       let clickedGizmo = false;
-      let clickedBadge = false;
       if (selItem && selGizmo.group.visible) {
         const arrowHits = ray.intersectObjects(selGizmo.pointerPivot.children, true);
         if (arrowHits.length > 0 && arrowHits[0].object.userData?.isRotateHandle) {
           clickedGizmo = true;
-        }
-        if (!clickedGizmo) {
-          const badgeHits = ray.intersectObject(selGizmo.badge, false);
-          if (badgeHits.length > 0) {
-            clickedBadge = true;
-          }
         }
       }
 
@@ -642,15 +636,6 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       const hits = ray.intersectObjects(itemsRoot.children, true);
       const uid = hits.length ? uidOf(hits[0].object) : null;
       const isRightClick = e.button === 2 || e.altKey;
-
-      // ก. หากคลิกที่ป้ายบอกมุม ↻ หมุน X° -> หมุนเพิ่มทีละ +45° ทันที
-      if (clickedBadge && selItem) {
-        e.preventDefault();
-        e.stopPropagation();
-        const next = rotateItemSafely(selItem, selItem.rot + 45, propsRef.current.items, propsRef.current.room);
-        propsRef.current.onMove(selItem.uid, next.x, next.z, next.y, next.rot);
-        return;
-      }
 
       // ข. หากคลิกที่ปุ่ม/วงแหวนหมุนรอบสิ่งของ → เข้าสู่โหมดหมุนด้วยเมาส์ 360° ทันที
       if (clickedGizmo && selItem) {
@@ -810,10 +795,6 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
           const arrowHits = ray.intersectObjects(selGizmo.pointerPivot.children, true);
           if (arrowHits.length > 0 && arrowHits[0].object.userData?.isRotateHandle) {
             hoverGizmo = true;
-          }
-          if (!hoverGizmo) {
-            const bHits = ray.intersectObject(selGizmo.badge, false);
-            if (bHits.length > 0) hoverGizmo = true;
           }
         }
         if (hoverGizmo) {
