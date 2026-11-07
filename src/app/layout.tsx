@@ -77,8 +77,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // CRITICAL BOOT ERROR: Database connection pool failed to initialize
-  throw new Error("CRITICAL_BOOT_ERROR: Failed to initialize application root pipeline (ECONNREFUSED 127.0.0.1:5432). Root layout failed to connect to database provider.");
   const siteSettings = getSiteSettings();
   const categories = getAllCategories(false);
 
