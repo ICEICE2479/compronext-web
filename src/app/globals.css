@@ -1,0 +1,1646 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
+
+/* ==========================================================================
+   ComproNext — Official White & Royal Blue Commercial Design System
+   ธีมขาว-ฟ้าทางการ (Clean White, Crisp Slate, Royal Blue #0050ff, Deep Navy #0a2540)
+   เหลี่ยมคมเป็นระเบียบ อ่านง่าย น่าเชื่อถือระดับแพลตฟอร์มการเงินและอีคอมเมิร์ซทางการ
+   ========================================================================== */
+@theme {
+  /* พื้นผิวการ์ด/แผง — เปลี่ยนตามธีม (ใช้ bg-surface แทน bg-white ในคอมโพเนนต์) */
+  --color-surface: #ffffff;
+  /* พื้นหลังรูปสินค้า (เทากลาง ไม่อมฟ้า) */
+  --color-media: #dcdcdc;
+  /* Crisp Slate & Deep Navy Text Hierarchy */
+  --color-ink-950: #0a192f;
+  --color-ink-900: #0f2942;
+  --color-ink-800: #1e3a5f;
+  --color-ink-700: #334e68;
+  --color-ink-600: #486581;
+  --color-ink-500: #57708a; /* ≥4.5:1 บนพื้นขาว */
+  --color-ink-400: #829ab1;
+  --color-ink-300: #bcccdc;
+  --color-ink-200: #d9e2ec;
+  --color-ink-100: #f0f4f8;
+  --color-ink-50: #f7fafc;
+  --color-paper: #f4f8fc;
+
+  /* Official Royal Blue & Sky Blue Accents */
+  --color-volt: #e6f0ff;
+  --color-volt-300: #b3d4ff;
+  --color-volt-600: #0050ff;
+  --color-volt-800: #003bb5;
+  --color-gold: #0050ff;
+  --color-gold-bg: #eef5ff;
+  --color-espresso: #0a2540;
+
+  /* Semantic Status Colors */
+  --color-ok: #0d7a49;
+  --color-ok-bg: #e6f4ea;
+  --color-warn: #b45309;
+  --color-warn-bg: #fef3c7;
+  --color-bad: #c5221f;
+  --color-bad-bg: #fce8e6;
+  --color-info: #0050ff;
+  --color-info-bg: #e8f1ff;
+
+  --font-sans: var(--font-sarabun), var(--font-plex-thai), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-plex-thai), var(--font-sarabun), ui-sans-serif, system-ui, sans-serif;
+  --font-serif-editorial: var(--font-plex-thai), var(--font-sarabun), sans-serif;
+
+  /* Radius — นุ่มขึ้นแต่ยังทางการ */
+  --radius-sm: 6px;
+  --radius-card: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+
+  --shadow-card: 0 1px 2px rgb(10 25 47 / 0.04), 0 1px 3px rgb(10 25 47 / 0.05);
+  --shadow-lift: 0 10px 28px -8px rgb(0 80 255 / 0.16), 0 4px 10px -6px rgb(10 25 47 / 0.08);
+  --shadow-pop: 0 12px 32px -8px rgb(10 25 47 / 0.18);
+  --ease-editorial: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+
+html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+body {
+    background: var(--color-paper);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.62;
+  }
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    line-height: 1.28;
+    color: var(--color-ink-950);
+    text-wrap: balance;
+  }
+p {
+    text-wrap: pretty;
+  }
+}
+.font-editorial {
+  font-family: var(--font-display);
+}
+.font-display,
+.spec-table td,
+.package-compare-table td,
+.table-admin td {
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible {
+  outline: 2px solid #0050ff;
+  outline-offset: 2px;
+}
+html[data-theme="dark"] :focus-visible {
+  outline-color: #8ab8ff;
+}
+
+@keyframes editorialReveal {
+
+from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dropdownSlide {
+
+from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-reveal {
+  animation: editorialReveal 240ms var(--ease-editorial) both;
+}
+.animate-dropdown {
+  animation: dropdownSlide 200ms var(--ease-editorial) both;
+}
+
+@layer components {
+
+.container-page {
+    @apply mx-auto w-full px-4 sm:px-6 lg:px-8;
+    max-width: 1280px;
+  }
+.section {
+    padding-block: clamp(3rem, 2rem + 4vw, 6rem);
+  }
+/* Type scale — clamp ตามจอ, หัวข้อ balance, เนื้อหา pretty, ไทย line-height ≥1.6 */
+  .text-display {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 1.4rem + 2.8vw, 3.5rem);
+    line-height: 1.18;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+.text-h1 {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 1.35rem + 1.8vw, 2.75rem);
+    line-height: 1.22;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+.text-h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.375rem, 1.15rem + 1vw, 2rem);
+    line-height: 1.28;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+.text-h3 {
+    font-family: var(--font-display);
+    font-size: clamp(1.125rem, 1.05rem + 0.35vw, 1.3rem);
+    line-height: 1.35;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+.text-body {
+    font-size: clamp(0.9375rem, 0.9rem + 0.15vw, 1rem);
+    line-height: 1.7;
+    text-wrap: pretty;
+  }
+.text-caption {
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--color-ink-500);
+    text-wrap: pretty;
+  }
+/* Empty / error state — ไอคอน + หัวข้อ + คำอธิบาย + ปุ่ม จัดกลาง */
+  .empty-state,
+  .error-state {
+    @apply mx-auto flex max-w-md flex-col items-center justify-center gap-3 px-4 py-12 text-center;
+  }
+.empty-state-icon {
+    @apply mb-1 inline-flex h-14 w-14 items-center justify-center rounded-full;
+    background: var(--color-info-bg);
+    color: var(--color-info);
+  }
+.error-state .empty-state-icon {
+    background: var(--color-bad-bg);
+    color: var(--color-bad);
+  }
+.empty-state-title {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--color-ink-950);
+    text-wrap: balance;
+  }
+.empty-state-text {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--color-ink-600);
+    text-wrap: pretty;
+  }
+.tap-target {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+/* Buttons — Official Blue & Clean White */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold whitespace-nowrap select-none cursor-pointer;
+    border-radius: 8px;
+    transition:
+      background-color 200ms var(--ease-editorial),
+      border-color 200ms var(--ease-editorial),
+      color 200ms var(--ease-editorial),
+      transform 150ms var(--ease-editorial),
+      box-shadow 200ms var(--ease-editorial);
+  }
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+.btn-sm {
+    @apply px-3 py-1.5 text-xs;
+    border-radius: var(--radius-sm);
+  }
+.btn-primary {
+    background-color: #0050ff;
+    color: #ffffff;
+    border: 1px solid #0050ff;
+  }
+.btn-primary:hover:not(:disabled) {
+    background-color: #003bb5;
+    border-color: #003bb5;
+    box-shadow: 0 4px 12px rgb(0 80 255 / 0.25);
+  }
+.btn-volt {
+    background-color: #0a2540;
+    color: #ffffff;
+    border: 1px solid #0a2540;
+  }
+.btn-volt:hover:not(:disabled) {
+    background-color: #0050ff;
+    border-color: #0050ff;
+  }
+.btn-outline {
+    @apply border border-ink-300 bg-surface text-ink-900;
+  }
+.btn-outline:hover:not(:disabled) {
+    border-color: #0050ff;
+    background-color: #f0f7ff;
+    color: #0050ff;
+  }
+.btn-ghost {
+    @apply text-ink-700 hover:bg-ink-100 hover:text-info;
+  }
+.btn-danger {
+    @apply bg-bad text-white hover:opacity-90;
+  }
+/* Cards — White with subtle blue-slate border */
+  .card {
+    @apply border border-ink-200 bg-surface;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    transition:
+      border-color 220ms var(--ease-editorial),
+      box-shadow 220ms var(--ease-editorial),
+      transform 220ms var(--ease-editorial);
+  }
+.card-hover:hover {
+    border-color: #0050ff;
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-2px);
+  }
+/* Market card — hairline 1px border,
+layered soft shadow,
+top accent rule on hover */
+  .market-card {
+    @apply relative border border-ink-200 bg-surface;
+    border-radius: var(--radius-card);
+    box-shadow:
+      0 1px 2px rgb(10 25 47 / 0.04),
+      0 1px 1px rgb(10 25 47 / 0.02);
+    transition:
+      border-color 220ms var(--ease-editorial),
+      box-shadow 260ms var(--ease-editorial),
+      translate 260ms var(--ease-editorial),
+      transform 260ms var(--ease-editorial);
+  }
+.market-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px -1px auto -1px;
+    height: 2px;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    background: #0050ff;
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 320ms var(--ease-editorial);
+    pointer-events: none;
+    z-index: 1;
+  }
+.market-card:hover {
+    border-color: rgb(0 80 255 / 0.55);
+    box-shadow:
+      0 1px 2px rgb(10 25 47 / 0.04),
+      0 12px 28px -12px rgb(0 80 255 / 0.22),
+      0 4px 10px -6px rgb(10 25 47 / 0.08);
+    transform: translateY(-2px);
+  }
+.market-card:hover::before {
+    transform: scaleX(1);
+  }
+.market-card:active {
+    transform: translateY(0);
+  }
+/* Job / line-item card — calm list row with left accent on hover */
+  .job-card {
+    @apply relative border border-ink-200 bg-surface p-4 sm:p-5;
+    border-radius: var(--radius-card);
+    box-shadow: 0 1px 2px rgb(10 25 47 / 0.03);
+    transition:
+      border-color 200ms var(--ease-editorial),
+      background-color 200ms var(--ease-editorial),
+      box-shadow 220ms var(--ease-editorial);
+  }
+.job-card::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: -1px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: #0050ff;
+    opacity: 0;
+    transform: scaleY(0.4);
+    transition:
+      opacity 200ms var(--ease-editorial),
+      transform 260ms var(--ease-editorial);
+    pointer-events: none;
+  }
+.job-card:hover {
+    border-color: rgb(0 80 255 / 0.45);
+    background-color: #fbfdff;
+    box-shadow:
+      0 1px 2px rgb(10 25 47 / 0.04),
+      0 8px 20px -14px rgb(0 80 255 / 0.25);
+  }
+.job-card:hover::before {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+.editorial-frame {
+    @apply relative border border-ink-300 bg-ink-50/70;
+    border-radius: var(--radius-card);
+  }
+.editorial-rule {
+    @apply h-px w-full bg-ink-200;
+  }
+/* Tables — hairline rules,
+generous cells,
+tabular figures */
+  .spec-table {
+    @apply w-full border-collapse text-left text-sm;
+    min-width: 640px;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+.spec-table thead tr {
+    background-color: #f7fafc;
+    border-bottom: 1px solid var(--color-ink-300);
+  }
+.spec-table th {
+    @apply px-4 py-3 text-xs font-bold uppercase text-ink-600 select-none whitespace-nowrap;
+    letter-spacing: 0.06em;
+    vertical-align: bottom;
+  }
+.spec-table td {
+    @apply px-4 py-3.5 align-middle text-ink-800 transition-colors duration-150;
+    border-bottom: 1px solid rgb(217 226 236 / 0.75);
+    line-height: 1.5;
+  }
+.spec-table td.text-right,
+.spec-table th.text-right {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+.spec-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+.spec-table tbody tr:hover td {
+    background-color: #f5f9ff;
+  }
+.spec-table tfoot tr {
+    @apply border-t-2 border-info bg-ink-50;
+  }
+.spec-table tfoot td {
+    @apply py-3.5 font-bold text-ink-950;
+    border-bottom: 0;
+  }
+.package-compare-table {
+    @apply w-full text-left text-sm;
+    min-width: 560px;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--color-ink-200);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+.package-compare-table th {
+    background-color: #0a2540;
+    @apply px-4 py-3.5 text-xs font-semibold text-white whitespace-nowrap;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid #0a2540;
+  }
+.package-compare-table th + th {
+    border-left: 1px solid rgb(255 255 255 / 0.08);
+  }
+.package-compare-table th:first-child {
+    color: #93c5fd;
+  }
+.package-compare-table td {
+    @apply px-4 py-3 align-middle text-ink-800;
+    border-bottom: 1px solid var(--color-ink-200);
+    line-height: 1.5;
+  }
+.package-compare-table td + td {
+    border-left: 1px solid var(--color-ink-100);
+  }
+.package-compare-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+.package-compare-table td:first-child {
+    @apply bg-ink-50 font-semibold text-ink-900 whitespace-nowrap;
+    border-right: 1px solid var(--color-ink-200);
+  }
+.package-compare-table tbody tr:hover td {
+    background-color: #f5f9ff;
+  }
+
+  @media (max-width: 640px) {
+
+.spec-table th,
+.spec-table td,
+.package-compare-table th,
+.package-compare-table td {
+      @apply px-3 py-2.5 text-xs;
+    }
+.package-compare-table td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+    }
+  }
+/* Milestone stepper — numbered executive progress strip */
+  .milestone-stepper {
+    @apply grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4;
+    counter-reset: milestone;
+  }
+.milestone-step {
+    @apply relative flex items-start gap-3 border border-ink-200 bg-surface p-3.5 text-xs text-ink-700 transition-all duration-200;
+    border-radius: var(--radius-card);
+    counter-increment: milestone;
+    line-height: 1.5;
+  }
+.milestone-step::before {
+    content: counter(milestone, decimal-leading-zero);
+    @apply inline-flex h-6 min-w-6 shrink-0 items-center justify-center px-1 text-xs font-bold;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-ink-300);
+    background: var(--color-surface);
+    color: var(--color-ink-600);
+    font-variant-numeric: tabular-nums;
+  }
+.milestone-step[data-active="true"] {
+    border-color: #0050ff;
+    box-shadow: inset 3px 0 0 #0050ff, 0 6px 16px -10px rgb(0 80 255 / 0.35);
+    background-color: #f5f9ff;
+    color: #0a192f;
+  }
+.milestone-step[data-active="true"]::before {
+    background: #0050ff;
+    border-color: #0050ff;
+    color: #ffffff;
+  }
+.milestone-step[data-done="true"] {
+    border-color: rgb(13 122 73 / 0.45);
+    box-shadow: inset 3px 0 0 #0d7a49;
+    background-color: #f3faf6;
+    color: #0a192f;
+  }
+.milestone-step[data-done="true"]::before {
+    content: "✓";
+    background: #0d7a49;
+    border-color: #0d7a49;
+    color: #ffffff;
+  }
+/* Quotation / receipt sheet — company letterhead feel */
+  .quotation-sheet {
+    @apply relative border border-ink-200 bg-surface p-6 sm:p-8;
+    border-radius: var(--radius-card);
+    border-top: 3px solid #0050ff;
+    box-shadow:
+      0 1px 2px rgb(10 25 47 / 0.04),
+      0 18px 40px -28px rgb(10 25 47 / 0.25);
+    font-variant-numeric: tabular-nums;
+  }
+/* Hotspot pin on room photos — crisp square marker with soft pulse */
+  .hotspot-pin {
+    @apply absolute inline-flex h-7 w-7 items-center justify-center text-xs font-bold text-white cursor-pointer;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid #ffffff;
+    background: #0050ff;
+    box-shadow:
+      0 0 0 1px rgb(10 25 47 / 0.25),
+      0 4px 12px rgb(0 80 255 / 0.45);
+    font-variant-numeric: tabular-nums;
+    transition:
+      scale 180ms var(--ease-editorial),
+      background-color 180ms var(--ease-editorial),
+      box-shadow 180ms var(--ease-editorial);
+  }
+.hotspot-pin::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: var(--radius-card);
+    border: 1.5px solid rgb(255 255 255 / 0.85);
+    opacity: 0;
+    animation: hotspotPulse 2.4s var(--ease-editorial) infinite;
+    pointer-events: none;
+  }
+.hotspot-pin:hover {
+    scale: 1.12;
+    background: #003bb5;
+  }
+.hotspot-pin:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 3px;
+  }
+.chip {
+    @apply inline-flex items-center gap-1.5 border border-ink-300 bg-surface px-3 py-1.5 text-xs font-medium text-ink-800 cursor-pointer;
+    border-radius: var(--radius-sm);
+    transition: all 180ms var(--ease-editorial);
+  }
+.chip:hover:not(:disabled, [aria-disabled="true"]) {
+    border-color: #0050ff;
+    background-color: #f0f7ff;
+    color: #0050ff;
+  }
+.chip[data-active="true"] {
+    border-color: #0050ff;
+    background-color: #0050ff;
+    color: #ffffff;
+    font-weight: 700;
+  }
+.badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold tracking-tight whitespace-nowrap;
+    border-radius: var(--radius-sm);
+  }
+.input,
+.select {
+    @apply w-full border border-ink-300 bg-surface px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 transition-colors duration-200 focus:border-info focus:outline-none;
+    border-radius: 8px;
+  }
+.input:hover:not(:disabled, :focus),
+.select:hover:not(:disabled, :focus) {
+    border-color: var(--color-ink-400);
+  }
+.input:focus,
+.select:focus {
+    box-shadow: 0 0 0 3px rgb(0 80 255 / 0.15);
+  }
+.label {
+    @apply mb-1 block text-xs font-semibold text-ink-700;
+  }
+.eyebrow {
+    @apply text-xs font-bold tracking-[0.1em] uppercase;
+    color: #0050ff;
+  }
+.table-admin {
+    @apply w-full border-collapse text-left text-sm;
+  }
+.table-admin th {
+    @apply sticky top-0 z-10 border-b border-ink-200 bg-ink-50 px-3.5 py-2.5 text-xs font-bold text-ink-700;
+  }
+.table-admin td {
+    @apply border-b border-ink-200/80 px-3.5 py-2.5 align-middle;
+  }
+.table-admin tr:hover td {
+    background-color: #f0f7ff;
+  }
+}
+/* Range slider — Dynamic Royal Blue & Cyan gradient fill + interactive thumb */
+input[type="range"].range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    #003bb5 0%,
+    #0050ff calc(var(--fill, 100%) * 0.75),
+    #0ea5e9 var(--fill, 100%),
+    #dbe4f0 var(--fill, 100%),
+    #e2e8f0 100%
+  );
+  box-shadow:
+    inset 0 1px 2px rgb(10 25 47 / 0.12),
+    0 1px 6px rgb(0 80 255 / 0.14);
+  cursor: pointer;
+  transition: box-shadow 200ms var(--ease-editorial), filter 200ms var(--ease-editorial);
+}
+input[type="range"].range:hover {
+  box-shadow:
+    inset 0 1px 2px rgb(10 25 47 / 0.14),
+    0 2px 12px rgb(0 80 255 / 0.28);
+  filter: saturate(1.08);
+}
+input[type="range"].range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #2563eb 0%, #0050ff 55%, #003bb5 100%);
+  border: 2.5px solid #ffffff;
+  box-shadow:
+    0 0 0 1px rgb(0 80 255 / 0.35),
+    0 4px 12px rgb(0 80 255 / 0.45);
+  cursor: grab;
+  transition:
+    transform 160ms var(--ease-editorial),
+    box-shadow 180ms var(--ease-editorial),
+    background 180ms var(--ease-editorial);
+}
+input[type="range"].range::-webkit-slider-thumb:hover {
+  transform: scale(1.14);
+  box-shadow:
+    0 0 0 4px rgb(0 80 255 / 0.18),
+    0 6px 16px rgb(0 80 255 / 0.55);
+}
+input[type="range"].range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 6px rgb(0 80 255 / 0.24),
+    0 4px 14px rgb(0 80 255 / 0.65);
+}
+input[type="range"].range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #2563eb 0%, #0050ff 55%, #003bb5 100%);
+  border: 2.5px solid #ffffff;
+  box-shadow:
+    0 0 0 1px rgb(0 80 255 / 0.35),
+    0 4px 12px rgb(0 80 255 / 0.45);
+  cursor: grab;
+  transition:
+    transform 160ms var(--ease-editorial),
+    box-shadow 180ms var(--ease-editorial);
+}
+input[type="range"].range::-moz-range-thumb:hover {
+  transform: scale(1.14);
+  box-shadow:
+    0 0 0 4px rgb(0 80 255 / 0.18),
+    0 6px 16px rgb(0 80 255 / 0.55);
+}
+
+@keyframes hotspotPulse {
+
+0% {
+    opacity: 0.9;
+    transform: scale(0.85);
+  }
+70%,
+100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 16mm 14mm 18mm;
+  }
+html,
+body {
+    background: #ffffff !important;
+    color: #0a192f !important;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+header,
+footer,
+nav,
+.no-print,
+.hotspot-pin {
+    display: none !important;
+  }
+a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+.card,
+.market-card,
+.job-card {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+/* Official A4 document: letterhead + signature block */
+  .quotation-sheet {
+    border: 0 !important;
+    border-top: 2.5pt solid #0050ff !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 14pt 0 0 !important;
+    break-inside: auto;
+  }
+.quotation-sheet::before {
+    content: "ComproNext Co., Ltd. · บริษัท คอมโปรเน็กซ์ (ประเทศไทย) จำกัด\A เอกสารยืนยันคำสั่งซื้อ / ใบเสร็จรับเงิน (Official Receipt) · ComproNext Pay Escrow";
+    white-space: pre-line;
+    display: block;
+    margin-bottom: 12pt;
+    padding-bottom: 8pt;
+    border-bottom: 0.75pt solid #bcccdc;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #334e68;
+  }
+.quotation-sheet::after {
+    content: "ลงชื่อ ................................................ ผู้รับเงิน          ลงชื่อ ................................................ ผู้อนุมัติ\A เอกสารนี้ออกโดยระบบอัตโนมัติ ComproNext Pay — ใช้เป็นหลักฐานการชำระเงินผ่านตัวกลางได้";
+    white-space: pre-line;
+    display: block;
+    margin-top: 28pt;
+    padding-top: 10pt;
+    border-top: 0.75pt solid #bcccdc;
+    font-size: 8.5pt;
+    color: #486581;
+    text-align: center;
+  }
+.quotation-sheet h2,
+.quotation-sheet h3 {
+    color: #0a192f !important;
+  }
+.quotation-sheet .divide-y > * {
+    break-inside: avoid;
+  }
+.badge {
+    border: 0.5pt solid currentColor;
+    background: transparent !important;
+  }
+.spec-table,
+.package-compare-table {
+    min-width: 0 !important;
+    font-size: 9.5pt;
+  }
+.spec-table thead {
+    display: table-header-group;
+  }
+.spec-table tr {
+    break-inside: avoid;
+  }
+.spec-table th,
+.spec-table td,
+.package-compare-table th,
+.package-compare-table td {
+    border-color: #cbd5e1 !important;
+    padding: 5pt 7pt !important;
+    background: transparent !important;
+  }
+.spec-table thead tr {
+    border-bottom: 1pt solid #0a192f !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+*,
+*::before,
+*::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* Hide scrollbars across all browsers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+/* ==========================================================================
+   Theme Switcher — Dark Mode (โหมดมืดถนอมสายตา) & Deep Navy (โหมดน้ำเงินเข้ม)
+   สำหรับผู้ใช้งานที่ไม่ชอบพื้นหลังสีขาว
+   ========================================================================== */
+html[data-theme="dark"] {
+  /* โหมดมืด = ดำ/เทากลาง (ไม่อมน้ำเงิน) */
+  --color-surface: #161616;
+  --color-media: #c4c4c4;
+  --color-paper: #0a0a0a;
+  --color-ink-50: #121212;
+  --color-ink-100: #1f1f1f;
+  --color-ink-200: #2b2b2b;
+  --color-ink-300: #404040;
+  --color-ink-400: #8a8a8a;
+  --color-ink-500: #a3a3a3;
+  --color-ink-600: #c4c4c4;
+  --color-ink-700: #dcdcdc;
+  --color-ink-800: #ececec;
+  --color-ink-900: #f5f5f5;
+  --color-ink-950: #ffffff;
+  --color-info: #3b82f6;
+  --color-info-bg: rgba(59, 130, 246, 0.16);
+  --color-ok: #34d399;
+  --color-ok-bg: rgba(16, 185, 129, 0.16);
+  --color-warn: #fbbf24;
+  --color-warn-bg: rgba(245, 158, 11, 0.16);
+  --color-bad: #f87171;
+  --color-bad-bg: rgba(239, 68, 68, 0.16);
+  color-scheme: dark;
+}
+/* ปุ่ม/ป้ายพื้นฟ้า ตัวขาว: ใช้ฟ้าเข้มขึ้นให้ตัวอักษรอ่านชัด (≥4.5:1) — ตัวอักษรสีฟ้าบนพื้นดำยังใช้ฟ้าสว่างเดิม */
+html[data-theme="dark"] .bg-info,
+html[data-theme="dark"] .ai-gradient,
+html[data-theme="dark"] .bottom-nav .ai-fab,
+html[data-theme="dark"] .btn-primary,
+html[data-theme="dark"] .icon-btn-primary,
+html[data-theme="dark"] .chip[data-active="true"] {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .market-card,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .quotation-sheet,
+html[data-theme="dark"] .milestone-step,
+html[data-theme="dark"] .chip:not([data-active="true"]) {
+  background-color: #161616 !important;
+  color: #f5f5f5;
+}
+
+
+html[data-theme="dark"] .input,
+html[data-theme="dark"] .select,
+html[data-theme="dark"] input:not([type="range"]):not([type="checkbox"]),
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background-color: #101010 !important;
+  color: #ffffff !important;
+  border-color: #333333 !important;
+}
+
+
+html[data-theme="dark"] .btn-outline {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+html[data-theme="dark"] .btn-outline:hover:not(:disabled) {
+  background-color: rgba(59, 130, 246, 0.22) !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+html[data-theme="dark"] .spec-table thead tr {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+html[data-theme="dark"] .spec-table tbody tr:hover td,
+html[data-theme="dark"] .package-compare-table tbody tr:hover td {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+
+html[data-theme="dark"] [class*="bg-white/"] {
+  background-color: rgba(18, 18, 18, 0.9) !important;
+  color: #ececec !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+html[data-theme="dark"] .market-card {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.45);
+}
+
+/* =====================================================================
+   Modern icon-first UI (2026 refresh)
+   - ใช้ transform/opacity เท่านั้นสำหรับ animation เพื่อไม่ให้กินเฟรม
+   ===================================================================== */
+@layer components {
+
+.icon-btn {
+    @apply inline-flex items-center justify-center gap-1.5 select-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-ink-200);
+    background: transparent;
+    color: var(--color-ink-800);
+    transition: transform 150ms ease, background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+.icon-btn:hover:not(:disabled) {
+    border-color: var(--color-info);
+    color: var(--color-info);
+  }
+.icon-btn:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+.icon-btn-primary {
+    background: var(--color-info);
+    border-color: var(--color-info);
+    color: #fff;
+  }
+.icon-btn-primary:hover:not(:disabled) {
+    color: #fff;
+    filter: brightness(1.08);
+  }
+.icon-btn.is-done {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+  }
+.icon-badge {
+    @apply absolute -right-1 -top-1 inline-flex items-center justify-center text-[10px] font-bold text-white;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: #ef4444;
+    box-shadow: 0 0 0 2px var(--color-white, #fff);
+  }
+/* การ์ดสินค้าแบบรูปเด่น */
+  .tile {
+    @apply relative flex flex-col overflow-hidden border border-ink-200 bg-surface;
+    border-radius: var(--radius-2xl);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+    contain: layout paint;
+  }
+  @media (hover: hover) {
+
+.tile:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 30px -18px rgb(10 25 47 / 0.35);
+    }
+  }
+.tile-media {
+    @apply relative block overflow-hidden;
+    /* แผ่นขาวหลังรูปสินค้า — เห็นของชัด (ทั้งธีมสว่าง/มืด) */
+    background-color: #ffffff;
+  }
+  /* แผ่นรองรูปสินค้า: ขาวเสมอ (ธีมมืดไม่เปลี่ยน) พื้นหลังรูปจากร้านกลืนไป เห็นตัวของครบ */
+  .photo-plate {
+    background-color: #ffffff;
+  }
+  html[data-theme="dark"] .photo-plate,
+  html[data-theme="dark"] .tile-media {
+    background-color: #f4f4f5;
+    aspect-ratio: 1 / 1;
+  }
+/* แถบเมนูล่างบนมือถือ */
+  .bottom-nav {
+    @apply fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ink-200 bg-surface/95 lg:hidden;
+    padding-bottom: env(safe-area-inset-bottom);
+    backdrop-filter: saturate(1.4) blur(10px);
+  }
+.bottom-nav a {
+    @apply relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold text-ink-500;
+    -webkit-tap-highlight-color: transparent;
+  }
+.bottom-nav a[aria-current="page"] {
+    color: var(--color-info);
+  }
+.bottom-nav .ai-fab {
+    @apply flex h-11 w-11 items-center justify-center rounded-full text-white;
+    margin-top: -1.1rem;
+    background: var(--color-info);
+    box-shadow: 0 6px 14px -6px rgb(0 80 255 / 0.5);
+  }
+/* ปุ่ม/ป้ายหลักของ AI — สีแบรนด์เรียบ ไม่ใช้ไล่สี */
+  .ai-gradient {
+    background: var(--color-info);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+.tile,
+.icon-btn {
+    transition: none;
+  }
+}
+
+/* แผ่นเลื่อนขึ้นจากล่าง (ตัวกรอง / ตะกร้า) — @keyframes sheet-up อยู่ในส่วน v16 ด้านล่าง */
+@keyframes drawer-in {
+
+from { transform: translateX(100%); }
+to { transform: translateX(0); }
+}
+.sheet {
+  animation: sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (min-width: 640px) {
+
+.sheet { animation: none; }
+}
+.drawer-right {
+  animation: drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+
+.sheet,
+.drawer-right { animation: none; }
+}
+
+@keyframes toast-in {
+
+from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+to { opacity: 1; transform: none; }
+}
+.toast { animation: toast-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+
+.toast { animation: none; }
+}
+
+/* มือถือ: ปุ่มแตะง่าย (≥44px) และช่องกรอกไม่ทำให้ iOS ซูมเอง (≥16px) */
+@media (pointer: coarse) {
+
+.icon-btn,
+.btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+@media (max-width: 767px) {
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+    font-size: 16px;
+  }
+}
+
+/* จางเข้า + เลื่อนขึ้น 6px; fill = backwards เพื่อไม่ให้ transform ค้างหลังจบ (แถบ fixed ในหน้าไม่กระโดด) */
+@keyframes page-enter {
+
+from { opacity: 0; transform: translateY(6px); }
+to { opacity: 1; transform: none; }
+}
+.page-enter { animation: page-enter var(--dur-slow, 400ms) var(--ease-editorial) backwards; }
+@media (prefers-reduced-motion: reduce) {
+
+.page-enter { animation: none; }
+}
+/* จุดแตะบนภาพห้องที่ AI สร้าง */
+.hotspot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: #fff;
+  color: #0a192f;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 150ms ease;
+}
+.hotspot.is-open,
+.hotspot:hover {
+  transform: translate(-50%, -50%) scale(1.12);
+  background: var(--color-info);
+  color: #fff;
+}
+/* ธีมมืด: พื้นหลังรูปสินค้าคงโทนอ่อน ให้รูปตัดพื้นหลังดูสะอาดเหมือนกันทุกธีม */
+/* พื้นหลังรูปสินค้า: เทากลาง เหมือนกันทุกธีม ให้รูปตัดพื้นหลังดูเรียบร้อย */
+
+/* เลื่อนหน้านุ่มๆ (ปิดเมื่อผู้ใช้ตั้งลดการเคลื่อนไหว) */
+@media (prefers-reduced-motion: no-preference) {
+
+html { scroll-behavior: smooth; }
+}
+/* ส่วนท้ายเว็บไม่ต้องวาดจนกว่าจะเลื่อนถึง */
+footer { content-visibility: auto; contain-intrinsic-size: auto 600px; }
+
+/* =====================================================================
+   การเคลื่อนไหว — ใช้แค่ transform/opacity ให้ลื่นบนมือถือ
+   ===================================================================== */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* กดแล้วยุบนิดนึง ปล่อยแล้วเด้งกลับ */
+.btn,
+.icon-btn,
+.chip,
+.tile,
+.bottom-nav a,
+.ai-fab {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease-out);
+}
+.btn:active:not(:disabled),
+.icon-btn:active:not(:disabled),
+.chip:active {
+  transform: scale(0.95);
+  transition-duration: 80ms;
+}
+.bottom-nav a:active,
+.ai-fab:active {
+  transform: scale(0.9);
+}
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled),
+  .icon-btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--color-info) 70%, transparent);
+  }
+}
+
+/* การ์ดค่อยๆ ลอยขึ้นตอนโผล่ (เหลื่อมกันเล็กน้อย) */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.tile { animation: rise-in 420ms var(--ease-out) backwards; }
+.tile:nth-child(2) { animation-delay: 40ms; }
+.tile:nth-child(3) { animation-delay: 80ms; }
+.tile:nth-child(4) { animation-delay: 120ms; }
+.tile:nth-child(5) { animation-delay: 160ms; }
+.tile:nth-child(6) { animation-delay: 200ms; }
+.tile:nth-child(n + 7) { animation-delay: 240ms; }
+
+/* เปิด/ปิดส่วนที่พับไว้ */
+details > summary { transition: background-color 150ms ease; }
+details[open] > summary + * { animation: rise-in 260ms var(--ease-out); }
+
+/* ปุ่มสลับธีม: ไอคอนหมุนสลับ */
+.theme-icon {
+  transition: transform 420ms var(--ease-spring), opacity 250ms ease;
+}
+.theme-icon.is-out {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.4);
+}
+
+/* สลับธีมแบบจางทั้งหน้า */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: ease;
+}
+/* องค์ประกอบที่ตั้ง view-transition-name: เคลื่อนตามจังหวะเดียวกับทั้งเว็บ */
+::view-transition-group(*) {
+  animation-duration: var(--dur-slow, 400ms);
+  animation-timing-function: var(--ease-editorial);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}
+
+/* ตัวนับบนไอคอนเด้งเมื่อเปลี่ยน */
+@keyframes pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.icon-badge { animation: pop 300ms var(--ease-spring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .icon-badge,
+  details[open] > summary + * { animation: none; }
+  .btn:active:not(:disabled),
+  .icon-btn:active:not(:disabled),
+  .chip:active { transform: none; }
+}
+
+/* =====================================================================
+   โหมดมืด: พื้นทึบที่ตั้งใจให้ "เข้ม" (ink-900/950) ต้องเข้มเหมือนเดิม
+   เพราะสเกล ink กลับด้านในโหมดมืด (ink-950 = ขาว)
+   ===================================================================== */
+html[data-theme="dark"] .bg-ink-950,
+html[data-theme="dark"] .bg-ink-900 {
+  background-color: #262626 !important;
+  color: #ffffff;
+}
+html[data-theme="dark"] [class*="bg-ink-950/"],
+html[data-theme="dark"] [class*="bg-ink-900/"] {
+  background-color: rgba(0, 0, 0, 0.72) !important;
+  color: #ffffff;
+}
+html[data-theme="dark"] .hover\:bg-ink-900:hover {
+  background-color: #333333 !important;
+}
+/* ตัวอักษรสีฟ้าบนพื้นมืด ให้สว่างขึ้นพออ่าน */
+html[data-theme="dark"] .text-info,
+html[data-theme="dark"] .eyebrow,
+html[data-theme="dark"] .text-\[\#0050ff\] {
+  color: #8ab8ff !important;
+}
+/* ปุ่ม/ชิปที่เลือกอยู่ ยังเป็นพื้นฟ้าตัวขาว */
+html[data-theme="dark"] .bg-info.text-info,
+html[data-theme="dark"] .chip[data-active="true"] {
+  color: #ffffff !important;
+}
+
+/* ป้าย/แผงลอยในฉาก 3D โผล่แบบเด้งนิดๆ */
+@keyframes scene-chip-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.scene-chip { animation: scene-chip-in 200ms var(--ease-out, ease-out); }
+@media (prefers-reduced-motion: reduce) { .scene-chip { animation: none; } }
+.part-chip { transition: transform 180ms var(--ease-out, ease), border-color 150ms ease, box-shadow 180ms ease; }
+@media (hover: hover) {
+  .part-chip:hover { transform: translateX(var(--chip-nudge, 0)) scale(1.03); box-shadow: 0 10px 24px -14px rgb(10 25 47 / 0.45); }
+}
+
+/* รีวิว: ดาวเด้งตอนชี้/กด, แถบคะแนนค่อยๆ ยืด, รีวิวค่อยๆ โผล่ */
+.star-btn { transition: transform 160ms var(--ease-spring, ease); }
+.star-btn:hover { transform: scale(1.15); }
+.star-btn:active { transform: scale(0.9); }
+@keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.bar-grow { transform-origin: left; animation: bar-grow 600ms var(--ease-out, ease-out) both; }
+.review-in { animation: rise-in 360ms var(--ease-out, ease-out) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .star-btn, .bar-grow, .review-in { animation: none; transition: none; }
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.chat-bubble { animation: bubble-in 220ms var(--ease-out, ease-out) backwards; }
+@media (prefers-reduced-motion: reduce) { .chat-bubble { animation: none; } }
+.thin-scroll { scrollbar-width: thin; scrollbar-color: var(--color-ink-300) transparent; }
+
+/* =====================================================================
+   ระบบการเคลื่อนไหว v16 — ลื่นแบบแอปมือโปร (ใช้แค่ transform/opacity)
+   ===================================================================== */
+
+/* หน้าต่างลอย / แผ่นล่าง / เมนูข้าง: เข้ามาแบบนุ่ม */
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes panel-pop { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes drawer-left { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes drawer-right { from { transform: translateX(100%); } to { transform: none; } }
+[role="dialog"][aria-modal="true"] { animation: overlay-in 200ms var(--ease-out) both; }
+[role="dialog"][aria-modal="true"] > :not(button) { animation: panel-pop 340ms var(--ease-out) both; }
+[role="dialog"][aria-modal="true"] > .inset-y-0.left-0 { animation: drawer-left 360ms var(--ease-out) both; }
+[role="dialog"][aria-modal="true"] > .inset-y-0.right-0 { animation: drawer-right 360ms var(--ease-out) both; }
+@media (max-width: 639px) {
+  [role="dialog"][aria-modal="true"] > .bottom-0:not(.inset-y-0),
+  [role="dialog"][aria-modal="true"].items-end > :not(button) { animation: sheet-up 380ms var(--ease-out) both; }
+}
+
+/* เปลี่ยนหน้า: ดู .page-enter ด้านบน (ใช้ --dur-slow + --ease-editorial) */
+
+/* ส่วนต่างๆ ค่อยๆ โผล่ตอนเลื่อนถึง (CSS ล้วน ไม่ใช้ JS) */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    [data-reveal] {
+      animation: rise-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 30%;
+    }
+  }
+}
+
+/* แถบบน: มีเงาเมื่อเลื่อน, มือถือซ่อนตอนเลื่อนลง โผล่ตอนเลื่อนขึ้น */
+.site-header { transition: transform 300ms var(--ease-out), box-shadow 220ms var(--ease-out); }
+html[data-scrolled="1"] .site-header { box-shadow: 0 8px 24px -16px rgb(0 0 0 / 0.35); }
+@media (max-width: 1023px) {
+  html[data-scroll-dir="down"] .site-header { transform: translateY(-100%); }
+}
+
+/* แถบล่างมือถือ: ขีดบอกหน้าปัจจุบันเด้งเข้า + ไอคอนขยับ */
+.bottom-nav a::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  height: 3px;
+  width: 22px;
+  border-radius: 9999px;
+  background: var(--color-info);
+  transform: scaleX(0);
+  transition: transform 320ms var(--ease-spring);
+}
+.bottom-nav a[aria-current="page"]::before { transform: scaleX(1); }
+.bottom-nav a:has(.ai-fab)::before { display: none; }
+.bottom-nav a svg { transition: transform 260ms var(--ease-spring); }
+.bottom-nav a[aria-current="page"] svg { transform: translateY(-1px) scale(1.08); }
+
+/* รูปค่อยๆ ชัดเมื่อโหลดเสร็จ */
+img[data-fade] { opacity: 0; transition: opacity 360ms var(--ease-out); }
+img[data-fade="in"] { opacity: 1; }
+
+/* แถวเลื่อนแนวนอน: เลื่อนนุ่ม ไม่ลากทั้งหน้า */
+.overflow-x-auto { scroll-behavior: smooth; overscroll-behavior-x: contain; }
+
+/* การ์ด/ลิงก์ทั่วไปบนคอม: ลอยขึ้นนิดตอนชี้ */
+@media (hover: hover) {
+  .card:is(a), a.card { transition: transform 220ms var(--ease-out), box-shadow 220ms var(--ease-out); }
+  .card:is(a):hover, a.card:hover { transform: translateY(-2px); }
+}
+
+/* ตัวเลขราคาที่เปลี่ยน: กระพริบเบาๆ */
+@keyframes num-bump { 0% { transform: scale(1); } 40% { transform: scale(1.04); } 100% { transform: scale(1); } }
+.num-bump { display: inline-block; animation: num-bump 360ms var(--ease-out); }
+
+/* สลับธีมแบบวงกลมขยาย */
+html[data-vt-circle] ::view-transition-old(root),
+html[data-vt-circle] ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+@media (prefers-reduced-motion: reduce) {
+  [role="dialog"][aria-modal="true"],
+  [role="dialog"][aria-modal="true"] > * { animation: none !important; }
+  html[data-scroll-dir="down"] .site-header { transform: none; }
+}
+
+/* แตะแล้วไม่มีกรอบเทากะพริบ (มือถือ) + ไม่หน่วงการแตะ */
+a, button, [role="button"], label, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+/* ---------- สวิตช์โหมดมืด (มีการเคลื่อนไหว) ---------- */
+.theme-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 54px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  padding: 3px;
+  background: linear-gradient(135deg, #8ec5ff, #cfe6ff);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+  transition: background 420ms var(--ease-out), box-shadow 300ms var(--ease-out);
+}
+.theme-switch[data-on] { background: linear-gradient(135deg, #1e293b, #0b1020); }
+.theme-switch:focus-visible { outline: 2px solid var(--color-info); outline-offset: 2px; }
+.theme-knob {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #fff7d6;
+  color: #f59e0b;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+  transition: transform 460ms var(--ease-spring), background 420ms var(--ease-out), color 420ms var(--ease-out);
+}
+.theme-switch[data-on] .theme-knob { transform: translateX(24px); background: #e2e8f0; color: #334155; }
+.theme-switch:active .theme-knob { width: 28px; }
+.theme-switch[data-on]:active .theme-knob { transform: translateX(20px); }
+.theme-sun, .theme-moon { position: absolute; transition: transform 460ms var(--ease-spring), opacity 260ms var(--ease-out); }
+.theme-moon { opacity: 0; transform: rotate(-90deg) scale(0.4); }
+.theme-switch[data-on] .theme-sun { opacity: 0; transform: rotate(90deg) scale(0.4); }
+.theme-switch[data-on] .theme-moon { opacity: 1; transform: none; }
+/* ดาวเล็กๆ โผล่ตอนเป็นโหมดมืด */
+.theme-stars {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  width: 2px;
+  height: 2px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 6px 7px 0 0 #fff, 11px 1px 0 0 rgb(255 255 255 / 0.7);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 360ms var(--ease-out) 120ms, transform 420ms var(--ease-out) 120ms;
+}
+.theme-switch[data-on] .theme-stars { opacity: 1; transform: none; }
+
+/* ---------- เมนูหมวดสินค้า: คลี่ลงมานุ่มๆ (เปิดและปิด) ---------- */
+.menu-drop {
+  transform-origin: top left;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  clip-path: inset(0 0 100% 0 round 16px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease-out), transform 300ms var(--ease-out), clip-path 360ms var(--ease-out), visibility 0s linear 360ms;
+}
+.menu-drop[data-open] {
+  opacity: 1;
+  transform: none;
+  clip-path: inset(0 0 0 0 round 16px);
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 180ms var(--ease-out), transform 340ms var(--ease-out), clip-path 420ms var(--ease-out), visibility 0s;
+}
+/* หมวดย่อยกางลง: ความสูง + จางเข้า + เลื่อนลงนิดๆ */
+.accordion-body { transition: grid-template-rows 340ms var(--ease-out); }
+.accordion-body > ul { opacity: 0; transform: translateY(-4px); transition: opacity 220ms var(--ease-out), transform 300ms var(--ease-out); }
+.accordion-body[data-open] > ul { opacity: 1; transform: none; transition-delay: 60ms; }
+@media (prefers-reduced-motion: reduce) {
+  .menu-drop, .menu-drop[data-open], .accordion-body, .accordion-body > ul { transition: none; }
+}
+
+/* มือถือ: ปิดเบลอพื้นหลังของแถบบน/ล่าง (กินเครื่องตอนเลื่อน) — ใช้พื้นทึบแทน เลื่อนลื่นขึ้น */
+@media (max-width: 1023px) {
+  .site-header, .bottom-nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .site-header { background-color: var(--color-surface) !important; }
+  .bottom-nav { background-color: var(--color-surface) !important; }
+}
+
+/* =====================================================================
+   รอบ 1 motion — token + คลาสกลาง (transform/opacity เท่านั้น)
+   ===================================================================== */
+:root {
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+}
+
+/* โผล่ตอนเลื่อนถึง (คู่กับ <Reveal>) — หน่วงทีละชิ้นด้วย --reveal-delay (ms) */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--dur-slow) var(--ease-editorial),
+    transform var(--dur-slow) var(--ease-editorial);
+  transition-delay: calc(var(--reveal-delay, 0) * 1ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* การ์ดลอยขึ้นตอนชี้ + รูปในการ์ดซูมเบาๆ */
+.card-lift {
+  transition:
+    transform var(--dur-base) var(--ease-editorial),
+    box-shadow var(--dur-base) var(--ease-editorial);
+}
+.card-lift .img-zoom {
+  transition: transform var(--dur-slow) var(--ease-editorial);
+}
+@media (hover: hover) {
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lift);
+  }
+  .card-lift:hover .img-zoom {
+    transform: scale(1.04);
+  }
+}
+
+/* รูปค่อยๆ ชัด (คู่กับ <FadeImg>) */
+.img-fade {
+  opacity: 0;
+  /* ไม่ใส่พื้นหลังที่ตัวรูป (object-contain จะเห็นเป็นขอบเทารอบของ) — ให้แผ่นด้านหลังเป็นตัวกำหนดสี */
+  background-color: transparent;
+  transition: opacity var(--dur-base) var(--ease-editorial), background-color var(--dur-base) var(--ease-editorial);
+}
+.bg-transparent .img-fade {
+  background-color: transparent;
+}
+.img-fade[data-loaded="true"] {
+  opacity: 1;
+  background-color: transparent;
+}
+.compare-card {
+  box-shadow: var(--shadow-card);
+  transition: border-color 220ms var(--ease-editorial), box-shadow 220ms var(--ease-editorial), transform 220ms var(--ease-editorial);
+}
+@media (hover: hover) {
+  .compare-card:hover {
+    border-color: rgb(0 80 255 / 0.45);
+    box-shadow: var(--shadow-lift);
+  }
+}
+
+/* โครงระหว่างโหลด: แถบแสงวิ่งผ่าน */
+@keyframes skeleton-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.skeleton {
+  --skeleton-shine: rgb(255 255 255 / 0.55);
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-ink-100);
+}
+html[data-theme="dark"] .skeleton,
+.dark .skeleton {
+  --skeleton-shine: rgb(255 255 255 / 0.06);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s var(--ease-editorial) infinite;
+}
+
+/* กดปุ่มแล้วยุบนิดเดียว */
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* กรอบโฟกัสเดียวกันทั้งเว็บ */
+.btn:focus-visible,
+a:focus-visible,
+button:focus-visible,
+.chip:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--color-volt-600);
+  outline-offset: 2px;
+}
+
+/* ส่วนยาวนอกจอไม่ต้องวาดจนกว่าจะเลื่อนถึง */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .card-lift,
+  .card-lift .img-zoom,
+  .img-fade {
+    transition: none;
+  }
+  .card-lift:hover,
+  .card-lift:hover .img-zoom,
+  .btn:active:not(:disabled) {
+    transform: none;
+  }
+  .skeleton::after {
+    display: none;
+    animation: none;
+  }
+  .page-enter {
+    animation: none;
+  }
+}
+
+/* =====================================================================
+   รอบ 2 — สถานะ interactive ครบชุด + ค่าโหมดมืดของ token
+   ===================================================================== */
+.btn-ghost:active:not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-ink-200);
+}
+.chip:active:not(:disabled, [aria-disabled="true"]) {
+  background-color: var(--color-volt);
+}
+.btn:disabled,
+.btn[aria-disabled="true"],
+.icon-btn:disabled,
+.icon-btn[aria-disabled="true"],
+.chip:disabled,
+.chip[aria-disabled="true"],
+.input:disabled,
+.input[aria-disabled="true"],
+.select:disabled,
+.select[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: auto;
+  transform: none !important;
+  box-shadow: none;
+}
+.icon-btn:focus-visible,
+.select:focus-visible,
+.tap-target:focus-visible {
+  outline: 2px solid var(--color-volt-600);
+  outline-offset: 2px;
+}
+.input:focus-visible,
+.select:focus-visible {
+  outline-offset: 0;
+}
+/* เป้าหมายของลิงก์ "ข้ามไปเนื้อหาหลัก" ไม่ต้องมีกรอบ */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
+
+html[data-theme="dark"] {
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 3px rgb(0 0 0 / 0.35);
+  --shadow-lift: 0 12px 28px -8px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(59 130 246 / 0.25);
+  --shadow-pop: 0 16px 40px -8px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --color-volt: rgba(59, 130, 246, 0.16);
+  --color-gold-bg: rgba(59, 130, 246, 0.12);
+}
+html[data-theme="dark"] .empty-state-icon {
+  color: #8ab8ff;
+}
+html[data-theme="dark"] .error-state .empty-state-icon {
+  color: #fca5a5;
+}
+html[data-theme="dark"] .input:focus,
+html[data-theme="dark"] .select:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.3);
+}
+html[data-theme="dark"] .chip:hover:not([data-active="true"], :disabled, [aria-disabled="true"]) {
+  border-color: #3b82f6;
+  color: #8ab8ff;
+}
+
+/* ตัวอักษรใหญ่ (ตั้งค่าในเมนู) — ขยายทุกอย่างที่ใช้ rem */
+html[data-text="lg"] { font-size: 112.5%; }
+.text-size-btn[aria-pressed="true"] { background: var(--color-info); color: #fff; border-color: transparent; }

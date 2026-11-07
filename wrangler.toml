@@ -1,0 +1,16 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "compronext-web"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# ตัวแปรสภาพแวดล้อมสำหรับ Cloudflare Pages / Workers
+[vars]
+NEON_BRANCH_NAME = "main"
+RESEND_FROM_EMAIL = "ComproNext <noreply@compronext.app>"
+
+# การผูก Cloudflare R2 Bucket (Zero Egress Fee Object Storage)
+[[r2_buckets]]
+binding = "COMPRONEXT_R2_BUCKET"
+bucket_name = "compronext-media"
+preview_bucket_name = "compronext-media-preview"

@@ -1,0 +1,669 @@
+{
+ "room-real-01": {
+  "colors": [
+   "white",
+   "silver",
+   "gray"
+  ],
+  "materials": [
+   "aluminum",
+   "glass"
+  ]
+ },
+ "room-real-02": {
+  "colors": [
+   "silver",
+   "black",
+   "wood",
+   "red",
+   "green"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-03": {
+  "colors": [
+   "gray",
+   "silver",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum",
+   "wood",
+   "leather",
+   "steel"
+  ]
+ },
+ "room-real-04": {
+  "colors": [
+   "silver",
+   "gray",
+   "black",
+   "beige"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic",
+   "mdf"
+  ]
+ },
+ "room-real-05": {
+  "colors": [
+   "black",
+   "gray"
+  ],
+  "materials": [
+   "mdf",
+   "mesh",
+   "aluminum"
+  ]
+ },
+ "room-real-06": {
+  "colors": [
+   "white",
+   "black",
+   "beige"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "mesh"
+  ]
+ },
+ "room-real-07": {
+  "colors": [
+   "wood",
+   "black",
+   "silver"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-08": {
+  "colors": [
+   "blue",
+   "black",
+   "pink",
+   "purple"
+  ],
+  "materials": [
+   "aluminum",
+   "wood"
+  ]
+ },
+ "room-real-09": {
+  "colors": [
+   "black",
+   "silver",
+   "gray"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-10": {
+  "colors": [
+   "wood",
+   "gray",
+   "black"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-11": {
+  "colors": [
+   "black",
+   "wood",
+   "blue"
+  ],
+  "materials": [
+   "mesh",
+   "aluminum"
+  ]
+ },
+ "room-real-12": {
+  "colors": [
+   "gray",
+   "silver",
+   "black"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-13": {
+  "colors": [
+   "black",
+   "gray",
+   "silver",
+   "blue"
+  ],
+  "materials": [
+   "plastic",
+   "mdf",
+   "aluminum"
+  ]
+ },
+ "room-real-14": {
+  "colors": [
+   "black",
+   "gray",
+   "wood",
+   "blue",
+   "walnut",
+   "green"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf"
+  ]
+ },
+ "room-real-15": {
+  "colors": [
+   "gray",
+   "black",
+   "wood",
+   "silver"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-16": {
+  "colors": [
+   "white",
+   "silver"
+  ],
+  "materials": [
+   "aluminum",
+   "mesh",
+   "mdf",
+   "fabric"
+  ]
+ },
+ "room-real-17": {
+  "colors": [
+   "gray",
+   "black",
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "wood",
+   "aluminum"
+  ]
+ },
+ "room-real-18": {
+  "colors": [
+   "black",
+   "gray",
+   "silver",
+   "blue"
+  ],
+  "materials": [
+   "aluminum",
+   "steel",
+   "mdf"
+  ]
+ },
+ "room-real-19": {
+  "colors": [
+   "black",
+   "beige",
+   "gray",
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "wood",
+   "aluminum"
+  ]
+ },
+ "room-real-20": {
+  "colors": [
+   "black",
+   "gray",
+   "wood",
+   "walnut"
+  ],
+  "materials": [
+   "wood",
+   "steel"
+  ]
+ },
+ "room-real-21": {
+  "colors": [
+   "wood",
+   "black",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "plastic",
+   "steel"
+  ]
+ },
+ "room-real-22": {
+  "colors": [
+   "gray",
+   "black",
+   "green"
+  ],
+  "materials": [
+   "aluminum",
+   "steel",
+   "mdf",
+   "mesh"
+  ]
+ },
+ "room-real-23": {
+  "colors": [
+   "black",
+   "wood",
+   "red",
+   "walnut"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum",
+   "fabric",
+   "leather"
+  ]
+ },
+ "room-real-24": {
+  "colors": [
+   "wood",
+   "black",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-25": {
+  "colors": [
+   "silver",
+   "black",
+   "gray"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf"
+  ]
+ },
+ "room-real-26": {
+  "colors": [
+   "wood",
+   "black",
+   "beige"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf"
+  ]
+ },
+ "room-real-27": {
+  "colors": [
+   "white",
+   "gray"
+  ],
+  "materials": [
+   "wood",
+   "aluminum"
+  ]
+ },
+ "room-real-28": {
+  "colors": [
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "aluminum",
+   "mesh",
+   "wood"
+  ]
+ },
+ "room-real-29": {
+  "colors": [
+   "black",
+   "silver"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum"
+  ]
+ },
+ "room-real-30": {
+  "colors": [
+   "wood",
+   "white",
+   "silver",
+   "blue",
+   "beige"
+  ],
+  "materials": [
+   "mdf",
+   "mesh",
+   "aluminum"
+  ]
+ },
+ "room-real-31": {
+  "colors": [
+   "black"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "mesh"
+  ]
+ },
+ "room-real-32": {
+  "colors": [
+   "gray",
+   "wood",
+   "black",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum",
+   "mesh",
+   "mdf"
+  ]
+ },
+ "room-real-33": {
+  "colors": [
+   "white",
+   "black",
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum"
+  ]
+ },
+ "room-real-34": {
+  "colors": [
+   "wood",
+   "beige"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic",
+   "mdf"
+  ]
+ },
+ "room-real-35": {
+  "colors": [
+   "white",
+   "gray",
+   "black",
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "plastic"
+  ]
+ },
+ "room-real-36": {
+  "colors": [
+   "beige",
+   "gray",
+   "silver",
+   "black"
+  ],
+  "materials": [
+   "aluminum",
+   "steel",
+   "wood",
+   "fabric",
+   "plastic"
+  ]
+ },
+ "room-real-37": {
+  "colors": [
+   "white",
+   "black",
+   "silver"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum"
+  ]
+ },
+ "room-real-38": {
+  "colors": [
+   "black",
+   "green",
+   "wood"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-39": {
+  "colors": [
+   "gray",
+   "green",
+   "black",
+   "wood"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "mesh"
+  ]
+ },
+ "room-real-40": {
+  "colors": [
+   "black",
+   "beige",
+   "wood",
+   "green"
+  ],
+  "materials": [
+   "mesh",
+   "mdf",
+   "plastic",
+   "aluminum"
+  ]
+ },
+ "room-real-41": {
+  "colors": [
+   "black",
+   "silver",
+   "wood",
+   "red"
+  ],
+  "materials": [
+   "aluminum",
+   "wood"
+  ]
+ },
+ "room-real-42": {
+  "colors": [
+   "gray",
+   "black",
+   "silver"
+  ],
+  "materials": [
+   "plastic",
+   "mesh"
+  ]
+ },
+ "room-real-43": {
+  "colors": [
+   "gray",
+   "silver",
+   "white",
+   "black",
+   "green"
+  ],
+  "materials": [
+   "wood",
+   "aluminum",
+   "steel"
+  ]
+ },
+ "room-real-44": {
+  "colors": [
+   "silver",
+   "gray",
+   "white",
+   "black"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-45": {
+  "colors": [
+   "black",
+   "walnut"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum",
+   "plastic",
+   "wood"
+  ]
+ },
+ "room-real-46": {
+  "colors": [
+   "black",
+   "wood",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf"
+  ]
+ },
+ "room-real-47": {
+  "colors": [
+   "black",
+   "beige",
+   "green"
+  ],
+  "materials": [
+   "aluminum",
+   "steel",
+   "mdf",
+   "mesh"
+  ]
+ },
+ "room-real-48": {
+  "colors": [
+   "black",
+   "wood",
+   "silver",
+   "beige",
+   "blue"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic",
+   "steel",
+   "mdf",
+   "wood"
+  ]
+ },
+ "room-real-49": {
+  "colors": [
+   "black"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-50": {
+  "colors": [
+   "gray",
+   "black",
+   "wood",
+   "walnut"
+  ],
+  "materials": [
+   "aluminum"
+  ]
+ },
+ "room-real-51": {
+  "colors": [
+   "white",
+   "black",
+   "wood",
+   "green"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic",
+   "mdf"
+  ]
+ },
+ "room-real-52": {
+  "colors": [
+   "beige",
+   "wood",
+   "green",
+   "pink"
+  ],
+  "materials": [
+   "wood",
+   "steel",
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-53": {
+  "colors": [
+   "black",
+   "gray",
+   "silver",
+   "wood"
+  ],
+  "materials": [
+   "aluminum",
+   "mdf",
+   "mesh",
+   "plastic"
+  ]
+ },
+ "room-real-54": {
+  "colors": [
+   "black",
+   "silver",
+   "white",
+   "gray",
+   "wood"
+  ],
+  "materials": [
+   "aluminum",
+   "plastic"
+  ]
+ },
+ "room-real-55": {
+  "colors": [
+   "white",
+   "black",
+   "wood",
+   "silver",
+   "beige"
+  ],
+  "materials": [
+   "mdf",
+   "aluminum",
+   "mesh",
+   "plastic"
+  ]
+ }
+}
