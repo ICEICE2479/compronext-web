@@ -1015,7 +1015,7 @@ export function Room3DStudioClient() {
 
               {/* Instruction pill */}
               <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-                🖱️ ลากเพื่อขยับ · ลากลงคลังสินค้าขวาเพื่อลบ · หมุน 360° ด้วยวงแหวน/คลิกขวา · กด R หมุน 45° · ลากพื้นว่างหมุนห้อง
+                🖱️ ลากเพื่อขยับ · ลากลูกศรสีเหลืองเพื่อหมุน (360°) · กด R หมุน 45° · ลากลงคลังสินค้าขวาเพื่อลบ · ลากพื้นว่างหมุนห้อง
               </div>
 
               {/* Floating button to reopen Catalog when hidden */}

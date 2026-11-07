@@ -102,38 +102,36 @@ function buildSelectionAngleGizmo(): SelectionAngleGizmo {
 
   const pointerPivot = new THREE.Group();
   const arrowMat = new THREE.MeshBasicMaterial({
-    color: "#fbbf24",
+    color: "#f59e0b",
     transparent: true,
-    opacity: 0.96,
+    opacity: 0.98,
     side: THREE.DoubleSide,
     depthTest: false,
   });
-  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.45).rotateX(-Math.PI / 2), arrowMat);
+  const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.065, 0.46).rotateX(-Math.PI / 2), arrowMat);
   shaft.position.set(0, 0.002, 0.82);
   shaft.renderOrder = 9;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.24, 3).rotateX(Math.PI / 2), arrowMat);
-  tip.position.set(0, 0.003, 1.12);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.25, 3).rotateX(Math.PI / 2), arrowMat);
+  tip.position.set(0, 0.003, 1.13);
   tip.renderOrder = 9;
 
-  shaft.userData = { isRotateHandle: true };
-  tip.userData = { isRotateHandle: true };
-  pointerPivot.userData = { isRotateHandle: true };
-  pointerPivot.add(shaft, tip);
-  ringWrap.add(pointerPivot);
-
-  // วงแหวนโปร่งใสสำหรับจับคลิกหมุนด้วยเมาส์ได้สะดวกทุกมุมรอบสิ่งของ (กว้าง 0.70 ถึง 1.35)
-  // หมายเหตุ: ต้องใช้ transparent: true, opacity: 0 เพื่อให้ Three.js Raycaster สามารถดักจับการคลิกได้สมบูรณ์แบบ
-  const hitRingGeo = new THREE.RingGeometry(0.70, 1.35, 48).rotateX(-Math.PI / 2);
-  const hitRingMat = new THREE.MeshBasicMaterial({
+  // ขอบเขตคลิก/ลากเฉพาะสำหรับลูกศรสีเหลือง (Dedicated Yellow Arrow Hit Area)
+  const arrowHitGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.72, 16).rotateX(Math.PI / 2);
+  const arrowHitMat = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: 0,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const hitRing = new THREE.Mesh(hitRingGeo, hitRingMat);
-  hitRing.userData = { isRotateHandle: true };
-  outerRing.userData = { isRotateHandle: true };
-  ringWrap.add(hitRing);
+  const arrowHit = new THREE.Mesh(arrowHitGeo, arrowHitMat);
+  arrowHit.position.set(0, 0.005, 0.96);
+
+  shaft.userData = { isRotateHandle: true, isArrowHandle: true };
+  tip.userData = { isRotateHandle: true, isArrowHandle: true };
+  arrowHit.userData = { isRotateHandle: true, isArrowHandle: true };
+  pointerPivot.userData = { isRotateHandle: true, isArrowHandle: true };
+  pointerPivot.add(shaft, tip, arrowHit);
+  ringWrap.add(pointerPivot);
 
   const canvas = document.createElement("canvas");
   canvas.width = 340;
@@ -628,8 +626,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       let clickedGizmo = false;
       let clickedBadge = false;
       if (selItem && selGizmo.group.visible) {
-        const gizmoHits = ray.intersectObjects(selGizmo.ringWrap.children, true);
-        if (gizmoHits.length > 0 && gizmoHits[0].object.userData?.isRotateHandle) {
+        const arrowHits = ray.intersectObjects(selGizmo.pointerPivot.children, true);
+        if (arrowHits.length > 0 && arrowHits[0].object.userData?.isRotateHandle) {
           clickedGizmo = true;
         }
         if (!clickedGizmo) {
@@ -809,8 +807,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         const selItem = curSel ? propsRef.current.items.find((i) => i.uid === curSel) : null;
         let hoverGizmo = false;
         if (selItem && selGizmo.group.visible) {
-          const gizmoHits = ray.intersectObjects(selGizmo.ringWrap.children, true);
-          if (gizmoHits.length > 0 && gizmoHits[0].object.userData?.isRotateHandle) {
+          const arrowHits = ray.intersectObjects(selGizmo.pointerPivot.children, true);
+          if (arrowHits.length > 0 && arrowHits[0].object.userData?.isRotateHandle) {
             hoverGizmo = true;
           }
           if (!hoverGizmo) {
