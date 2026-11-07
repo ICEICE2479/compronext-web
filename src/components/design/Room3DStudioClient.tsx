@@ -37,6 +37,7 @@ import {
   clampToRoom,
   DEFAULT_ROOM,
   findNearestWallForItem,
+  getItemAxes,
   itemFromProduct,
   newUid,
   normalizeRotDeg,
@@ -155,6 +156,12 @@ export function Room3DStudioClient() {
   const [selectedCat, setSelectedCat] = useState("all");
   const [products, setProducts] = useState<FoundProduct[]>([]);
   const [searching, setSearching] = useState(false);
+
+  // Drag-to-delete state
+  const [dragDeleteState, setDragDeleteState] = useState<{ isDragging: boolean; isOver: boolean }>({
+    isDragging: false,
+    isOver: false,
+  });
 
   // Update items with undo history
   const setItems = useCallback((fn: (prev: PlanItem[]) => PlanItem[]) => {
@@ -385,11 +392,35 @@ export function Room3DStudioClient() {
     toast("ทำสำเนาสินค้าแล้ว");
   };
 
-  const handleDeleteItem = (uid: string) => {
-    setItems((prev) => prev.filter((i) => i.uid !== uid));
-    if (selectedUid === uid) setSelectedUid(null);
-    toast("ลบสินค้าออกจากห้องแล้ว");
-  };
+  const handleDeleteItem = useCallback(
+    (uid: string) => {
+      let deletedName = "";
+      setItems((prev) => {
+        const target = prev.find((i) => i.uid === uid);
+        if (!target) return prev;
+        deletedName = target.name;
+        const targetAxes = getItemAxes(target.rot);
+        const toDelete = new Set<string>([uid]);
+        for (const o of prev) {
+          if (o.uid !== target.uid && o.y > 0 && Math.abs(o.y - (target.y + target.h)) < 2) {
+            const rx = o.x - target.x;
+            const rz = o.z - target.z;
+            const lx = Math.abs(rx * targetAxes.ux + rz * targetAxes.uz);
+            const lz = Math.abs(rx * targetAxes.vx + rz * targetAxes.vz);
+            if (lx <= target.w * 0.55 && lz <= target.d * 0.55) {
+              toDelete.add(o.uid);
+            }
+          }
+        }
+        return prev.filter((i) => !toDelete.has(i.uid));
+      });
+      if (selectedUid === uid) setSelectedUid(null);
+      toast(deletedName ? `🗑️ ลบ “${deletedName.slice(0, 24)}” ออกจากห้องแล้ว` : "ลบสินค้าออกจากห้องแล้ว", {
+        tone: "ok",
+      });
+    },
+    [selectedUid, setItems]
+  );
 
   // Color options
   const handleColorChange = (hex: string) => {
@@ -931,11 +962,48 @@ export function Room3DStudioClient() {
                     })
                   );
                 }}
+                onDelete={handleDeleteItem}
+                onDragStateChange={(isDragging, isOver) => {
+                  setDragDeleteState({ isDragging, isOver });
+                }}
               />
+
+              {/* Right Drop-to-Delete Zone Overlay */}
+              {dragDeleteState.isDragging && (
+                <div
+                  className={`pointer-events-none absolute right-0 top-0 bottom-0 z-40 flex w-24 sm:w-32 flex-col items-center justify-center transition-all duration-200 border-l ${
+                    dragDeleteState.isOver
+                      ? "bg-rose-600/40 border-rose-500 shadow-[-16px_0_40px_rgba(244,63,94,0.45)] backdrop-blur-sm"
+                      : "bg-slate-900/50 border-white/10 opacity-80 backdrop-blur-[2px]"
+                  }`}
+                >
+                  <div
+                    className={`flex flex-col items-center gap-2 p-3 transition-transform duration-200 ${
+                      dragDeleteState.isOver ? "scale-110 text-rose-200" : "text-slate-300"
+                    }`}
+                  >
+                    <div
+                      className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-all duration-200 ${
+                        dragDeleteState.isOver
+                          ? "bg-rose-500 text-white shadow-xl ring-4 ring-rose-400/50 animate-bounce"
+                          : "bg-white/10 text-slate-300 ring-1 ring-white/20"
+                      }`}
+                    >
+                      <Trash2 className="h-7 w-7" />
+                    </div>
+                    <span className="text-center font-display text-xs font-black tracking-wide drop-shadow-md">
+                      {dragDeleteState.isOver ? "ปล่อยเพื่อลบสินค้า" : "ลากออกขวาเพื่อลบ"}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      {dragDeleteState.isOver ? "ทิ้งลงถังขยะ" : "ลากมาที่นี่"}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Instruction pill */}
               <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-                🖱️ ลากของเพื่อขยับ · ลากวงแหวน/คลิกขวาเพื่อหมุน (360°) · กด R หมุน 45° · ลากพื้นว่างหมุนกล้อง
+                🖱️ ลากของเพื่อขยับ · ลากออกขวาเพื่อลบ · ลากวงแหวน/คลิกขวาเพื่อหมุน (360°) · กด R หมุน 45° · ลากพื้นว่างหมุนกล้อง
               </div>
 
               {/* Floating button to reopen Catalog when hidden */}

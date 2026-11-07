@@ -34,6 +34,8 @@ interface Props {
   onSelect: (uid: string | null) => void;
   onMove: (uid: string, x: number, z: number, y: number, rot?: number) => void;
   onBatchMove?: (moves: Array<{ uid: string; x: number; z: number; y: number; rot: number }>) => void;
+  onDelete?: (uid: string) => void;
+  onDragStateChange?: (dragging: boolean, overDeleteZone: boolean) => void;
 }
 
 interface SelectionAngleGizmo {
@@ -335,7 +337,7 @@ function shouldHideWallForCamera(
  * รองรับห้องสี่เหลี่ยม ห้องตัว L ห้องตัว U และทรงหลายเหลี่ยมทุกแบบ หมุนมองจากมุมไหน กำแพงที่บังสายตาจะหลบลงอัตโนมัติ 360°
  */
 export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function RoomPlanner3D(
-  { room, items, selected, night, sunSettings, onSelect, onMove, onBatchMove },
+  { room, items, selected, night, sunSettings, onSelect, onMove, onBatchMove, onDelete, onDragStateChange },
   ref
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -357,10 +359,10 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     fit: () => void;
     resetView: () => void;
   } | null>(null);
-  const propsRef = useRef({ room, items, selected, onSelect, onMove, onBatchMove });
+  const propsRef = useRef({ room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange });
   useEffect(() => {
-    propsRef.current = { room, items, selected, onSelect, onMove, onBatchMove };
-  }, [room, items, selected, onSelect, onMove, onBatchMove]);
+    propsRef.current = { room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange };
+  }, [room, items, selected, onSelect, onMove, onBatchMove, onDelete, onDragStateChange]);
 
   // ---------- ตั้งฉากครั้งเดียว ----------
   useEffect(() => {
@@ -443,6 +445,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       activeWallKey: string | null;
       curRot: number;
       hasCustomRotOnStartWall: boolean;
+      isOverDelete?: boolean;
       last?: { x: number; z: number; y: number; rot: number };
     } | null = null;
     let rotDrag: {
@@ -691,10 +694,12 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         activeWallKey: initWall?.key ?? null,
         curRot: it.rot,
         hasCustomRotOnStartWall,
+        isOverDelete: false,
       };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId);
       propsRef.current.onSelect(uid);
+      propsRef.current.onDragStateChange?.(true, false);
     };
     const onMoveEv = (e: PointerEvent) => {
       // 1) โหมดหมุนด้วยเมาส์ (Mouse Rotation)
@@ -780,6 +785,22 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
 
       // 3) โหมดเลื่อนตำแหน่งสิ่งของ (Move Drag)
+      const rect = renderer.domElement.getBoundingClientRect();
+      const isOverDelete = e.clientX >= rect.right - 90;
+      if (drag.isOverDelete !== isOverDelete) {
+        drag.isOverDelete = isOverDelete;
+        propsRef.current.onDragStateChange?.(true, isOverDelete);
+        const curApi = api.current;
+        if (curApi) {
+          (curApi.selBox.material as THREE.LineBasicMaterial).color.setHex(isOverDelete ? 0xf43f5e : 0x2563eb);
+        }
+      }
+      if (isOverDelete) {
+        renderer.domElement.style.cursor = "not-allowed";
+      } else {
+        renderer.domElement.style.cursor = "grabbing";
+      }
+
       toNdc(e);
       if (!ray.ray.intersectPlane(plane, hit)) return;
       const snap = (v: number) => Math.round(v * 2) / 2;
@@ -918,6 +939,30 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
 
       // ข. โหมดเลื่อนตำแหน่ง (Move Drag) สิ้นสุด
       const d = drag;
+      if (d) {
+        propsRef.current.onDragStateChange?.(false, false);
+        const curApi = api.current;
+        if (curApi) {
+          (curApi.selBox.material as THREE.LineBasicMaterial).color.setHex(0x2563eb);
+        }
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        const isOverDelete = e.clientX >= rect.right - 90;
+        if (isOverDelete) {
+          // ลากตัวสินค้าออกไปทางขวาแล้วลบทันที!
+          const deletedUid = d.uid;
+          drag = null;
+          downAt = null;
+          controls.enabled = true;
+          renderer.domElement.style.cursor = "default";
+          propsRef.current.onSelect(null);
+          if (propsRef.current.onDelete) {
+            propsRef.current.onDelete(deletedUid);
+          }
+          return;
+        }
+      }
+
       if (d?.moved && d.last) {
         const curRoom = propsRef.current.room;
         const base = propsRef.current.items.find((i) => i.uid === d.uid);
