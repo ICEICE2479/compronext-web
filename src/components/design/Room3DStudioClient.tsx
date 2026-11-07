@@ -12,11 +12,15 @@ import {
   LayoutGrid,
   Loader2,
   Maximize2,
+  Minimize2,
   Moon,
   Move,
   PackagePlus,
+  PanelRightClose,
+  PanelRightOpen,
   PenTool,
   Plus,
+  RotateCcw,
   RotateCw,
   Search,
   ShoppingBag,
@@ -133,7 +137,8 @@ export function Room3DStudioClient() {
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [night, setNight] = useState(false);
   const [sunSettings, setSunSettings] = useState<SunSettings>(DEFAULT_SUN_SETTINGS);
-  const [sun3DPanelOpen, setSun3DPanelOpen] = useState(true);
+  const [sun3DPanelOpen, setSun3DPanelOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const productsMap = useRef<Map<string, FoundProduct>>(new Map());
 
   // Undo history
@@ -360,6 +365,59 @@ export function Room3DStudioClient() {
     });
   };
 
+  // Toggle Fullscreen Studio Mode (combines fixed viewport fullscreen + native Browser Fullscreen API)
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      if (typeof document !== "undefined") {
+        if (next) {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {
+              // Fallback: CSS fixed inset-0 z-[55] still fills 100% viewport
+            });
+          }
+        } else if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  // Sync browser fullscreenchange (e.g. pressing Esc), keyboard shortcut F, and body scroll lock
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (!isTyping && (e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === "Escape" && isFullscreen && !document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFullscreen, toggleFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
+
   // Transition from Blueprint to 3D Room
   const handleProceedTo3D = () => {
     setItemsState((prev) =>
@@ -368,41 +426,92 @@ export function Room3DStudioClient() {
         .map((it) => clampToRoom(it, room))
     );
     setMode("studio");
-    toast("เข้าสู่ห้อง 3D เรียบร้อย! เลือกวางสินค้าจากเมนูด้านล่างได้เลย", {
+    toast("เข้าสู่ห้อง 3D เรียบร้อย! เลือกวางสินค้าจากแถบคลังสินค้าได้เลย", {
       tone: "ok",
     });
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[55] flex h-dvh w-screen flex-col overflow-hidden bg-slate-950"
+          : "flex flex-col gap-2.5"
+      }
+    >
+      {/* Compact Top Page Bar (shown before entering Fullscreen so user can click Fullscreen immediately) */}
+      {!isFullscreen && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-ink-200/80 bg-surface px-3.5 py-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-info/10 px-2.5 py-1 text-xs font-bold text-info border border-info/30">
+              <Box className="h-3.5 w-3.5" /> จัดห้อง 3D
+            </span>
+            <h1 className="font-display text-base font-bold text-ink-950 sm:text-lg">
+              สตูดิโอวาดแปลน & จัดห้อง 3D
+            </h1>
+            <span className="hidden xl:inline text-xs text-ink-500">
+              — กดปุ่ม <strong className="text-ink-800">เปิดเต็มจอนั่งแก้ไข</strong> (หรือกดปุ่มลัด <kbd className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800">F</kbd>) เพื่อขยายเต็มหน้าจอ
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-4 py-1.5 text-xs font-extrabold text-slate-950 shadow-sm hover:bg-amber-300 transition-all"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              เปิดเต็มจอนั่งแก้ไข (Fullscreen)
+            </button>
+
+            <Link
+              href="/design"
+              className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-surface px-3 py-1.5 text-xs font-bold text-ink-700 hover:border-info hover:text-info transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-info" />
+              <span className="hidden sm:inline">AI จัดห้องจากรูปถ่าย</span>
+              <span className="sm:hidden">AI จัดห้อง</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* View Mode: Blueprint vs Studio */}
       {mode === "blueprint" ? (
-        <div className="space-y-4">
+        <div className={isFullscreen ? "flex flex-1 min-h-0 w-full" : "w-full"}>
           <MyDreamSetupBlueprint
             room={room}
             doors={doors}
             windows={windows}
             sunSettings={sunSettings}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
             onChange={handleBlueprintChange}
             onProceedTo3D={handleProceedTo3D}
           />
         </div>
       ) : (
-        <div className="relative flex flex-col overflow-hidden rounded-3xl border border-ink-200 bg-surface shadow-2xl">
+        <div
+          className={`relative flex flex-col overflow-hidden bg-surface ${
+            isFullscreen
+              ? "h-full flex-1 rounded-none border-0"
+              : "h-[calc(100dvh-7.25rem)] min-h-[620px] rounded-3xl border border-ink-200 shadow-2xl"
+          }`}
+        >
           {/* Top 3D Control Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-surface/95 px-4 py-3 backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-surface/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
             <div className="flex items-center gap-2">
               {/* Back to Blueprint Button */}
               <button
                 type="button"
                 onClick={() => setMode("blueprint")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-info/40 bg-info/10 px-3.5 py-1.5 text-xs font-bold text-info hover:bg-info hover:text-white transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-full border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-bold text-info hover:bg-info hover:text-white transition-all shadow-sm"
               >
                 <PenTool className="h-3.5 w-3.5" />
                 โหมดพิมพ์เขียว (วาดห้องใหม่)
               </button>
 
-              <span className="text-xs font-semibold text-ink-500 hidden sm:inline">
+              <span className="text-xs font-semibold text-ink-500 hidden md:inline">
                 {room.shape && room.shape.length > 4
                   ? `ห้องวาดเอง (${room.shape.length} มุม) · `
                   : ""}
@@ -411,7 +520,7 @@ export function Room3DStudioClient() {
             </div>
 
             {/* Quick Actions & Toggles */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {/* Sun & Compass Control Toggle */}
               <button
                 type="button"
@@ -451,7 +560,7 @@ export function Room3DStudioClient() {
                 }`}
               >
                 {night ? <Moon className="h-3.5 w-3.5 text-purple-400" /> : <Sun className="h-3.5 w-3.5 text-amber-600" />}
-                {night ? "กลางคืน" : "กลางวัน"}
+                <span className="hidden sm:inline">{night ? "กลางคืน" : "กลางวัน"}</span>
               </button>
 
               {/* Undo Button */}
@@ -469,36 +578,69 @@ export function Room3DStudioClient() {
               <button
                 type="button"
                 onClick={() => planner3DRef.current?.resetView()}
-                title="รีเซ็ตมุมกล้อง"
+                title="รีเซ็ตมุมกล้อง 3D"
                 className="icon-btn h-8 w-8"
               >
-                <Maximize2 className="h-4 w-4" />
+                <RotateCcw className="h-4 w-4" />
               </button>
 
-              {/* Send to AI Design */}
-              <Link
-                href="/design"
-                title="ส่งห้องนี้ให้ AI วาดห้องจริง"
-                className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-surface px-3 py-1.5 text-xs font-bold text-ink-700 hover:border-info hover:text-info transition-colors"
+              {/* Toggle Catalog Sidebar */}
+              <button
+                type="button"
+                onClick={() => setDrawerOpen((v) => !v)}
+                title={drawerOpen ? "ซ่อนแถบสินค้าเพื่อดูห้อง 3D กว้างสุด" : "เปิดแถบเลือกสินค้า 2,100+ ชิ้น"}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                  drawerOpen
+                    ? "bg-info/15 text-info border border-info/30"
+                    : "bg-ink-100 text-ink-800 hover:bg-ink-200"
+                }`}
               >
-                <Sparkles className="h-3.5 w-3.5 text-info" />
-                AI จัดห้อง
-              </Link>
+                {drawerOpen ? (
+                  <PanelRightClose className="h-3.5 w-3.5" />
+                ) : (
+                  <PanelRightOpen className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline">{drawerOpen ? "ซ่อนคลังสินค้า" : "คลังสินค้า"}</span>
+              </button>
             </div>
 
-            {/* Total Price & Add All to Cart */}
-            <div className="flex items-center gap-3">
+            {/* Total Price, Cart & Fullscreen Toggle */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
               <div className="text-right">
-                <span className="block text-[11px] text-ink-500">ยอดรวมทั้งห้อง ({productCount} ชิ้น)</span>
-                <span className="font-mono text-base font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
+                <span className="block text-[10px] text-ink-500">รวม ({productCount} ชิ้น)</span>
+                <span className="font-mono text-sm sm:text-base font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
               </div>
               <button
                 type="button"
                 onClick={handleAddSetupToCart}
-                className="btn btn-primary h-9 rounded-full px-4 text-xs font-bold shadow-md"
+                className="btn btn-primary h-8 sm:h-9 rounded-full px-3.5 text-xs font-bold shadow-md"
               >
                 <ShoppingBag className="h-3.5 w-3.5" />
-                ใส่ตะกร้าทั้งหมด
+                <span className="hidden sm:inline">ใส่ตะกร้าทั้งหมด</span>
+                <span className="sm:hidden">ใส่ตะกร้า</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "ย่อออกจากเต็มจอ (กด Esc หรือ F)" : "เปิดเต็มจอนั่งจัดห้อง (กด F)"}
+                className={`inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-extrabold shadow-sm transition-all ${
+                  isFullscreen
+                    ? "bg-ink-900 text-white hover:bg-ink-800"
+                    : "bg-amber-400 text-slate-950 hover:bg-amber-300"
+                }`}
+              >
+                {isFullscreen ? (
+                  <>
+                    <Minimize2 className="h-3.5 w-3.5" />
+                    <span>ย่อจอ</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    <span>เต็มจอ</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -639,224 +781,253 @@ export function Room3DStudioClient() {
             </div>
           )}
 
-          {/* 3D Viewport Canvas Container */}
-          <div className="relative h-[520px] w-full bg-slate-950 sm:h-[600px]">
-            <RoomPlanner3D
-              ref={planner3DRef}
-              room={room}
-              items={items}
-              selected={selectedUid}
-              night={night}
-              sunSettings={sunSettings}
-              onSelect={setSelectedUid}
-              onMove={(uid, x, z, y) => {
-                setItems((prev) =>
-                  prev.map((i) => (i.uid === uid ? { ...i, x, z, y } : i))
-                );
-              }}
-            />
+          {/* Main Workspace Split: 3D Viewport (Left/Full) + Collapsible Product Catalog Dock (Right/Bottom) */}
+          <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
+            {/* 3D Viewport Canvas Container */}
+            <div className="relative flex-1 min-h-[360px] lg:min-h-0 h-full w-full bg-slate-950">
+              <RoomPlanner3D
+                ref={planner3DRef}
+                room={room}
+                items={items}
+                selected={selectedUid}
+                night={night}
+                sunSettings={sunSettings}
+                onSelect={setSelectedUid}
+                onMove={(uid, x, z, y) => {
+                  setItems((prev) =>
+                    prev.map((i) => (i.uid === uid ? { ...i, x, z, y } : i))
+                  );
+                }}
+              />
 
-            {/* Instruction pill */}
-            <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-              🖱️ ลากของเพื่อขยับ · ลากพื้นที่ว่างเพื่อหมุนกล้อง · เลื่อนลูกกลิ้งเพื่อซูม
-            </div>
+              {/* Instruction pill */}
+              <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
+                🖱️ ลากของเพื่อขยับ · ลากพื้นที่ว่างเพื่อหมุนกล้อง · เลื่อนลูกกลิ้งเพื่อซูม · กด F เต็มจอ
+              </div>
 
-            {/* Selected Item Floating Inspector */}
-            {selectedItem && (
-              <div className="absolute bottom-4 left-4 z-30 flex max-w-[94%] flex-wrap items-center gap-2 rounded-2xl border border-white/20 bg-slate-900/90 p-2.5 shadow-2xl backdrop-blur-md text-white">
-                <div className="flex items-center gap-2 pr-2 border-r border-white/20">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-info/30 text-xs font-bold text-info">
-                    {(CATEGORY_LABELS as Record<string, string>)[selectedItem.category] || "ของ"}
-                  </span>
-                  <div>
-                    <p className="max-w-[140px] truncate text-xs font-bold text-white sm:max-w-[200px]">
-                      {selectedItem.name}
-                    </p>
-                    <p className="font-mono text-[11px] font-semibold text-amber-400">
-                      {selectedItem.price > 0 ? formatTHB(selectedItem.price) : "ไม่มีค่าใช้จ่าย"}
-                    </p>
+              {/* Floating button to reopen Catalog when hidden */}
+              {!drawerOpen && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  className="absolute right-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-full bg-info px-3.5 py-2 text-xs font-extrabold text-white shadow-xl hover:opacity-95 transition"
+                >
+                  <PackagePlus className="h-4 w-4" />
+                  เลือกสินค้าลงห้อง (2,100+ ชิ้น)
+                </button>
+              )}
+
+              {/* Selected Item Floating Inspector */}
+              {selectedItem && (
+                <div className="absolute bottom-4 left-4 z-30 flex max-w-[94%] flex-wrap items-center gap-2 rounded-2xl border border-white/20 bg-slate-900/90 p-2.5 shadow-2xl backdrop-blur-md text-white">
+                  <div className="flex items-center gap-2 pr-2 border-r border-white/20">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-info/30 text-xs font-bold text-info">
+                      {(CATEGORY_LABELS as Record<string, string>)[selectedItem.category] || "ของ"}
+                    </span>
+                    <div>
+                      <p className="max-w-[140px] truncate text-xs font-bold text-white sm:max-w-[200px]">
+                        {selectedItem.name}
+                      </p>
+                      <p className="font-mono text-[11px] font-semibold text-amber-400">
+                        {selectedItem.price > 0 ? formatTHB(selectedItem.price) : "ไม่มีค่าใช้จ่าย"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Quick actions for selected item */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleRotate(45)}
+                      className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
+                      title="หมุน 45 องศา"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" /> 45°
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRotate(90)}
+                      className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
+                      title="หมุน 90 องศา"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" /> 90°
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleToggleAltitude}
+                      className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
+                      title="ปรับความสูง (วางบนโต๊ะ / บนพื้น)"
+                    >
+                      <Layers className="h-3.5 w-3.5" /> {selectedItem.y > 10 ? "บนโต๊ะ" : "บนพื้น"}
+                    </button>
+
+                    {/* Colors */}
+                    <div className="flex items-center gap-1 px-1">
+                      {["#1a1d20", "#f4f1ea", "#c29567", "#8c6239", "#4a5568"].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => handleColorChange(c)}
+                          style={{ backgroundColor: c }}
+                          className={`h-5 w-5 rounded-full border border-white/40 transition-transform ${
+                            selectedItem.color === c ? "scale-125 ring-2 ring-info" : ""
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDuplicate}
+                      title="ทำสำเนา"
+                      className="icon-btn h-8 w-8 text-white hover:bg-white/10"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(selectedItem.uid)}
+                      title="ลบออกจากห้อง"
+                      className="icon-btn h-8 w-8 text-rose-400 hover:bg-rose-500/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
+              )}
+            </div>
 
-                {/* Quick actions for selected item */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleRotate(45)}
-                    className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
-                    title="หมุน 45 องศา"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" /> 45°
-                  </button>
+            {/* Collapsible Catalog Sidebar / Dock (2,100+ Products) */}
+            {drawerOpen && (
+              <aside className="flex h-[270px] lg:h-full lg:w-[360px] xl:w-[400px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface">
+                <div className="border-b border-ink-100 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-info text-white">
+                        <PackagePlus className="h-3.5 w-3.5" />
+                      </span>
+                      <h3 className="font-display text-xs sm:text-sm font-bold text-ink-950">
+                        คลังสินค้า 3D (2,100+ ชิ้น)
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDrawerOpen(false)}
+                      title="ซ่อนแถบสินค้าเพื่อขยายจอ 3D"
+                      className="icon-btn h-7 w-7 text-ink-500 hover:text-ink-900"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleRotate(90)}
-                    className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
-                    title="หมุน 90 องศา"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" /> 90°
-                  </button>
+                  {/* Search Bar */}
+                  <div className="relative w-full">
+                    <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" />
+                    <input
+                      type="text"
+                      placeholder="ค้นหาโต๊ะ, เก้าอี้, จอ, เคส, โคมไฟ..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="input h-8.5 w-full rounded-full pl-8 pr-4 text-xs"
+                    />
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={handleToggleAltitude}
-                    className="inline-flex h-8 items-center gap-1 rounded-xl bg-white/10 px-2.5 text-xs font-semibold hover:bg-white/20"
-                    title="ปรับความสูง (วางบนโต๊ะ / บนพื้น)"
-                  >
-                    <Layers className="h-3.5 w-3.5" /> {selectedItem.y > 10 ? "บนโต๊ะ" : "บนพื้น"}
-                  </button>
-
-                  {/* Colors */}
-                  <div className="flex items-center gap-1 px-1">
-                    {["#1a1d20", "#f4f1ea", "#c29567", "#8c6239", "#4a5568"].map((c) => (
+                  {/* Category Filter Chips */}
+                  <div className="thin-scroll flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {CATEGORIES.map((c) => (
                       <button
-                        key={c}
+                        key={c.id}
                         type="button"
-                        onClick={() => handleColorChange(c)}
-                        style={{ backgroundColor: c }}
-                        className={`h-5 w-5 rounded-full border border-white/40 transition-transform ${
-                          selectedItem.color === c ? "scale-125 ring-2 ring-info" : ""
+                        onClick={() => setSelectedCat(c.id)}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          selectedCat === c.id
+                            ? "bg-info text-white shadow-sm"
+                            : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                         }`}
-                      />
+                      >
+                        {c.label}
+                      </button>
                     ))}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleDuplicate}
-                    title="ทำสำเนา"
-                    className="icon-btn h-8 w-8 text-white hover:bg-white/10"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteItem(selectedItem.uid)}
-                    title="ลบออกจากห้อง"
-                    className="icon-btn h-8 w-8 text-rose-400 hover:bg-rose-500/20"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* Bottom Catalog Drawer / Product Browser */}
-          <div className="border-t border-ink-100 bg-surface p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-info text-white">
-                  <PackagePlus className="h-4 w-4" />
-                </span>
-                <h3 className="font-display text-sm font-bold text-ink-950">
-                  เลือกสินค้าลงห้อง 3D (เชื่อมต่อสินค้าทั้งเว็บ 2,100+ ชิ้น)
-                </h3>
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full max-w-xs">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาโต๊ะ, เก้าอี้, จอ, การ์ดจอ..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="input h-9 w-full rounded-full pl-8 pr-4 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Category Filter Chips */}
-            <div className="thin-scroll mb-4 flex items-center gap-1.5 overflow-x-auto pb-1">
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedCat(c.id)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    selectedCat === c.id
-                      ? "bg-info text-white shadow-sm"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Products Grid */}
-            {searching ? (
-              <div className="flex h-36 items-center justify-center gap-2 text-xs text-ink-500">
-                <Loader2 className="h-4 w-4 animate-spin text-info" />
-                กำลังค้นหาแคตตาล็อก...
-              </div>
-            ) : products.length === 0 ? (
-              <div className="flex h-32 flex-col items-center justify-center text-xs text-ink-500">
-                <p>ไม่พบสินค้าในหมวดนี้</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCat("all");
-                    setSearchQuery("");
-                  }}
-                  className="mt-2 text-info underline"
-                >
-                  ล้างตัวกรอง
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 max-h-72 overflow-y-auto pr-1">
-                {products.map((p) => {
-                  const dims = p.dimensions;
-                  const dimStr = dims ? `${dims.width}×${dims.depth} ซม.` : "";
-                  const imgSrc = p.imageUrl ? displayPhotoSrc(p.imageUrl) : null;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="group flex flex-col justify-between rounded-2xl border border-ink-100 bg-surface-card p-2.5 transition-all hover:border-info/50 hover:shadow-md"
-                    >
-                      <div className="aspect-square w-full overflow-hidden rounded-xl bg-ink-50 p-2 relative flex items-center justify-center">
-                        {imgSrc ? (
-                          <img
-                            src={imgSrc}
-                            alt={p.name}
-                            className="h-full w-full object-contain transition-transform group-hover:scale-105"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <Box className="h-8 w-8 text-ink-300" />
-                        )}
-                        {dimStr && (
-                          <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-mono text-white">
-                            {dimStr}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-2 flex-1">
-                        <p className="line-clamp-2 text-[11px] font-semibold text-ink-900 group-hover:text-info">
-                          {p.name}
-                        </p>
-                        <p className="font-mono text-xs font-bold text-info mt-1">
-                          {formatTHB(p.price)}
-                        </p>
-                      </div>
-
+                {/* Products Scrollable Grid */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-3">
+                  {searching ? (
+                    <div className="flex h-36 items-center justify-center gap-2 text-xs text-ink-500">
+                      <Loader2 className="h-4 w-4 animate-spin text-info" />
+                      กำลังค้นหาแคตตาล็อก...
+                    </div>
+                  ) : products.length === 0 ? (
+                    <div className="flex h-32 flex-col items-center justify-center text-xs text-ink-500">
+                      <p>ไม่พบสินค้าในหมวดนี้</p>
                       <button
                         type="button"
-                        onClick={() => handleAddProduct(p)}
-                        className="mt-2 inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg bg-ink-100 text-[11px] font-bold text-ink-800 transition-colors group-hover:bg-info group-hover:text-white"
+                        onClick={() => {
+                          setSelectedCat("all");
+                          setSearchQuery("");
+                        }}
+                        className="mt-2 text-info underline"
                       >
-                        <Plus className="h-3 w-3" /> วางในห้อง
+                        ล้างตัวกรอง
                       </button>
                     </div>
-                  );
-                })}
-              </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-2">
+                      {products.map((p) => {
+                        const dims = p.dimensions;
+                        const dimStr = dims ? `${dims.width}×${dims.depth} ซม.` : "";
+                        const imgSrc = p.imageUrl ? displayPhotoSrc(p.imageUrl) : null;
+
+                        return (
+                          <div
+                            key={p.id}
+                            className="group flex flex-col justify-between rounded-2xl border border-ink-100 bg-surface-card p-2 transition-all hover:border-info/50 hover:shadow-md"
+                          >
+                            <div className="aspect-square w-full overflow-hidden rounded-xl bg-ink-50 p-1.5 relative flex items-center justify-center">
+                              {imgSrc ? (
+                                <img
+                                  src={imgSrc}
+                                  alt={p.name}
+                                  className="h-full w-full object-contain transition-transform group-hover:scale-105"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <Box className="h-7 w-7 text-ink-300" />
+                              )}
+                              {dimStr && (
+                                <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-mono text-white">
+                                  {dimStr}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-1.5 flex-1">
+                              <p className="line-clamp-2 text-[11px] font-semibold text-ink-900 group-hover:text-info">
+                                {p.name}
+                              </p>
+                              <p className="font-mono text-xs font-bold text-info mt-0.5">
+                                {formatTHB(p.price)}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAddProduct(p)}
+                              className="mt-1.5 inline-flex h-7 w-full items-center justify-center gap-1 rounded-lg bg-ink-100 text-[11px] font-bold text-ink-800 transition-colors group-hover:bg-info group-hover:text-white"
+                            >
+                              <Plus className="h-3 w-3" /> วางในห้อง
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </aside>
             )}
           </div>
         </div>

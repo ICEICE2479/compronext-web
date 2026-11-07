@@ -20,6 +20,8 @@ import {
   Waypoints,
   Eraser,
   Check,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import type { RoomSize } from "@/lib/room-planner";
 import { signedArea, type Pt2 } from "@/lib/room-shape";
@@ -75,6 +77,8 @@ interface MyDreamSetupBlueprintProps {
   doors?: BlueprintDoor[];
   windows?: BlueprintWindow[];
   sunSettings?: SunSettings;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onChange: (
     room: RoomSize,
     doors: BlueprintDoor[],
@@ -113,6 +117,8 @@ export function MyDreamSetupBlueprint({
   doors: initialDoors = [{ id: "d-1", edgeIndex: 1, wall: "right", pos: 0.7, width: 80 }],
   windows: initialWindows = [{ id: "w-1", edgeIndex: 0, wall: "top", pos: 0.4, width: 120 }],
   sunSettings: initialSunSettings = DEFAULT_SUN_SETTINGS,
+  isFullscreen = false,
+  onToggleFullscreen,
   onChange,
   onProceedTo3D,
   onCancel,
@@ -146,7 +152,7 @@ export function MyDreamSetupBlueprint({
 
   // ทิศทางเข็มทิศ & แสงอาทิตย์ตามเวลา
   const [sun, setSun] = useState<SunSettings>(room.sunSettings || initialSunSettings);
-  const [sunPanelOpen, setSunPanelOpen] = useState(true);
+  const [sunPanelOpen, setSunPanelOpen] = useState(false);
 
   // สถานะการลากวาดบล็อกบนตาราง (Grid Box Drag)
   const [boxDrag, setBoxDrag] = useState<{
@@ -311,10 +317,19 @@ export function MyDreamSetupBlueprint({
   const depthM = (depthCm / 100).toFixed(2);
   const heightM = (heightCm / 100).toFixed(2);
 
-  // แปลงพิกัดเมาส์เป็นพิกัด SVG และ ซม.
+  // แปลงพิกัดเมาส์เป็นพิกัด SVG และ ซม. (ใช้ getScreenCTM เพื่อให้แม่นยำ 100% ทุกขนาดจอและโหมดเต็มจอ)
   const clientToSvgAndCm = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return null;
+    const ctm = svg.getScreenCTM();
+    if (ctm) {
+      const pt = svg.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const svgP = pt.matrixTransform(ctm.inverse());
+      const [xCm, zCm] = svgToCm(svgP.x, svgP.y);
+      return { sx: svgP.x, sy: svgP.y, xCm, zCm };
+    }
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     const sx = ((clientX - rect.left) / rect.width) * VB_W;
@@ -854,7 +869,11 @@ export function MyDreamSetupBlueprint({
 
   return (
     <div
-      className="relative flex flex-col items-center justify-between overflow-hidden rounded-3xl border-4 border-[#1e40af] bg-[#3b82f6] shadow-2xl select-none w-full text-white"
+      className={`relative flex flex-col items-center justify-between overflow-hidden bg-[#3b82f6] select-none w-full text-white ${
+        isFullscreen
+          ? "h-full flex-1 rounded-none border-0"
+          : "min-h-[600px] lg:h-[calc(100dvh-7.25rem)] rounded-3xl border-4 border-[#1e40af] shadow-2xl"
+      }`}
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* รอยแก้วกาแฟ & ดินสอสถาปนิกสไตล์เกม My Dream Setup */}
@@ -915,6 +934,41 @@ export function MyDreamSetupBlueprint({
             <span className="text-blue-200">พื้นที่: </span>
             <span className="font-bold text-amber-300">{areaM2} ตร.ม.</span>
           </div>
+
+          <button
+            type="button"
+            disabled={isBlankCanvas}
+            onClick={onProceedTo3D}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-1.5 font-sans text-xs font-extrabold text-white shadow-md hover:bg-emerald-400 transition disabled:opacity-40"
+          >
+            เข้าห้อง 3D
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? "ออกจากโหมดเต็มจอ (กด Esc หรือ F)" : "ขยายเต็มจอนั่งวาดและจัดห้องได้เลย (กด F)"}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 font-sans text-xs font-extrabold shadow-md transition ${
+                isFullscreen
+                  ? "bg-white/20 text-white border border-white/40 hover:bg-white/30"
+                  : "bg-amber-400 text-slate-950 hover:bg-amber-300 ring-2 ring-amber-200/70"
+              }`}
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="h-3.5 w-3.5" />
+                  ย่อจอ (Esc)
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  เปิดเต็มจอ
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1055,7 +1109,7 @@ export function MyDreamSetupBlueprint({
       )}
 
       {/* พื้นที่กระดาษพิมพ์เขียวหลัก */}
-      <div className="relative flex flex-1 w-full items-center justify-center overflow-hidden">
+      <div className="relative flex flex-1 min-h-0 w-full items-center justify-center overflow-hidden">
         {/* แถบปุ่มกลมลอยฝั่งซ้าย 5 ปุ่ม (ตรงตามภาพเกม My Dream Setup) */}
         <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-2.5 rounded-2xl border border-white/30 bg-[#1d4ed8]/85 p-2 shadow-2xl backdrop-blur-md">
           {/* 1. ปุ่ม X (รีเซ็ตค่าเริ่มต้น) */}
@@ -1155,11 +1209,14 @@ export function MyDreamSetupBlueprint({
           <Trash2 className="h-5 w-5" />
         </button>
 
-        {/* กระดาษพิมพ์เขียว SVG (สเกลคงที่ 1 ช่อง = 0.50 ม. ไม่สั่น ไม่เด้ง) */}
+        {/* กระดาษพิมพ์เขียว SVG (สเกลคงที่ 1 ช่อง = 0.50 ม. ไม่สั่น ไม่เด้ง รองรับเต็มจอทุกความละเอียด) */}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VB_W} ${VB_H}`}
-          className="w-full h-auto max-h-[540px] cursor-crosshair touch-none"
+          preserveAspectRatio="xMidYMid meet"
+          className={`w-full cursor-crosshair touch-none ${
+            isFullscreen ? "h-full max-h-full" : "h-full min-h-[360px]"
+          }`}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={(e) => {
             const pt = clientToSvgAndCm(e.clientX, e.clientY);
