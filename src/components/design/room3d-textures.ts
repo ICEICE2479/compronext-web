@@ -558,3 +558,154 @@ export function rugTex(base: string) {
     }
   });
 }
+
+/** หน้าจอเกมมิ่ง Cyberpunk FPS / Ultrawide Gaming Display */
+export function screenGameTex() {
+  return make("screen-game-v1", 1024, 512, (g, w, h) => {
+    // พื้นหลังอวกาศ/เกมมิ่งเข้มพร้อม Grid Neon
+    const grad = g.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, "#090d16");
+    grad.addColorStop(0.5, "#0b132b");
+    grad.addColorStop(1, "#1c0b2b");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+
+    // Grid Perspective เส้นเรืองแสง
+    g.strokeStyle = "rgba(6, 182, 212, 0.25)";
+    g.lineWidth = 1.5;
+    for (let x = 0; x <= w; x += 64) {
+      g.beginPath();
+      g.moveTo(x, h * 0.45);
+      g.lineTo(w / 2 + (x - w / 2) * 2.5, h);
+      g.stroke();
+    }
+    for (let y = h * 0.45; y <= h; y += 28) {
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(w, y);
+      g.stroke();
+    }
+
+    // พระอาทิตย์ Synthwave ดวงโตตรงกลาง
+    const sunGrad = g.createLinearGradient(w / 2, h * 0.15, w / 2, h * 0.6);
+    sunGrad.addColorStop(0, "#f43f5e");
+    sunGrad.addColorStop(0.5, "#fbbf24");
+    sunGrad.addColorStop(1, "#f97316");
+    g.fillStyle = sunGrad;
+    g.beginPath();
+    g.arc(w / 2, h * 0.42, 110, 0, Math.PI * 2);
+    g.fill();
+
+    // แถบตัดพระอาทิตย์สไตล์ Retro 80s
+    g.fillStyle = "#090d16";
+    for (let i = 0; i < 6; i++) {
+      g.fillRect(w / 2 - 120, h * 0.38 + i * 14, 240, 2 + i * 1.5);
+    }
+
+    // Gaming HUD: หลอดเลือด Health Bar, Shield Bar, FPS Counter, Minimap
+    g.fillStyle = "rgba(15, 23, 42, 0.75)";
+    g.beginPath();
+    g.roundRect(30, 30, 220, 50, 8);
+    g.fill();
+    g.fillStyle = "#22c55e"; // Health
+    g.fillRect(40, 40, 160, 12);
+    g.fillStyle = "#38bdf8"; // Shield
+    g.fillRect(40, 58, 120, 8);
+
+    // FPS Counter ขวาบน
+    g.fillStyle = "#06b6d4";
+    g.font = "bold 22px sans-serif";
+    g.fillText("240 FPS  ·  1440p  ·  HDR", w - 310, 55);
+
+    // เป้าเล็ง Crosshair กึ่งกลาง
+    g.strokeStyle = "#38bdf8";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(w / 2, h / 2, 18, 0, Math.PI * 2);
+    g.moveTo(w / 2 - 28, h / 2); g.lineTo(w / 2 - 8, h / 2);
+    g.moveTo(w / 2 + 8, h / 2); g.lineTo(w / 2 + 28, h / 2);
+    g.moveTo(w / 2, h / 2 - 28); g.lineTo(w / 2, h / 2 - 8);
+    g.moveTo(w / 2, h / 2 + 8); g.lineTo(w / 2, h / 2 + 28);
+    g.stroke();
+  });
+}
+
+/** หน้าจอมืออาชีพ / macOS Style Display Wallpaper */
+export function screenMacTex() {
+  return make("screen-mac-v1", 1024, 576, (g, w, h) => {
+    // วอลเปเปอร์วิวภูเขาพระอาทิตย์ตกไล่เฉดแบบมืออาชีพ
+    const grad = g.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, "#ff758c");
+    grad.addColorStop(0.35, "#ff7eb3");
+    grad.addColorStop(0.7, "#784ba0");
+    grad.addColorStop(1, "#2b86c5");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+
+    // แถบเมนูด้านบน (macOS Top Menu Bar)
+    g.fillStyle = "rgba(255, 255, 255, 0.28)";
+    g.fillRect(0, 0, w, 28);
+    g.fillStyle = "#ffffff";
+    g.font = "bold 13px sans-serif";
+    g.fillText("  Finder  File  Edit  View  Go  Window  Help", 20, 19);
+    g.fillText("Sun 12:00 PM   100%", w - 170, 19);
+
+    // หน้าต่างโปรแกรมแต่งภาพ / Color Grading Workspace
+    g.fillStyle = "rgba(30, 41, 59, 0.88)";
+    g.beginPath();
+    g.roundRect(80, 70, w - 160, h - 170, 12);
+    g.fill();
+
+    // แถบไตเติลหน้าต่าง
+    g.fillStyle = "#ef4444"; g.beginPath(); g.arc(102, 92, 6, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#f59e0b"; g.beginPath(); g.arc(122, 92, 6, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#10b981"; g.beginPath(); g.arc(142, 92, 6, 0, Math.PI * 2); g.fill();
+
+    // กราฟฟิกภาพถ่ายสีคมชัดและ Color Palette ภายในโปรแกรม
+    const photoGrad = g.createRadialGradient(w / 2, h * 0.48, 20, w / 2, h * 0.48, 220);
+    photoGrad.addColorStop(0, "#fbbf24");
+    photoGrad.addColorStop(0.5, "#ec4899");
+    photoGrad.addColorStop(1, "#3b82f6");
+    g.fillStyle = photoGrad;
+    g.beginPath();
+    g.roundRect(160, 120, w - 320, h - 260, 8);
+    g.fill();
+
+    // แถบ Dock ด้านล่าง
+    g.fillStyle = "rgba(255, 255, 255, 0.35)";
+    g.beginPath();
+    g.roundRect(w / 2 - 200, h - 65, 400, 52, 18);
+    g.fill();
+    // ไอคอนใน Dock
+    const dockColors = ["#38bdf8", "#34d399", "#fbbf24", "#f43f5e", "#a855f7", "#ec4899", "#60a5fa", "#f97316"];
+    dockColors.forEach((col, i) => {
+      g.fillStyle = col;
+      g.beginPath();
+      g.roundRect(w / 2 - 180 + i * 46, h - 58, 38, 38, 9);
+      g.fill();
+    });
+  });
+}
+
+/** ผ้าทอตะแกรงลำโพงพกพา (JBL Rugged Fabric Grille) */
+export function speakerFabricTex(base: string) {
+  return make(`spk-fab-${base}`, 256, 256, (g, w, h) => {
+    g.fillStyle = base;
+    g.fillRect(0, 0, w, h);
+    // ลายทอตะแกรงสองแกนหนาแน่น
+    for (let x = 0; x < w; x += 4) {
+      g.fillStyle = shade(base, 0.75);
+      g.fillRect(x, 0, 1.5, h);
+    }
+    for (let y = 0; y < h; y += 4) {
+      g.fillStyle = shade(base, 1.25);
+      g.fillRect(0, y, w, 1.5);
+    }
+    // เม็ดสัมผัสเสริมความสมจริง
+    const r = rng(17);
+    for (let i = 0; i < 800; i++) {
+      g.fillStyle = r() > 0.5 ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.08)";
+      g.fillRect(r() * w, r() * h, 2, 2);
+    }
+  });
+}

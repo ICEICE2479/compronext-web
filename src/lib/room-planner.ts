@@ -146,6 +146,88 @@ export function newUid(): string {
   return `it-${Date.now().toString(36)}-${seq}`;
 }
 
+/** ตรวจจับสีจริงของสินค้าจากชื่อและสี (Color detection from name & tags) */
+export function detectProductColor(name: string, rawColors?: string[]): string | undefined {
+  const n = (name || "").toLowerCase();
+  const c = rawColors?.[0]?.toLowerCase();
+
+  // 1) ตรวจสอบจากชื่อสินค้าก่อน เพราะชื่อสินค้า IKEA / iHAVECPU มักระบุสีที่ถูกต้องแม่นยำที่สุด
+  if (n.includes("ออฟไวท์") || n.includes("off-white") || n.includes("off white") || n.includes("เบจ") || n.includes("beige") || n.includes("ครีม") || n.includes("cream")) {
+    return "#e6dfd3";
+  }
+  if (n.includes("ขาว") || n.includes("white")) {
+    return "#eeeeec";
+  }
+  if (n.includes("เทาอ่อน") || n.includes("light grey") || n.includes("light gray")) {
+    return "#c4c7cc";
+  }
+  if (n.includes("แอนทราไซต์") || n.includes("anthracite") || n.includes("กราไฟต์") || n.includes("graphite") || n.includes("เทาเข้ม") || n.includes("dark grey")) {
+    return "#3f444e";
+  }
+  if (n.includes("เทา") || n.includes("grey") || n.includes("gray")) {
+    return "#717985";
+  }
+  if (n.includes("ดำ") || n.includes("black") || n.includes("คาร์บอน") || n.includes("carbon")) {
+    return "#1f2125";
+  }
+  if (n.includes("วอลนัท") || n.includes("walnut") || n.includes("น้ำตาลเข้ม")) {
+    return "#5c4033";
+  }
+  if (n.includes("โอ๊ค") || n.includes("oak") || n.includes("บีช") || n.includes("beech") || n.includes("แอช") || n.includes("ash") || n.includes("ลายไม้") || n.includes("เนเชอรัล") || n.includes("natural")) {
+    return "#c29b6e";
+  }
+  if (n.includes("น้ำตาล") || n.includes("brown")) {
+    return "#785138";
+  }
+  if (n.includes("ส้ม") || n.includes("orange")) {
+    return "#ea580c";
+  }
+  if (n.includes("เหลือง") || n.includes("yellow")) {
+    return "#eab308";
+  }
+  if (n.includes("แดง") || n.includes("red")) {
+    return "#dc2626";
+  }
+  if (n.includes("ชมพู") || n.includes("pink") || n.includes("quartz")) {
+    return "#ec4899";
+  }
+  if (n.includes("ม่วง") || n.includes("purple") || n.includes("violet")) {
+    return "#9333ea";
+  }
+  if (n.includes("น้ำเงิน") || n.includes("ฟ้า") || n.includes("blue") || n.includes("cyan")) {
+    return "#2563eb";
+  }
+  if (n.includes("เขียว") || n.includes("green") || n.includes("teal")) {
+    return "#16a34a";
+  }
+  if (n.includes("กัลวาไนซ์") || n.includes("galvanised") || n.includes("สแตนเลส") || n.includes("stainless") || n.includes("โครเมียม") || n.includes("chrome") || n.includes("เงิน") || n.includes("silver")) {
+    return "#cbd5e1";
+  }
+  if (n.includes("ทองเหลือง") || n.includes("brass") || n.includes("ทอง") || n.includes("gold")) {
+    return "#d97706";
+  }
+
+  // 2) ตรวจสอบจาก rawColors
+  if (c) {
+    if (c === "white") return "#eeeeec";
+    if (c === "black") return "#1f2125";
+    if (c === "grey" || c === "gray") return "#717985";
+    if (c === "beige") return "#e6dfd3";
+    if (c === "wood" || c === "oak") return "#c29b6e";
+    if (c === "walnut") return "#5c4033";
+    if (c === "brown") return "#785138";
+    if (c === "blue") return "#2563eb";
+    if (c === "red") return "#dc2626";
+    if (c === "green") return "#16a34a";
+    if (c === "yellow") return "#eab308";
+    if (c === "orange") return "#ea580c";
+    if (c === "pink") return "#ec4899";
+    if (c === "purple") return "#9333ea";
+  }
+
+  return undefined;
+}
+
 /** สร้างชิ้นของในห้องจากสินค้า (ใช้ขนาดจริงถ้ามี ไม่งั้นใช้ขนาดเดาตามหมวด) */
 export function itemFromProduct(p: {
   id: string;
@@ -156,35 +238,81 @@ export function itemFromProduct(p: {
   colors?: string[];
   imageUrl?: string | null;
 }): PlanItem {
-  const def = DEFAULT_DIMS[p.category] ?? DEFAULT_DIMS.other;
+  const nameLower = (p.name || "").toLowerCase();
+
+  // ปรับประเภทหมวดหมู่ให้ตรงกับสินค้าจริงอัตโนมัติ
+  let effectiveCategory = p.category;
+  if (
+    p.category === "monitor" &&
+    (nameLower.includes("monitor arm") ||
+      nameLower.includes("ขายึดจอ") ||
+      nameLower.includes("ขาตั้งจอ") ||
+      nameLower.includes("แขนจับจอ") ||
+      nameLower.includes("ergonoz"))
+  ) {
+    effectiveCategory = "monitor_arm";
+  }
+
+  const def = DEFAULT_DIMS[effectiveCategory] ?? DEFAULT_DIMS[p.category] ?? DEFAULT_DIMS.other;
   const k = p.dimensions?.unit === "mm" ? 0.1 : p.dimensions?.unit === "m" ? 100 : 1;
   const real = p.dimensions && p.dimensions.width && p.dimensions.depth && p.dimensions.height;
   const num = (v: number | null | undefined, f: number) => (v && v > 0 ? Math.round(v * k) : f);
-  const c = p.colors?.[0];
-  const colorHex =
-    c === "white"
-      ? "#eeeeec"
-      : c === "black"
-      ? "#1f2125"
-      : c === "grey" || c === "gray"
-      ? "#8d9299"
-      : c === "wood" || c === "oak"
-      ? "#b98b5e"
-      : undefined;
+
+  // คำนวณขนาดที่สมจริงตามชนิดสินค้าเฉพาะตัว
+  let itemW = num(p.dimensions?.width, def[0]);
+  let itemD = num(p.dimensions?.depth, def[1]);
+  let itemH = num(p.dimensions?.height, def[2]);
+
+  if (!p.dimensions?.height) {
+    // ปรับความสูงตามฟอร์มแฟคเตอร์เฉพาะ
+    if (effectiveCategory === "lighting") {
+      if (nameLower.includes("หลอดไฟ") || nameLower.includes("bulb") || nameLower.includes("e14") || nameLower.includes("e27")) {
+        itemW = 6; itemD = 6; itemH = 11;
+      } else if (nameLower.includes("ตั้งพื้น") || nameLower.includes("floor") || nameLower.includes("lersta") || nameLower.includes("akterspring")) {
+        itemH = 155;
+      }
+    } else if (effectiveCategory === "headphone") {
+      if (nameLower.includes("inear") || nameLower.includes("in-ear") || nameLower.includes("earbud") || nameLower.includes("earbuds") || nameLower.includes("cetra") || nameLower.includes("g333")) {
+        itemW = 12; itemD = 12; itemH = 3;
+      }
+    } else if (effectiveCategory === "chair") {
+      if (nameLower.includes("โซฟา") || nameLower.includes("sofa") || nameLower.includes("armchair") || nameLower.includes("อาร์มแชร์") || nameLower.includes("ปรับนอน")) {
+        itemW = Math.max(itemW, 80);
+        itemD = Math.max(itemD, 85);
+        itemH = 80;
+      } else if (!nameLower.includes("สำนักงาน") && !nameLower.includes("office") && !nameLower.includes("gaming") && !nameLower.includes("เกม")) {
+        // เก้าอี้ทานอาหาร / เก้าอี้ไม้ 4 ขา เช่น LISABO, SKANSNÄS
+        itemW = 48; itemD = 50; itemH = 82;
+      }
+    } else if (effectiveCategory === "computer") {
+      if (nameLower.includes("wrist rest") || nameLower.includes("ที่รองข้อมือ") || nameLower.includes("palmrest")) {
+        itemW = 44; itemD = 9; itemH = 2.5;
+      } else if (nameLower.includes("gamepad") || nameLower.includes("joystick") || nameLower.includes("จอยสติ๊ก")) {
+        itemW = 16; itemD = 11; itemH = 6;
+      } else if (nameLower.includes("vga") || nameLower.includes("การ์ดจอ") || nameLower.includes("geforce") || nameLower.includes("rtx")) {
+        itemW = 30; itemD = 12; itemH = 5;
+      } else if (nameLower.includes("liquid cooler") || nameLower.includes("ชุดน้ำ")) {
+        itemW = 28; itemD = 12; itemH = 6;
+      }
+    }
+  }
+
+  const detectedColor = detectProductColor(p.name, p.colors);
+
   return {
     uid: newUid(),
     productId: p.id,
     name: p.name,
-    category: p.category,
-    w: num(p.dimensions?.width, def[0]),
-    d: num(p.dimensions?.depth, def[1]),
-    h: num(p.dimensions?.height, def[2]),
+    category: effectiveCategory,
+    w: itemW,
+    d: itemD,
+    h: itemH,
     estimated: !real,
     x: 0,
     z: 0,
     y: 0,
     rot: 0,
-    color: colorHex ?? COLOR[p.category] ?? "#a8b0ba",
+    color: detectedColor ?? COLOR[effectiveCategory] ?? COLOR[p.category] ?? "#a8b0ba",
     price: p.price ?? 0,
     imageUrl: p.imageUrl ?? null,
   };

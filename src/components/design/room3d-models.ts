@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { PlanItem } from "@/lib/room-planner";
 import {
+  screenGameTex,
+  screenMacTex,
+  speakerFabricTex,
   deskmatTex,
   fabricTex,
   keysTex,
@@ -326,10 +329,120 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     // 2) เก้าอี้ (Chair: Ergonomic & Gaming Chair เช่น MARKUS, Secretlab, Herman Miller)
     // ==========================================
     case "chair": {
+      const isSofa =
+        nameLower.includes("โซฟา") ||
+        nameLower.includes("sofa") ||
+        nameLower.includes("armchair") ||
+        nameLower.includes("อาร์มแชร์") ||
+        nameLower.includes("ปรับนอน") ||
+        nameLower.includes("ลิคเซเล่") ||
+        nameLower.includes("barsloev") ||
+        nameLower.includes("lillesaeter") ||
+        nameLower.includes("ekenaeset") ||
+        nameLower.includes("ektorp") ||
+        nameLower.includes("herrakra");
+
+      const isDining =
+        !isSofa &&
+        !nameLower.includes("สำนักงาน") &&
+        !nameLower.includes("office") &&
+        !nameLower.includes("gaming") &&
+        !nameLower.includes("เกม") &&
+        !nameLower.includes("ล้อ") &&
+        !nameLower.includes("hattefjall") &&
+        !nameLower.includes("flintan") &&
+        !nameLower.includes("markus");
+
       const isGaming = nameLower.includes("เกม") || nameLower.includes("gaming") || nameLower.includes("racer");
+      const isHattefjall = nameLower.includes("hattefjall") || nameLower.includes("ฮัตเตฟแยลล์");
+      const isFlintan = nameLower.includes("flintan") || nameLower.includes("ฟลินตัน");
+
+      const chairColor = it.color || "#e6dfd3";
+
+      if (isSofa) {
+        // โซฟา / อาร์มแชร์ / เก้าอี้พักผ่อนโมเดิร์น (Modern Upholstered Lounge Armchair & Sofa Bed)
+        const sofaMat = tex(fabricTex(chairColor), 0.9, [2, 2]);
+        const seatH = Math.min(45, h * 0.48);
+        const cushionW = w * 0.78;
+        const cushionD = d * 0.78;
+
+        // ขาไม้เตี้ย 4 ขา ทรงกรวยเฉียง (Angled Tapered Wooden Legs)
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const leg = cyl(g, M.woodLeg, 2.0, 1.2, 14, sx * (w * 0.4), 7, sz * (d * 0.4), 16);
+            leg.rotation.z = sx * -0.15;
+            leg.rotation.x = sz * 0.15;
+          }
+        }
+
+        // ฐานรองโครงโซฟา (Solid Base Frame)
+        rbox(g, sofaMat, w, 12, d, 0, 14, 0, 2.5);
+
+        // เบาะนั่งหนานุ่มดึงกระดุม / รอยตะเข็บ (Plush Deep Seat Cushion)
+        rbox(g, sofaMat, cushionW, 16, cushionD, 0, seatH, 2, 4.5);
+
+        // พนักพิงหลังทรงหนานุ่มเอนสบาย (Thick Padded Backrest)
+        const backH = h - seatH + 4;
+        const backrest = rbox(g, sofaMat, cushionW, backH, 18, 0, seatH + backH / 2, -d / 2 + 9, 5.0);
+        backrest.rotation.x = -0.1;
+
+        // หมอนอิง / เบาะรองหลังเสริม
+        ball(g, sofaMat, 12, 0, seatH + 14, -d / 2 + 16, 0.7, 1.8, 0.6).rotation.x = -0.15;
+
+        // ที่วางแขนข้างซ้าย-ขวา หนาสัมผัสนุ่ม (Wide Padded Armrests)
+        for (const sx of [-1, 1]) {
+          const armH = backH * 0.75;
+          rbox(g, sofaMat, 14, armH, d - 4, sx * (w / 2 - 7), 14 + armH / 2, 0, 4.0);
+        }
+        break;
+      }
+
+      if (isDining) {
+        // เก้าอี้ไม้ 4 ขา สไตล์สแกนดิเนเวียน (Scandinavian 4-Legged Dining/Side Chair เช่น LISABO, SKANSNÄS)
+        const woodMat = isWood ? woodBody : mk(chairColor, 0.55);
+        const seatH = Math.min(46, h * 0.52);
+
+        // ขาไม้ทรงเรียว 4 ขา เฉียงออกเล็กน้อยเพื่อความมั่นคง
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const legX = sx * (w * 0.38);
+            const legZ = sz * (d * 0.38);
+            const leg = cyl(g, M.woodLeg, 1.8, 1.1, seatH, legX, seatH / 2, legZ, 16);
+            leg.rotation.z = sx * -0.09;
+            leg.rotation.x = sz * 0.09;
+          }
+        }
+
+        // คานไม้รับน้ำหนักใต้เบาะ (Under-seat Stretchers)
+        rbox(g, woodMat, w * 0.74, 2.5, 2.0, 0, seatH - 3, d * 0.3, 0.5);
+        rbox(g, woodMat, w * 0.74, 2.5, 2.0, 0, seatH - 3, -d * 0.3, 0.5);
+        rbox(g, woodMat, 2.0, 2.5, d * 0.7, -w * 0.35, seatH - 3, 0, 0.5);
+        rbox(g, woodMat, 2.0, 2.5, d * 0.7, w * 0.35, seatH - 3, 0, 0.5);
+
+        // แผ่นเบาะนั่งทรงโค้งมน (Ergonomic Contoured Seat Pan)
+        rbox(g, woodMat, w * 0.88, 3.2, d * 0.88, 0, seatH, 0, 2.0);
+
+        // เบาะรองนั่งผ้านุ่ม (Upholstered Seat Pad)
+        const padMat = tex(fabricTex(chairColor), 0.85, [1, 1]);
+        rbox(g, padMat, w * 0.78, 2.2, d * 0.78, 0, seatH + 2.2, 0, 2.5);
+
+        // เสาพนักพิงหลังคู่และแผ่นพนักพิงไม้ดัดโค้ง (Steam-bent Curved Backrest)
+        for (const sx of [-1, 1]) {
+          const postH = h - seatH;
+          const post = cyl(g, M.woodLeg, 1.4, 1.6, postH, sx * (w * 0.34), seatH + postH / 2, -d * 0.36, 16);
+          post.rotation.x = -0.12;
+        }
+        const backW = w * 0.84;
+        const backH = 16;
+        const backCurve = rbox(g, woodMat, backW, backH, 2.4, 0, h - backH / 2, -d * 0.42, 1.8);
+        backCurve.rotation.x = -0.15;
+        break;
+      }
+
+      // เก้าอี้ทำงาน / สำนักงาน / เกมมิ่ง (Office, Ergonomic & Gaming Chairs)
       const fabMat = isGaming
-        ? tex(leatherTex(it.color === "#2f3338" ? "#1e2229" : it.color), 0.65, [2, 2])
-        : tex(fabricTex(it.color === "#2f3338" ? "#2b3038" : it.color), 0.9, [2, 2]);
+        ? tex(leatherTex(chairColor === "#2f3338" ? "#1e2229" : chairColor), 0.65, [2, 2])
+        : tex(fabricTex(chairColor === "#2f3338" ? "#2b3038" : chairColor), 0.9, [2, 2]);
 
       const seatH = Math.min(52, Math.max(42, h * 0.42));
       const starR = Math.min(w, d) * 0.46; // รัศมีขา 5 แฉก
@@ -340,8 +453,9 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         const lx = Math.cos(a) * starR;
         const lz = Math.sin(a) * starR;
 
-        // ขาเก้าอี้ทรงสปอร์ตลู่ลง
-        const leg = rbox(g, M.darkGrey, starR * 0.95, 2.4, 4.2, lx * 0.48, 5.5, lz * 0.48, 1.0);
+        // ขาเก้าอี้
+        const legMat = isHattefjall ? M.white : M.darkGrey;
+        const leg = rbox(g, legMat, starR * 0.95, 2.4, 4.2, lx * 0.48, 5.5, lz * 0.48, 1.0);
         leg.rotation.y = -a;
 
         // แกนหมุนและล้อคู่
@@ -351,84 +465,94 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
       }
 
       // ดุมกลางขา 5 แฉก
-      cyl(g, M.darkGrey, 5.5, 6.2, 4.0, 0, 6.2, 0, 24);
+      cyl(g, isHattefjall ? M.white : M.darkGrey, 5.5, 6.2, 4.0, 0, 6.2, 0, 24);
 
       // โช้คปรับระดับไฮดรอลิก 3 ชั้น (Class-4 Telescoping Gas Lift)
       cyl(g, M.chrome, 1.8, 1.8, seatH - 12, 0, 6 + (seatH - 12) / 2, 0, 24);
       cyl(g, M.black, 3.4, 3.6, seatH * 0.45, 0, 6 + seatH * 0.22, 0, 24);
 
-      // กล่องกลไกควบคุมการเอนใต้เบาะ (Under-seat Tilt Mechanism + Tension Knob)
+      // กล่องกลไกควบคุมการเอนใต้เบาะ
       rbox(g, M.black, 18, 6.0, 22, 0, seatH - 4.0, 0, 1.2);
       cyl(g, M.chrome, 0.7, 0.7, 14, 10, seatH - 4.5, 4, 16).rotation.z = Math.PI / 2;
-      ball(g, M.black, 1.4, 17, seatH - 4.5, 4); // หัวคันโยกปรับระดับ
+      ball(g, M.black, 1.4, 17, seatH - 4.5, 4);
 
-      // เบาะนั่งทรงสรีรศาสตร์ (Contoured Ergonomic Seat Cushion)
+      // เบาะนั่งทรงสรีรศาสตร์ (Contoured Seat Cushion)
       const seatW = w * 0.88;
       const seatD = d * 0.86;
-      rbox(g, fabMat, seatW, 9.0, seatD, 0, seatH, 1, 4.5);
-      // ปีกข้างเบาะรองรับต้นขา
-      for (const sx of [-1, 1]) {
-        rbox(g, fabMat, 7.5, 5.5, seatD * 0.85, sx * (seatW / 2 - 3.5), seatH + 3.8, 1, 3.0);
+      rbox(g, fabMat, seatW, 8.5, seatD, 0, seatH, 1, 4.5);
+
+      if (isGaming) {
+        // ปีกข้างเบาะเกมมิ่งรองรับต้นขา
+        for (const sx of [-1, 1]) {
+          rbox(g, fabMat, 7.5, 5.5, seatD * 0.85, sx * (seatW / 2 - 3.5), seatH + 3.8, 1, 3.0);
+        }
       }
 
-      // พนักพิงหลัง S-Curve (Ergonomic Backrest)
-      const backH = h - seatH - 4;
+      // พนักพิงหลัง
+      const backH = h - seatH - (isHattefjall ? 8 : 4);
       const backZ = -seatD * 0.38;
       const backAngle = -0.12;
 
-      const backrest = rbox(g, fabMat, seatW * 0.84, backH, 8.5, 0, seatH + backH / 2 + 1, backZ, 5.5);
-      backrest.rotation.x = backAngle;
+      if (isHattefjall) {
+        // HATTEFJÄLL: พนักพิงโค้งมนกะทัดรัด หุ้มผ้าเบจ/ขาวพรีเมียม
+        const backrest = rbox(g, fabMat, seatW * 0.75, backH, 7.0, 0, seatH + backH / 2 + 2, backZ, 4.5);
+        backrest.rotation.x = backAngle;
+        // โครงหลังอะลูมิเนียมสีขาวโค้งรับ
+        rbox(g, M.white, 6.0, backH * 0.8, 3.5, 0, seatH + backH / 2 + 1, backZ - 4.0, 1.5).rotation.x = backAngle;
 
-      // ปีกโอบกระชับด้านข้างพนักพิง (Lateral Kidney Bolsters)
-      for (const sx of [-1, 1]) {
-        const wing = rbox(g, fabMat, 6.5, backH * 0.75, 12.0, sx * (seatW * 0.42), seatH + backH * 0.45, backZ + 2.5, 4.0);
-        wing.rotation.x = backAngle;
-        wing.rotation.y = sx * 0.22;
-      }
-
-      if (isGaming) {
-        // ช่องร้อยสายระบายอากาศคู่ (Dual Racing Harness Pass-through Vents)
+        // ที่วางแขนทรง Loop สีขาวโมเดิร์น
         for (const sx of [-1, 1]) {
-          const vent = rbox(g, M.black, 6.5, 4.5, 9.5, sx * 10, h - 18, backZ + 3.0, 2.0);
-          vent.rotation.x = backAngle;
-          rbox(g, M.darkGrey, 4.5, 2.5, 10.0, sx * 10, h - 18, backZ + 3.0, 1.2).rotation.x = backAngle;
+          const armX = sx * (w * 0.42);
+          torus(g, M.white, 9.0, 1.4, armX, seatH + 15, 0, 0, Math.PI / 2, 0);
+        }
+      } else if (isFlintan) {
+        // FLINTAN: พนักพิงตาข่ายทรงสูงโปร่งเพรียวบาง ไม่มีที่ท้าวแขนเกะกะ
+        const meshMat = tex(fabricTex(chairColor), 0.95, [3, 3]);
+        // โครงขอบพนักพิง
+        rbox(g, M.darkGrey, seatW * 0.78, backH, 3.0, 0, seatH + backH / 2 + 2, backZ, 2.0).rotation.x = backAngle;
+        // ผืนตาข่ายระบายอากาศ
+        rbox(g, meshMat, seatW * 0.72, backH - 4, 1.2, 0, seatH + backH / 2 + 2, backZ + 0.5, 1.0).rotation.x = backAngle;
+        // แผ่นรองรับหลังส่วนล่าง Lumbar Bar
+        rbox(g, M.black, seatW * 0.6, 6.0, 3.0, 0, seatH + 14, backZ - 2.5, 1.5).rotation.x = backAngle;
+      } else {
+        // พนักพิงหลังมาตรฐาน / เกมมิ่ง / MARKUS
+        const backrest = rbox(g, fabMat, seatW * 0.84, backH, 8.5, 0, seatH + backH / 2 + 1, backZ, 5.5);
+        backrest.rotation.x = backAngle;
+
+        if (isGaming) {
+          // ปีกโอบกระชับด้านข้างพนักพิง
+          for (const sx of [-1, 1]) {
+            const wing = rbox(g, fabMat, 6.5, backH * 0.75, 12.0, sx * (seatW * 0.42), seatH + backH * 0.45, backZ + 2.5, 4.0);
+            wing.rotation.x = backAngle;
+            wing.rotation.y = sx * 0.22;
+          }
+          // ช่องร้อยสายระบายอากาศคู่
+          for (const sx of [-1, 1]) {
+            rbox(g, M.black, 6.5, 4.5, 9.5, sx * 10, h - 18, backZ + 3.0, 2.0).rotation.x = backAngle;
+          }
+          // หมอนรองคอ & รองเอว
+          ball(g, fabMat, 8.5, 0, h - 12, backZ + 5.5, 0.7, 1.5, 0.7).rotation.x = backAngle;
+          ball(g, fabMat, 9.0, 0, seatH + 15, backZ + 5.5, 0.65, 1.4, 0.65).rotation.x = backAngle;
+        } else {
+          // แผ่นรองเอวและพนักพิงศีรษะ
+          rbox(g, M.black, seatW * 0.65, 12, 4.0, 0, seatH + 16, backZ - 4.5, 2.5).rotation.x = backAngle;
+          const headrest = rbox(g, fabMat, seatW * 0.52, 15, 7.0, 0, h - 4, backZ + 4.0, 4.0);
+          headrest.rotation.x = -0.05;
+          cyl(g, M.chrome, 1.2, 1.2, 10, 0, h - 11, backZ - 2.0, 16);
         }
 
-        // หมอนรองคอเมมโมรี่โฟม (Memory Foam Neck Pillow with Straps)
-        const neckPillow = ball(g, fabMat, 8.5, 0, h - 12, backZ + 5.5, 0.7, 1.5, 0.7);
-        neckPillow.rotation.x = backAngle;
-
-        // หมอนรองเอวปรับระดับได้ (Adjustable Lumbar Cushion)
-        const lumbarPillow = ball(g, fabMat, 9.0, 0, seatH + 15, backZ + 5.5, 0.65, 1.4, 0.65);
-        lumbarPillow.rotation.x = backAngle;
-      } else {
-        // แผ่นรองเอวพนักพิงตาข่าย (Adjustable Lumbar Support Pad)
-        const lumbar = rbox(g, M.black, seatW * 0.65, 12, 4.0, 0, seatH + 16, backZ - 4.5, 2.5);
-        lumbar.rotation.x = backAngle;
-
-        // พนักพิงศีรษะโค้งมนรับต้นคอ (Contoured Headrest)
-        const headrest = rbox(g, fabMat, seatW * 0.52, 15, 7.0, 0, h - 4, backZ + 4.0, 4.0);
-        headrest.rotation.x = -0.05;
-        // ก้านยึดพนักพิงศีรษะ
-        cyl(g, M.chrome, 1.2, 1.2, 10, 0, h - 11, backZ - 2.0, 16);
-      }
-
-      // ที่วางแขน 3D/4D (Adjustable Padded Armrests)
-      for (const sx of [-1, 1]) {
-        const armX = sx * (w * 0.44);
-        // เสาเหล็กยึดจากใต้เบาะ
-        rbox(g, M.black, 3.8, 18, 4.5, armX, seatH + 6, 2, 1.0);
-        rbox(g, M.chrome, 3.0, 12, 3.5, armX, seatH + 14, 2, 0.8);
-        // แผ่นรองแขน PU โค้งเว้ารับท่อนแขน
-        const cap = rbox(g, M.black, 8.5, 3.2, d * 0.52, armX, seatH + 20.5, 4, 2.2);
-        cap.rotation.y = sx * -0.05;
+        // ที่วางแขน 3D/4D ปรับระดับได้
+        for (const sx of [-1, 1]) {
+          const armX = sx * (w * 0.44);
+          rbox(g, M.black, 3.8, 18, 4.5, armX, seatH + 6, 2, 1.0);
+          rbox(g, M.chrome, 3.0, 12, 3.5, armX, seatH + 14, 2, 0.8);
+          const cap = rbox(g, M.black, 8.5, 3.2, d * 0.52, armX, seatH + 20.5, 4, 2.2);
+          cap.rotation.y = sx * -0.05;
+        }
       }
       break;
     }
 
-    // ==========================================
-    // 3) โต๊ะคอม / โต๊ะทำงาน (Desk: Gaming & Standing Desk เช่น FREDDE, BEKANT, UPPSPEL, MICKE, LAGKAPTEN)
-    // ==========================================
     case "desk": {
       const isStanding =
         nameLower.includes("ปรับระดับ") ||
@@ -566,19 +690,32 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         nameLower.includes("wrist rest") ||
         nameLower.includes("ที่รองข้อมือ") ||
         nameLower.includes("palmrest");
+
+      const isGamepad =
+        nameLower.includes("gamepad") ||
+        nameLower.includes("joystick") ||
+        nameLower.includes("จอยสติ๊ก") ||
+        nameLower.includes("controller");
+
+      const isGpu =
+        nameLower.includes("vga") ||
+        nameLower.includes("การ์ดจอ") ||
+        nameLower.includes("rtx") ||
+        nameLower.includes("geforce") ||
+        nameLower.includes("radeon");
+
+      const isLiquidCooler =
+        nameLower.includes("liquid cooler") ||
+        nameLower.includes("ชุดน้ำ") ||
+        nameLower.includes("aio");
+
       const isSmallGadget =
         nameLower.includes("m.2") ||
         nameLower.includes("enclosure") ||
         nameLower.includes("adapter") ||
-        nameLower.includes("dvd") ||
-        nameLower.includes("external") ||
-        nameLower.includes("dongle") ||
-        nameLower.includes("การ์ดไวไฟ") ||
-        nameLower.includes("กล่องใส่") ||
-        h < 22;
+        h < 15;
 
       if (isWristRest) {
-        // ที่รองข้อมือคีย์บอร์ด Ergonomic Wrist Rest
         const padW = Math.max(w, 36);
         const padD = Math.max(d, 8);
         const padH = Math.min(h, 2.5);
@@ -587,66 +724,116 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         break;
       }
 
+      if (isGamepad) {
+        // จอยเกมมิ่งคอนโทรลเลอร์ (Modern Gaming Controller เช่น Fantech EOS, Xbox, PS5)
+        const gpMat = mk(it.color || "#1f2125", 0.45);
+        // บอดี้หลักโค้งมน
+        rbox(g, gpMat, 15, 4.0, 9.5, 0, 2.5, 0, 2.5);
+        // ด้ามจับซ้าย-ขวา เอียงรับอุ้งมือ
+        for (const sx of [-1, 1]) {
+          const grip = rbox(g, gpMat, 4.2, 3.8, 8.5, sx * 5.8, 2.2, 2.5, 2.0);
+          grip.rotation.y = sx * -0.25;
+          grip.rotation.z = sx * -0.15;
+        }
+        // อนาล็อกสติ๊กซ้าย-ขวา
+        cyl(g, M.darkGrey, 1.6, 1.2, 2.0, -3.8, 4.2, -1.0, 16);
+        cyl(g, M.darkGrey, 1.6, 1.2, 2.0, 2.5, 4.2, 1.5, 16);
+        // ปุ่ม D-Pad กากบาท
+        rbox(g, M.black, 3.2, 0.8, 1.0, -3.8, 3.8, 1.8, 0.3);
+        rbox(g, M.black, 1.0, 0.8, 3.2, -3.8, 3.8, 1.8, 0.3);
+        // ปุ่ม ABXY 4 ปุ่ม
+        ball(g, M.rgbCoral, 0.6, 5.0, 4.2, -1.8);
+        ball(g, M.rgbGlow, 0.6, 3.8, 4.2, -0.6);
+        ball(g, M.gold, 0.6, 5.0, 4.2, 0.6);
+        ball(g, M.white, 0.6, 6.2, 4.2, -0.6);
+        // ปุ่มไกปืน Triggers ด้านหน้า
+        rbox(g, M.darkGrey, 4.0, 2.0, 1.5, -4.5, 3.0, -4.5, 0.5);
+        rbox(g, M.darkGrey, 4.0, 2.0, 1.5, 4.5, 3.0, -4.5, 0.5);
+        break;
+      }
+
+      if (isGpu) {
+        // การ์ดจอแยกสำหรับประกอบคอม (Standalone High-End Graphics Card)
+        const gpuW = Math.max(w, 28);
+        const gpuH = 5.0;
+        const gpuD = Math.max(d, 12);
+        // ตัวการ์ดและ Backplate โลหะ
+        rbox(g, M.darkGrey, gpuW, gpuH, gpuD, 0, gpuH / 2, 0, 0.8);
+        rbox(g, M.metal, gpuW - 0.4, 0.8, gpuD - 0.4, 0, gpuH + 0.4, 0, 0.4);
+        // แถบทองเหลือง PCIe Golden Fingers
+        rbox(g, M.gold, 12, 0.5, 1.2, -4, 0.25, -gpuD / 2 - 0.6, 0.2);
+        // พัดลมระบายความร้อน 3 ตัว
+        for (let i = -1; i <= 1; i++) {
+          const fx = i * (gpuW * 0.28);
+          torus(g, M.chrome, 3.4, 0.4, fx, gpuH / 2, gpuD / 2 + 0.1, Math.PI / 2, 0, 0);
+          cyl(g, M.black, 1.4, 1.4, 0.8, fx, gpuH / 2, gpuD / 2 + 0.2, 16).rotation.x = Math.PI / 2;
+        }
+        // แถบไฟ RGB เรืองแสงด้านข้างการ์ด
+        rbox(g, M.rgbGlow, gpuW * 0.5, 1.4, 0.8, 0, gpuH / 2, -gpuD / 2 + 0.4, 0.3);
+        break;
+      }
+
+      if (isLiquidCooler) {
+        // ชุดน้ำปิดระบายความร้อนซีพียู (CPU AIO Liquid Cooler)
+        // หม้อน้ำระบายความร้อน (Radiator)
+        rbox(g, M.black, 28, 4.5, 12, 0, 2.25, 0, 0.8);
+        // พัดลมหม้อน้ำคู่ 120mm
+        for (const sx of [-1, 1]) {
+          torus(g, M.rgbPurple, 4.8, 0.5, sx * 6.5, 4.8, 0, Math.PI / 2, 0, 0);
+        }
+        // ปั๊มบล็อกซีพียูหน้าปัดกระจก Infinity Mirror
+        cyl(g, M.black, 3.8, 3.8, 4.0, 0, 2.0, 15, 24);
+        cyl(g, M.rgbGlow, 3.2, 3.2, 0.4, 0, 4.1, 15, 24);
+        // ท่อยางถักคู่เชื่อมระหว่างปั๊มและหม้อน้ำ
+        torus(g, M.black, 8.0, 0.7, -3.5, 3.0, 8, 0, Math.PI / 3, 0);
+        torus(g, M.black, 8.0, 0.7, 3.5, 3.0, 8, 0, -Math.PI / 3, 0);
+        break;
+      }
+
       if (isSmallGadget) {
-        // กล่องอุปกรณ์ M.2 Enclosure / External Drive / Adapter พรีเมียมอะลูมิเนียม CNC
         const gadW = Math.min(w, 15);
         const gadD = Math.min(d, 8);
         const gadH = Math.min(h, 2.5);
         rbox(g, M.darkGrey, gadW, gadH, gadD, 0, gadH / 2, 0, 0.6);
         rbox(g, M.metal, gadW - 0.6, 0.4, gadD - 0.6, 0, gadH + 0.1, 0, 0.4);
-        // ไฟสถานะ LED & พอร์ต Type-C
         rbox(g, M.rgbGlow, 0.8, 0.4, 0.4, gadW / 2 - 1.5, gadH + 0.2, 0, 0.2);
         rbox(g, M.black, 1.6, 0.6, 0.6, gadW / 2 + 0.1, gadH / 2, 0, 0.2);
         break;
       }
 
-      // โครงเคสหลักสีดำ/ขาว ผิวด้านเรียบหรู (Dual Chamber Chassis เช่น Lian Li O11 / NZXT H9)
+      // เคสคอมพิวเตอร์ Dual Chamber (Gaming PC Chassis)
       rbox(g, baseBody, w, h, d, 0, h / 2, 0, 1.6);
-
-      // กระจกเทมเปอร์ใสพาโนรามาด้านข้างและด้านหน้า (Tempered Glass Side & Front Panels)
       const glassMat = M.glass;
-      // กระจกข้าง
       rbox(g, glassMat, 0.6, h - 5.5, d - 4.5, w / 2 + 0.2, h / 2, 0, 0.4);
-      // กระจกหน้า
       rbox(g, glassMat, w - 4.5, h - 5.5, 0.6, 0, h / 2, d / 2 + 0.2, 0.4);
 
-      // แผงเมนบอร์ดด้านใน (Internal Motherboard with VRM Heatsinks)
+      // เมนบอร์ดและการ์ดจอภายใน
       rbox(g, M.black, 2.0, h * 0.65, d * 0.68, -w * 0.15, h * 0.52, -2, 0.5);
-      rbox(g, M.metal, 2.2, 8.0, 10.0, -w * 0.14, h * 0.72, -8, 0.4); // ฮีตซิงก์ภาคจ่ายไฟ
+      rbox(g, M.metal, 2.2, 8.0, 10.0, -w * 0.14, h * 0.72, -8, 0.4);
 
-      // การ์ดจอตัวท็อป 3 พัดลมพร้อมไฟ RGB (Triple-Fan Gaming GPU เช่น RTX 4080 / 4090)
       const gpuW = w * 0.65;
       const gpuH = 7.5;
       const gpuD = d * 0.62;
       rbox(g, M.darkGrey, gpuW, gpuH, gpuD, 0.5, h * 0.42, 0, 1.0);
-      rbox(g, M.metal, gpuW + 0.2, 1.2, gpuD - 1.0, 0.5, h * 0.42 + gpuH / 2, 0, 0.4); // Backplate
-      // ไฟโลโก้ด้านข้างการ์ดจอ "GEFORCE RTX"
+      rbox(g, M.metal, gpuW + 0.2, 1.2, gpuD - 1.0, 0.5, h * 0.42 + gpuH / 2, 0, 0.4);
       rbox(g, M.rgbGlow, 1.2, 1.8, 14.0, w / 2 - 1.2, h * 0.42, 0, 0.3);
 
-      // ชุดน้ำปิด 360mm AIO Cooler (CPU Liquid Cooler with Braided Tubes)
       cyl(g, M.black, 4.0, 4.0, 3.2, -w * 0.12, h * 0.62, -2, 24).rotation.x = Math.PI / 2;
-      cyl(g, M.rgbPurple, 3.2, 3.2, 0.5, -w * 0.12, h * 0.62, -0.3, 24).rotation.x = Math.PI / 2; // หน้าปัดปั๊มเรืองแสง
-      // สายยางถักคู่ไปยังหม้อน้ำด้านบน
+      cyl(g, M.rgbPurple, 3.2, 3.2, 0.5, -w * 0.12, h * 0.62, -0.3, 24).rotation.x = Math.PI / 2;
       torus(g, M.black, 9.0, 0.7, -w * 0.1, h * 0.74, 2, 0, Math.PI / 3, 0);
 
-      // แรมคู่พร้อมไฟ RGB Diffuser (Dual RGB RAM Sticks)
       for (const rz of [-1, 1]) {
         rbox(g, M.rgbCoral, 1.2, 5.0, 0.9, -w * 0.12, h * 0.65, rz * 1.8 + 5, 0.2);
       }
 
-      // พัดลมเคส ARGB 3 ตัวเรียงกันด้านหน้า/ข้าง (ARGB Case Fans with Halo Rings)
       for (let i = 0; i < 3; i++) {
         const fy = h * 0.25 + i * (h * 0.26);
         const fanR = Math.min(w, d) * 0.28;
-        // กรอบพัดลม
         rbox(g, M.black, 1.5, fanR * 2, fanR * 2, w / 2 - 2.5, fy, d * 0.18, 0.5);
-        // วงแหวนไฟ Halo RGB
         torus(g, i % 2 === 0 ? M.rgbGlow : M.rgbPurple, fanR * 0.85, 0.6, w / 2 - 2.0, fy, d * 0.18, 0, Math.PI / 2, 0);
-        // ดุมใบพัด
         cyl(g, M.darkGrey, fanR * 0.32, fanR * 0.32, 1.2, w / 2 - 2.0, fy, d * 0.18, 16).rotation.z = Math.PI / 2;
       }
 
-      // แสงไฟนีออน RGB ด้านในเคสตอนกลางคืน (Real Ambient Case Glow Light)
       if (night) {
         const pcLight = new THREE.PointLight("#38bdf8", 1.8, 2.5, 2.0);
         pcLight.position.set(0, h * 0.5 * CM, 0);
@@ -655,10 +842,47 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
       break;
     }
 
-    // ==========================================
-    // 5) หน้าจอเกมมิ่ง / จอทำงานถนอมสายตา / จอ 4K / จอ OLED (Gaming & Professional Monitors)
-    // ==========================================
     case "monitor": {
+      const isMonitorArm =
+        nameLower.includes("monitor arm") ||
+        nameLower.includes("ขายึดจอ") ||
+        nameLower.includes("ขาตั้งจอ") ||
+        nameLower.includes("แขนจับจอ") ||
+        nameLower.includes("ergonoz");
+
+      if (isMonitorArm) {
+        // ขาจับจอคอมแก๊สสปริงกลศาสตร์ (Articulated Gas Spring Monitor Arm เช่น ERGONOZ)
+        // ฐานแคลมป์ยึดขอบโต๊ะ C-Clamp
+        rbox(g, M.darkGrey, 11, 4.0, 12, 0, 2.0, 0, 1.2);
+        cyl(g, M.black, 4.2, 4.6, 6.0, 0, 5.0, 0, 24);
+        cyl(g, M.chrome, 1.6, 1.6, 8.0, 0, -2.5, 2.0, 16); // สกรูหมุนล็อคใต้โต๊ะ
+
+        // แขนท่อนล่าง (Lower Swivel Extension Arm)
+        const arm1 = rbox(g, M.darkGrey, 4.5, 4.5, 22, -6, 14, 5, 1.2);
+        arm1.rotation.y = 0.42;
+
+        // ข้อต่อกลางแกนหมุน (Elbow Joint)
+        cyl(g, M.black, 3.2, 3.2, 6.0, -12, 16, 14, 20);
+
+        // แขนท่อนบนแก๊สสปริงไฮดรอลิกเฉียงขึ้น (Upper Gas Spring Counterbalance Arm)
+        const arm2 = rbox(g, M.chrome, 4.0, 4.0, 26, -6, 28, 8, 1.0);
+        arm2.rotation.x = -0.55;
+        arm2.rotation.y = -0.35;
+
+        // หัวปรับองศา VESA Tilt Joint
+        ball(g, M.darkGrey, 3.4, 4, 38, 2);
+
+        // แผ่นเพลทยึดหลังจอ VESA 75/100mm Plate
+        rbox(g, M.black, 14, 14, 0.8, 5, 38, 5, 0.4);
+        // สกรูทองเหลือง 4 มุม
+        for (const sx of [-1, 1]) {
+          for (const sy of [-1, 1]) {
+            cyl(g, M.gold, 0.4, 0.4, 1.4, 5 + sx * 4.5, 38 + sy * 4.5, 5.2, 12).rotation.x = Math.PI / 2;
+          }
+        }
+        break;
+      }
+
       const isOled = nameLower.includes("oled") || nameLower.includes("qd-oled");
       const is4K = nameLower.includes("4k") || nameLower.includes("uhd") || nameLower.includes("3840") || w >= 80;
       const isGaming =
@@ -671,104 +895,84 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         nameLower.includes("tuf") ||
         nameLower.includes("rog") ||
         nameLower.includes("ultragear");
-      const isEyeCare =
-        nameLower.includes("eye") ||
-        nameLower.includes("eyecare") ||
-        nameLower.includes("ถนอมสายตา") ||
-        nameLower.includes("benq") ||
+      const isMacPro =
+        nameLower.includes("for mac") ||
+        nameLower.includes("proart") ||
+        nameLower.includes("colorpro") ||
         nameLower.includes("ultrasharp") ||
-        nameLower.includes("proart");
+        nameLower.includes("benq");
       const isCurved = nameLower.includes("curved") || nameLower.includes("โค้ง") || (isGaming && w >= 80);
 
       const screenH = h * 0.68;
       const screenCenterY = h * 0.64;
 
       if (isGaming) {
-        // 1) ฐานจอเกมมิ่งทรงปีก V-Wing อะลูมิเนียมแองกูลาร์ (Aggressive V-Wing Gaming Stand)
+        // ฐานจอเกมมิ่งทรงปีก V-Wing
         const wingSpan = Math.min(36, w * 0.55);
         for (const sx of [-1, 1]) {
           const wing = rbox(g, M.darkGrey, 3.2, 1.4, wingSpan * 0.65, sx * (wingSpan * 0.28), 0.7, wingSpan * 0.15, 0.6);
           wing.rotation.y = sx * 0.48;
         }
         rbox(g, M.darkGrey, 8.0, 1.8, 10.0, 0, 0.9, -wingSpan * 0.15, 1.2);
-        // แหวนร้อยสายไฟสีส้มแดง / Cyan Accent
         torus(g, M.rgbCoral, 2.6, 0.5, 0, screenCenterY * 0.45, -6, Math.PI / 2, 0, 0);
       } else {
-        // ฐานจอทำงานมินิมอล แผ่นอะลูมิเนียมตัดเรียบหรู (Flat Aluminum Pedestal Base)
+        // ฐานจอทำงานเรียบหรู Flat Aluminum Pedestal
         const baseW = Math.min(26, w * 0.42);
         const baseD = Math.min(20, d * 0.75);
         rbox(g, M.metal, baseW, 0.8, baseD, 0, 0.4, 0, 0.6);
-        cyl(g, M.chrome, 3.2, 3.2, 1.2, 0, 0.9, -2, 24); // วงแหวน Swivel ปรับหมุน
+        cyl(g, M.chrome, 3.2, 3.2, 1.2, 0, 0.9, -2, 24);
       }
 
-      // เสาคอจอปรับระดับสูง-ต่ำ (Telescoping Column)
+      // เสาคอจอ
       const neckH = screenCenterY - 4;
       rbox(g, M.darkGrey, 4.8, neckH, 4.2, 0, neckH / 2 + 1, -6, 1.2);
       rbox(g, M.chrome, 3.8, neckH * 0.6, 3.2, 0, screenCenterY - neckH * 0.25, -6, 0.8);
 
       if (isOled) {
-        // กรอบหลังจอ OLED บางเฉียบระดับ 4 มม. (Ultra-thin 4mm Blade Profile with Lower Electronics Hump)
-        // แผ่นเบลดบางครึ่งบน
+        // จอ OLED บางเฉียบ 4 มม.
         rbox(g, M.black, w, screenH * 0.65, 0.6, 0, screenCenterY + screenH * 0.18, -0.3, 0.3);
-        // กล่องอิเล็กทรอนิกส์และฮีตซิงก์ระบายความร้อนครึ่งล่าง
         rbox(g, M.darkGrey, w * 0.6, screenH * 0.45, 3.2, 0, screenCenterY - screenH * 0.22, -1.6, 1.0);
       } else {
-        // กรอบหลังหน้าจอโค้งมนสไตล์โมเดิร์น
         rbox(g, M.black, w, screenH, 3.2, 0, screenCenterY, -1.6, 1.4);
       }
 
-      // ไฟ Ambient Halo / CoreSync ด้านหลังจอ
-      if (isGaming || isOled) {
-        torus(g, M.rgbGlow, Math.min(w, screenH) * 0.26, 0.8, 0, screenCenterY, -3.2, 0, 0, 0);
-        if (night) {
-          const haloLight = new THREE.PointLight("#38bdf8", 1.6, 2.4, 2.0);
-          haloLight.position.set(0, screenCenterY * CM, -0.15);
-          g.add(haloLight);
-        }
+      // ขอบจอด้านล่าง (Chin)
+      if (isMacPro || is4K) {
+        rbox(g, M.chrome, w, 1.8, 3.4, 0, screenCenterY - screenH / 2 + 0.9, -1.5, 0.4);
       }
 
-      // หน้าจอแสดงผลความละเอียดสูง (4K / OLED / Gaming High-Refresh Panel)
-      const screenMat = new THREE.MeshStandardMaterial({
-        map: screenTex(night),
-        emissiveMap: screenTex(night),
-        emissive: isOled ? "#38bdf8" : "#ffffff",
-        emissiveIntensity: night ? (isOled ? 0.9 : 1.2) : 0.65,
-        roughness: isOled ? 0.08 : 0.15,
-        metalness: isOled ? 0.1 : 0.0,
-      });
-      owned.push(screenMat);
+      // แผงหน้าจอแสดงผลสมจริง (Display Screen Panel Texture)
+      const activeScreenTex = isGaming ? screenGameTex() : isMacPro ? screenMacTex() : screenTex(night);
+      const screenMat = tex(activeScreenTex, 0.2, [1, 1]);
+      const screenMeshW = w - 1.2;
+      const screenMeshH = screenH - (isMacPro ? 2.6 : 1.2);
 
-      // ขอบล่างจอ (Chin Bezel with Logo Emblem)
-      const chinH = isOled ? 0.8 : 1.6;
-      rbox(g, M.darkGrey, w, chinH, 3.4, 0, screenCenterY - screenH / 2 + chinH / 2, -1.5, 0.3);
-      rbox(g, M.chrome, 3.5, 0.6, 0.4, 0, screenCenterY - screenH / 2 + chinH / 2, 0.3, 0.2);
-
-      // พาเนลหน้าจอ
-      const scr = rbox(g, screenMat, w - 1.0, screenH - chinH - 0.6, 0.4, 0, screenCenterY + chinH * 0.4, 0.2, 0.2);
-      scr.castShadow = false;
-
-      // ติดตั้งโคมไฟแขวนหน้าจอถนอมสายตา (Monitor Light Bar) เมื่อเป็นรุ่น Eye-care หรือจอทำงาน
-      if (isEyeCare || (!isGaming && w < 90)) {
-        const barW = Math.min(48, w * 0.65);
-        const barY = screenCenterY + screenH / 2 + 2.5;
-        cyl(g, M.darkGrey, 1.4, 1.4, barW, 0, barY, 1.5, 24).rotation.z = Math.PI / 2;
-        cyl(g, night ? M.warmLight : M.white, 0.8, 0.8, barW - 4, 0, barY - 0.8, 1.8, 16).rotation.z = Math.PI / 2;
-        rbox(g, M.black, 4.5, 4.0, 7.5, 0, barY - 1.0, -1.8, 1.0);
-        cyl(g, M.darkGrey, 2.5, 2.5, 5.0, 0, barY - 3.5, -4.5, 20).rotation.z = Math.PI / 2;
-
-        if (night) {
-          const barLight = new THREE.SpotLight("#ffedd5", 2.2, 3.2, Math.PI / 3, 0.4, 1.8);
-          barLight.position.set(0, barY * CM, 0.05);
-          barLight.target.position.set(0, 0, 0.25);
-          g.add(barLight, barLight.target);
+      if (isCurved) {
+        // หน้าจอโค้ง 1500R Curved
+        const numSegments = 7;
+        const segW = screenMeshW / numSegments;
+        const curveR = 150;
+        for (let i = 0; i < numSegments; i++) {
+          const t = (i + 0.5) / numSegments - 0.5;
+          const sx = t * screenMeshW;
+          const sz = (1 - Math.cos(t * (screenMeshW / curveR))) * 4.5;
+          const seg = rbox(g, screenMat, segW + 0.3, screenMeshH, 0.6, sx, screenCenterY, sz, 0.2);
+          seg.rotation.y = -t * 0.42;
         }
+      } else {
+        rbox(g, screenMat, screenMeshW, screenMeshH, 0.6, 0, screenCenterY, 0.05, 0.2);
+      }
+
+      // ไฟแอมเบียนต์ด้านหลังจอ
+      if (night) {
+        const glowCol = isGaming ? "#06b6d4" : "#ffffff";
+        const ambGlow = new THREE.PointLight(glowCol, isGaming ? 2.4 : 1.6, 3.5, 1.8);
+        ambGlow.position.set(0, screenCenterY * CM, -0.15);
+        g.add(ambGlow);
       }
       break;
     }
 
-    // ==========================================
-    // 6) คีย์บอร์ดแมคคานิคอล (Custom Mechanical Keyboard)
-    // ==========================================
     case "keyboard": {
       // ตัวเคสอะลูมิเนียม CNC ชุบอโนไดซ์สีเข้ม เอียง 7 องศา (7° Ergonomic Incline CNC Case)
       rbox(g, M.darkGrey, w, h * 0.75, d, 0, h * 0.38, 0, 1.2);
@@ -848,39 +1052,83 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     // 9) ลำโพงคู่ Studio Monitors (Pair of Studio Speakers)
     // ==========================================
     case "speaker": {
-      // ตู้ลำโพงไม้ MDF ปาดมุม Baffle (MDF Acoustic Cabinet)
-      rbox(g, baseBody, w, h, d, 0, h / 2, 0, 1.2);
-      // แผงหน้าตู้ Baffle
-      rbox(g, M.darkGrey, w - 0.8, h - 0.8, 1.5, 0, h / 2, d / 2 + 0.6, 0.6);
+      const isPortable =
+        nameLower.includes("jbl") ||
+        nameLower.includes("go 4") ||
+        nameLower.includes("grip") ||
+        nameLower.includes("บลูทูธ") ||
+        nameLower.includes("portable") ||
+        w <= 12;
 
-      // ดอกลำโพงวูฟเฟอร์ใยเคฟลาร์สีทอง (Woven Kevlar Cone Woofer)
-      const coneR = Math.min(w, h) * 0.32;
-      const coneMat = new THREE.MeshStandardMaterial({
-        map: speakerConeTex(),
-        roughness: 0.45,
-        metalness: 0.1,
-      });
-      owned.push(coneMat);
-      disc(g, coneMat, coneR, 0, h * 0.42, d / 2 + 1.4);
+      const spkColor = it.color || "#2563eb";
 
-      // ดอกทวีตเตอร์เสียงแหลมผ้าไหม (Silk Dome Tweeter in Waveguide)
-      const twR = coneR * 0.45;
-      disc(g, M.black, twR * 1.5, 0, h * 0.78, d / 2 + 1.35);
-      ball(g, M.chrome, twR, 0, h * 0.78, d / 2 + 1.4, 0.4);
+      if (isPortable) {
+        // ลำโพงบลูทูธพกพาพันธุ์อึด (JBL GO 4 / GRIP Rugged Bluetooth Speaker)
+        const fabMat = tex(speakerFabricTex(spkColor), 0.75, [2, 2]);
+        const rubberMat = mk(spkColor, 0.85);
 
-      // ท่อเบสรีเฟล็กซ์ด้านหน้า (Front Bass Reflex Port)
-      cyl(g, M.black, coneR * 0.25, coneR * 0.25, 2.0, 0, h * 0.16, d / 2 + 0.8, 20).rotation.x = Math.PI / 2;
+        // ตัวลำโพงทรงก้อนขอบมนหุ้มผ้าทออย่างดี
+        rbox(g, fabMat, w, h, d, 0, h / 2, 0, 2.2);
 
-      // แผ่นโฟมซับแรงสั่นเอียงรับหู (Acoustic Foam Isolation Wedge Pads)
-      const wedge = rbox(g, M.rubber, w * 0.9, 1.8, d * 0.9, 0, 0.9, 0, 0.4);
-      wedge.rotation.x = -0.06;
+        // ยางกันกระแทกขอบมุมและสันด้านข้าง (Silicone Protective Bumpers)
+        for (const sx of [-1, 1]) {
+          rbox(g, rubberMat, 1.4, h + 0.4, d + 0.4, sx * (w / 2 - 0.7), h / 2, 0, 1.2);
+        }
+
+        // ปุ่มควบคุมนูน 3D ด้านบน (+, -, Play, Bluetooth)
+        const btnY = h + 0.3;
+        rbox(g, M.white, 2.2, 0.6, 2.2, -w * 0.25, btnY, 0, 0.4);
+        rbox(g, M.white, 2.2, 0.6, 2.2, 0, btnY, 0, 0.4);
+        rbox(g, M.white, 2.2, 0.6, 2.2, w * 0.25, btnY, 0, 0.4);
+
+        // หูคล้องเชือกผ้าถักด้านข้าง (Integrated Fabric Lanyard Loop)
+        torus(g, rubberMat, 2.0, 0.6, w / 2 + 1.2, h * 0.65, 0, 0, Math.PI / 2, 0);
+
+        // ขายางกันลื่น 4 จุดด้านล่าง
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            rbox(g, M.rubber, 1.5, 0.5, 1.5, sx * (w * 0.35), 0.25, sz * (d * 0.35), 0.2);
+          }
+        }
+        break;
+      }
+
+      // ลำโพงสตูดิโอมอนิเตอร์ตั้งโต๊ะ (Studio Monitors เช่น Yamaha HS, Audioengine)
+      rbox(g, woodBody, w, h, d, 0, h / 2, 0, 1.4);
+      rbox(g, M.black, w - 1.2, h - 1.2, 0.8, 0, h / 2, d / 2 + 0.4, 0.8);
+
+      // ดอกลำโพง Kevlar Woofer
+      const wooferR = Math.min(w, d) * 0.34;
+      const wooferY = h * 0.38;
+      const coneMat = tex(speakerConeTex(), 0.45);
+      torus(g, M.rubber, wooferR, 0.8, 0, wooferY, d / 2 + 0.8, Math.PI / 2, 0, 0);
+      disc(g, coneMat, wooferR * 0.9, 0, wooferY, d / 2 + 0.8);
+      ball(g, M.black, wooferR * 0.32, 0, wooferY, d / 2 + 1.0);
+
+      // ดอกทวีตเตอร์ Silk Dome Tweeter
+      const tweetR = wooferR * 0.45;
+      const tweetY = h * 0.76;
+      torus(g, M.chrome, tweetR * 1.2, 0.4, 0, tweetY, d / 2 + 0.8, Math.PI / 2, 0, 0);
+      ball(g, M.black, tweetR, 0, tweetY, d / 2 + 0.9);
+
+      // ปุ่ม Volume และไฟ LED
+      cyl(g, M.chrome, 1.2, 1.2, 1.4, w * 0.28, h * 0.12, d / 2 + 0.8, 16).rotation.x = Math.PI / 2;
+      ball(g, M.rgbGlow, 0.4, -w * 0.28, h * 0.12, d / 2 + 0.8);
       break;
     }
 
-    // ==========================================
-    // 10) หูฟังพร้อมขาตั้งอะลูมิเนียม (Headphones on Aluminum Stand)
-    // ==========================================
     case "headphone": {
+      const isInEar =
+        nameLower.includes("inear") ||
+        nameLower.includes("in-ear") ||
+        nameLower.includes("earbud") ||
+        nameLower.includes("earbuds") ||
+        nameLower.includes("cetra") ||
+        nameLower.includes("g333") ||
+        nameLower.includes("tws") ||
+        h <= 10;
+
+      const hpColor = it.color || "#1f2125";
       const isGamingHeadset =
         nameLower.includes("gaming") ||
         nameLower.includes("เกม") ||
@@ -890,45 +1138,66 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         nameLower.includes("blackshark") ||
         nameLower.includes("7.1");
 
+      if (isInEar) {
+        // หูฟัง In-Ear เกมมิ่งระดับพรีเมียม (In-Ear Monitors on Display Dock / Coiled Cable)
+        // ถาดวางอะลูมิเนียมเรียบหรู
+        rbox(g, M.darkGrey, 14, 1.2, 14, 0, 0.6, 0, 1.5);
+        rbox(g, M.black, 12.5, 0.4, 12.5, 0, 1.2, 0, 1.0);
+
+        // หูฟัง 2 ข้าง (ซ้าย/ขวา) พร้อมจุกซิลิโคนและบอดี้โลหะ CNC
+        const accentCol = hpColor === "#1f2125" ? "#06b6d4" : hpColor;
+        const earMat = mk(accentCol, 0.35, 0.85);
+
+        for (const sx of [-1, 1]) {
+          const ex = sx * 3.5;
+          const ez = -1.5;
+          // บอดี้หูฟังอะลูมิเนียมทรงกระบอก
+          cyl(g, earMat, 1.1, 1.3, 2.2, ex, 2.4, ez, 16).rotation.x = Math.PI / 4;
+          // จุกซิลิโคนอินเอียร์นุ่ม
+          cyl(g, M.rubber, 0.8, 1.4, 1.2, ex, 3.2, ez + 1.1, 16).rotation.x = Math.PI / 4;
+          // ก้านหางสายยาง
+          cyl(g, M.black, 0.35, 0.35, 2.0, ex, 1.6, ez - 1.0, 12);
+        }
+
+        // สายถักขดวงกลมเรียบเนียน (Coiled Braided Cable)
+        torus(g, M.darkGrey, 4.2, 0.35, 0, 1.4, 2.0, Math.PI / 2, 0, 0);
+        // โมดูลไมค์และปุ่มควบคุม In-line Remote
+        rbox(g, M.black, 1.2, 0.6, 3.2, 3.5, 1.5, 2.0, 0.3);
+        break;
+      }
+
+      // หูฟัง Over-Ear พร้อมขาตั้งอะลูมิเนียม (Over-Ear Gaming & Studio Headset on Stand)
       // ฐานขาตั้งอะลูมิเนียมถ่วงน้ำหนักทรงกลม
       cyl(g, M.darkGrey, 7.5, 7.5, 1.4, 0, 0.7, 0, 32);
-      // เสาอะลูมิเนียมตรง
       cyl(g, M.chrome, 1.2, 1.2, h - 4, 0, (h - 4) / 2 + 1.2, 0, 24);
-      // ส่วนรองรับก้านหูฟังซิลิโคนโค้งมนด้านบน
       rbox(g, M.darkGrey, 12.0, 1.8, 5.5, 0, h - 1.5, 0, 1.4);
 
-      // ตัวหูฟังระดับพรีเมียม (Over-Ear Headphones)
-      // ก้านคาดศีรษะบุหนังนุ่ม (Padded Suspension Headband)
+      // ก้านคาดศีรษะ (Suspension Headband)
       torus(g, M.black, 10.0, 1.2, 0, h - 4.5, 0, 0, 0, Math.PI / 2);
       rbox(g, M.darkGrey, 11.0, 1.5, 4.0, 0, h - 2.8, 0, 1.2);
 
-      // ฟองน้ำครอบหูซ้าย-ขวา (Plush Memory Foam Earcups)
+      // เอียร์คัพซ้าย-ขวา
       for (const sx of [-1, 1]) {
         const ex = sx * 9.5;
         const ey = h - 14.5;
         torus(g, M.chrome, 4.8, 0.5, ex, ey, 0, 0, Math.PI / 2, 0);
         cyl(g, M.darkGrey, 4.5, 4.5, 3.2, ex + sx * 0.6, ey, 0, 24).rotation.z = Math.PI / 2;
         torus(g, M.fabric, 3.8, 1.2, ex - sx * 0.8, ey, 0, 0, Math.PI / 2, 0);
-        // ไฟโลโก้ RGB วงแหวนบนฝาครอบหูฟังเกมมิ่ง
         if (isGamingHeadset) {
           torus(g, M.rgbGlow, 2.5, 0.3, ex + sx * 2.3, ey, 0, 0, Math.PI / 2, 0);
         }
       }
 
-      // ก้านไมโครโฟนเกมมิ่งบูมไมค์ยื่นออกจากหูฟังข้างซ้าย (Gaming Gooseneck Boom Microphone)
+      // ก้านบูมไมโครโฟน
       if (isGamingHeadset) {
         const micBoom = cyl(g, M.black, 0.45, 0.45, 9.5, -9.5 + 3.2, h - 17.5, 4.5, 12);
         micBoom.rotation.x = 0.85;
         micBoom.rotation.y = -0.55;
-        // หัวฟองน้ำไมค์กันลม (Foam Pop Filter Tip)
         ball(g, M.darkGrey, 1.3, -9.5 + 5.2, h - 19.5, 8.5);
       }
       break;
     }
 
-    // ==========================================
-    // 11) ไมโครโฟนบรอดคาสต์พร้อมแขนจับบูม (Studio Microphone with Boom Arm)
-    // ==========================================
     case "microphone": {
       // ตัวหนีบขอบโต๊ะ C-Clamp
       rbox(g, M.black, 4.5, 8.0, 5.5, 0, 4.0, 0, 0.8);
@@ -979,15 +1248,26 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     // 13) เตียงนอน (Bed: Platform Bed with Tufted Headboard & Puffy Duvet)
     // ==========================================
     case "bed": {
-      const sheetMat = tex(fabricTex("#f8fafc"), 0.95, [3, 3]);
-      const duvetMat = tex(fabricTex("#3b82f6"), 0.92, [3, 3]);
-      const throwMat = tex(fabricTex("#94a3b8"), 0.95, [2, 2]);
+      const bedColor = it.color || "#eeeeec";
+      const isUpholstered =
+        nameLower.includes("บุนวม") ||
+        nameLower.includes("upholstered") ||
+        nameLower.includes("tärnkullen") ||
+        nameLower.includes("idanäs") ||
+        nameLower.includes("grysna");
 
-      // ฐานโครงเตียงไม้และขาเตียงทรงสแกนดิเนเวียน (Bed Frame & Legs)
-      rbox(g, woodBody, w, 22, d, 0, 15, 0, 2.0);
+      const sheetMat = tex(fabricTex("#ffffff"), 0.95, [3, 3]);
+      const duvetColor = bedColor === "#eeeeec" ? "#e2e8f0" : bedColor;
+      const duvetMat = tex(fabricTex(duvetColor), 0.92, [3, 3]);
+      const throwMat = tex(fabricTex("#64748b"), 0.95, [2, 2]);
+
+      const frameMat = isWood ? woodBody : mk(bedColor, 0.6);
+
+      // ฐานโครงเตียง (Bed Frame & Legs)
+      rbox(g, frameMat, w, 22, d, 0, 15, 0, 1.8);
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
-          cyl(g, M.woodLeg, 2.8, 2.0, 12, sx * (w / 2 - 8), 6, sz * (d / 2 - 8), 16);
+          cyl(g, isWood ? M.woodLeg : frameMat, 2.8, 2.0, 12, sx * (w / 2 - 8), 6, sz * (d / 2 - 8), 16);
         }
       }
 
@@ -1000,15 +1280,14 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
       // รอยพับนวมด้านบน
       rbox(g, sheetMat, w - 2, 5.5, 14, 0, 53.5, duvetZ - d * 0.31, 3.5);
 
-      // ผ้าพาดปลายเตียงเนื้อวาฟเฟิล (Accent Throw Blanket at foot of bed)
+      // ผ้าพาดปลายเตียง (Accent Throw Blanket at foot of bed)
       rbox(g, throwMat, w + 0.5, 4.0, 24, 0, 53.0, d / 2 - 18, 3.0);
 
-      // หมอนนอนใบใหญ่ 2 หรือ 4 ใบ (King Sleeping Pillows with Fabric Flanges)
+      // หมอนนอนใบใหญ่ 2 หรือ 4 ใบ
       const pillowCols = w > 130 ? [-1, 1] : [0];
       for (const px of pillowCols) {
         const pil = rbox(g, M.white, Math.min(58, w * 0.4), 13, 34, px * (w * 0.24), 54, -d / 2 + 25, 5.5);
         pil.rotation.x = -0.16;
-        // หมอนอิงประดับ (Decorative Cushion)
         const dPil = rbox(g, duvetMat, 32, 10, 32, px * (w * 0.24), 57, -d / 2 + 38, 4.0);
         dPil.rotation.x = -0.22;
         dPil.rotation.y = px * 0.12;
@@ -1027,25 +1306,32 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
           const drawerW = (d - 20) / 2;
           for (let di = 0; di < 2; di++) {
             const dz = -d / 2 + 15 + di * drawerW + drawerW / 2;
-            rbox(g, woodBody, 1.5, 16, drawerW - 2, sx * (w / 2 + 0.6), 13, dz, 0.4);
+            rbox(g, frameMat, 1.5, 16, drawerW - 2, sx * (w / 2 + 0.6), 13, dz, 0.4);
             cyl(g, M.chrome, 3.2, 3.2, 1.0, sx * (w / 2 + 1.2), 17, dz, 20).rotation.z = Math.PI / 2;
           }
         }
       }
 
-      // หัวเตียง (Headboard: บุผ้านวม หรือ ไม้จริงหรูหรา)
+      // หัวเตียง (Headboard)
       const hbH = Math.max(90, h);
-      if (isWood) {
-        // หัวเตียงไม้จริงลายสวยงามสไตล์ MALM / HEMNES
-        rbox(g, woodBody, w + 4, hbH, 6.0, 0, hbH / 2, -d / 2 + 3, 1.5);
-        rbox(g, woodBody, w + 6, 4.5, 8.0, 0, hbH - 2, -d / 2 + 3, 0.8); // บัวบนหัวเตียง
-      } else {
-        // หัวเตียงบุผ้านวมลายตารางหรูหรา (Tufted Channel Upholstered Headboard)
-        rbox(g, tex(fabricTex("#64748b"), 0.95, [2, 2]), w + 4, hbH, 10, 0, hbH / 2, -d / 2 + 4, 4.0);
+      if (isUpholstered) {
+        // หัวเตียงบุผ้านวมลายตารางหรูหราสีตามสินค้าจริง (Upholstered Headboard)
+        const headboardMat = tex(fabricTex(bedColor), 0.95, [2, 2]);
+        rbox(g, headboardMat, w + 4, hbH, 10, 0, hbH / 2, -d / 2 + 4, 4.0);
         for (let row = 0; row < 3; row++) {
           for (let col = -3; col <= 3; col++) {
-            ball(g, M.darkGrey, 1.2, col * (w / 8), hbH * 0.45 + row * 16, -d / 2 + 9.5, 0.6);
+            ball(g, mk(bedColor, 0.8), 1.2, col * (w / 8), hbH * 0.45 + row * 16, -d / 2 + 9.5, 0.6);
           }
+        }
+      } else {
+        // หัวเตียงไม้/โลหะโมเดิร์นสีตามสินค้าจริง (Wooden / Slatted Headboard เช่น BRUKSVARA, GULLABERG)
+        rbox(g, frameMat, w + 4, hbH, 5.0, 0, hbH / 2, -d / 2 + 3, 1.2);
+        rbox(g, frameMat, w + 6, 4.0, 7.0, 0, hbH - 2, -d / 2 + 3, 0.6); // บัวบนหัวเตียง
+        // ซี่ระแนงหัวเตียงเพิ่มมิติ
+        const numSlats = Math.round(w / 18);
+        for (let si = 0; si < numSlats; si++) {
+          const sx = -w / 2 + 8 + (si / (numSlats - 1)) * (w - 16);
+          rbox(g, mk(bedColor, 0.7), 2.2, hbH * 0.45, 1.5, sx, hbH * 0.65, -d / 2 + 5.8, 0.3);
         }
       }
       break;
@@ -1316,77 +1602,140 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     }
 
     // ==========================================
-    // 15) กระถางต้นไม้ / ต้นไม้ปลอม / ต้นไม้จริง (Monstera, Rubber Tree & Snake Plant)
+    // 15) กระถางต้นไม้ / ต้นไม้ปลอม / ต้นไม้จริง (Monstera, Fern, Hanging, Rubber Tree & Snake Plant)
     // ==========================================
     case "fake_plant":
     case "real_plant":
     case "plant_pot": {
-      const isPotOnly = it.category === "plant_pot" || nameLower.includes("กระถาง");
-      const isReal = it.category === "real_plant" || nameLower.includes("ต้นไม้จริง") || nameLower.includes("ยางอินเดีย") || nameLower.includes("ลิ้นมังกร");
+      const isPotOnly =
+        it.category === "plant_pot" ||
+        (nameLower.includes("กระถาง") &&
+          !nameLower.includes("ไม้ประดิษฐ์") &&
+          !nameLower.includes("ต้นไม้") &&
+          !nameLower.includes("fejka") &&
+          !nameLower.includes("plant") &&
+          !nameLower.includes("fern") &&
+          !nameLower.includes("มินต์") &&
+          !nameLower.includes("alocasia"));
+
+      const isReal =
+        it.category === "real_plant" ||
+        nameLower.includes("ต้นไม้จริง") ||
+        nameLower.includes("ยางอินเดีย") ||
+        nameLower.includes("ลิ้นมังกร");
+
       const isRubberTree = nameLower.includes("ยางอินเดีย") || nameLower.includes("rubber");
       const isSnakePlant = nameLower.includes("ลิ้นมังกร") || nameLower.includes("snake");
+      const isFern = nameLower.includes("fern") || nameLower.includes("เฟิร์น");
+      const isHanging = nameLower.includes("hanging") || nameLower.includes("เครื่องแขวน");
+      const isMint = nameLower.includes("mint") || nameLower.includes("มินต์");
 
-      const potH = isPotOnly ? h : Math.min(36, h * 0.32);
-      const potR = Math.min(w, d) * 0.32;
+      // พืชตั้งโต๊ะขนาดเล็ก vs ต้นไม้ตั้งพื้นขนาดใหญ่
+      const isFloorPlant = h >= 70 || w >= 35;
+      const potH = isPotOnly ? h : Math.min(28, h * 0.35);
+      const potR = Math.min(w, d) * (isFloorPlant ? 0.32 : 0.38);
 
-      // ขาตั้งไม้ 3 ขาสไตล์สแกนดิเนเวียน (Wooden Tripod Plant Stand)
-      for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2;
-        const lx = Math.cos(a) * potR * 1.15;
-        const lz = Math.sin(a) * potR * 1.15;
-        cyl(g, M.woodLeg, 1.4, 1.1, potH * 0.75, lx, potH * 0.35, lz, 16);
+      if (isFloorPlant) {
+        // ขาตั้งไม้ 3 ขา สำหรับต้นไม้ตั้งพื้นขนาดใหญ่ (Wooden Tripod Plant Stand)
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2;
+          const lx = Math.cos(a) * potR * 1.15;
+          const lz = Math.sin(a) * potR * 1.15;
+          cyl(g, M.woodLeg, 1.4, 1.1, potH * 0.75, lx, potH * 0.35, lz, 16);
+        }
+        rbox(g, M.woodLeg, potR * 2.2, 1.8, 2.4, 0, potH * 0.35, 0, 0.5);
       }
-      rbox(g, M.woodLeg, potR * 2.2, 1.8, 2.4, 0, potH * 0.35, 0, 0.5);
 
-      // กระถางเซรามิกทรงกระบอกผิวร่อง Fluted
-      cyl(g, M.potCeramic, potR, potR * 0.88, potH, 0, potH * 0.65, 0, 32);
-      torus(g, M.potCeramic, potR, 1.2, 0, potH * 1.15, 0, Math.PI / 2, 0, 0);
+      const potBaseY = isFloorPlant ? potH * 0.35 : 0;
+
+      // กระถางเซรามิกโมเดิร์น
+      cyl(g, M.potCeramic, potR, potR * 0.88, potH, 0, potBaseY + potH / 2, 0, 32);
+      torus(g, M.potCeramic, potR, 1.0, 0, potBaseY + potH, 0, Math.PI / 2, 0, 0);
 
       // ดินปลูกต้นไม้อินทรีย์สีน้ำตาลเข้ม (Dark Organic Potting Soil)
-      cyl(g, M.soil, potR * 0.94, potR * 0.94, 2.0, 0, potH * 1.1, 0, 24);
+      const soilY = potBaseY + potH - 0.5;
+      cyl(g, M.soil, potR * 0.94, potR * 0.94, 1.5, 0, soilY, 0, 24);
 
       if (!isPotOnly) {
-        if (isReal && isRubberTree) {
-          // ต้นไม้จริง: ยางอินเดียดำ (Rubber Tree / Ficus Elastica) ก้านตรงและใบมรกตหนามันเงา
-          const trunkH = h - potH;
-          cyl(g, M.soil, 1.4, 1.8, trunkH * 0.85, 0, potH * 1.1 + trunkH * 0.42, 0, 16);
+        const foliageH = Math.max(12, h - potH - potBaseY);
+
+        if (isFern) {
+          // ไม้ประดิษฐ์: เฟิร์น (Crocodile Fern / Boston Fern) ใบเรียวยาวโค้งแผ่รอบทิศ
+          const numFronds = 16;
+          for (let i = 0; i < numFronds; i++) {
+            const a = (i / numFronds) * Math.PI * 2;
+            const frondLen = potR * (1.2 + (i % 3) * 0.35);
+            const frondH = foliageH * (0.6 + (i % 2) * 0.35);
+            // ก้านและใบหยัก
+            const stem = cyl(g, M.leaf, 0.5, 0.9, frondH, 0, soilY + frondH * 0.4, 0, 8);
+            stem.rotation.x = Math.sin(a) * 0.55;
+            stem.rotation.z = Math.cos(a) * 0.55;
+            // ปลายใบโค้งทอดตัวลง
+            const fx = Math.cos(a) * frondLen;
+            const fy = soilY + frondH * 0.85;
+            const fz = Math.sin(a) * frondLen;
+            const leaf = ball(g, M.leaf2, frondLen * 0.45, fx, fy, fz, 0.15, 0.6, 1.4);
+            leaf.rotation.set(0.6 * Math.sin(a), -a, 0.6 * Math.cos(a));
+          }
+        } else if (isHanging) {
+          // ไม้เลื้อยแขวน (Trailing Hanging Ivy / Pothos) กิ่งระย้าทอดลงมาข้างกระถาง
+          for (let i = 0; i < 18; i++) {
+            const a = (i / 18) * Math.PI * 2;
+            const dropLen = foliageH * (0.4 + (i % 4) * 0.25);
+            const vx = Math.cos(a) * (potR * 0.95);
+            const vz = Math.sin(a) * (potR * 0.95);
+            cyl(g, M.leaf, 0.4, 0.5, dropLen, vx, soilY - dropLen * 0.4, vz, 8);
+            ball(g, M.leaf2, 2.8, vx * 1.15, soilY - dropLen * 0.8, vz * 1.15, 0.2, 0.8, 1.1);
+          }
+        } else if (isMint) {
+          // มินต์ / ไม้พุ่มสมุนไพรในกระถาง (Potted Mint / Herb Bush) ทรงพุ่มกลมแน่น
+          ball(g, M.leaf, potR * 1.1, 0, soilY + potR * 0.75, 0, 0.85, 1.0, 1.0);
+          for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2;
+            const mx = Math.cos(a) * potR * 0.75;
+            const mz = Math.sin(a) * potR * 0.75;
+            ball(g, M.leaf2, potR * 0.45, mx, soilY + potR * 0.9, mz, 0.5, 0.8, 0.8);
+          }
+        } else if (isReal && isRubberTree) {
+          // ยางอินเดียดำ (Rubber Tree / Ficus Elastica)
+          const trunkH = foliageH;
+          cyl(g, M.soil, 1.4, 1.8, trunkH * 0.85, 0, soilY + trunkH * 0.42, 0, 16);
           const numLeaves = 12;
           for (let i = 0; i < numLeaves; i++) {
             const a = (i / numLeaves) * Math.PI * 2 + (i % 2) * 0.5;
-            const ly = potH * 1.1 + (i / numLeaves) * trunkH * 0.8 + 6;
+            const ly = soilY + (i / numLeaves) * trunkH * 0.8 + 4;
             const leaf = ball(g, mk("#14342b", 0.3, 0.05), potR * 0.75, Math.cos(a) * potR * 0.65, ly, Math.sin(a) * potR * 0.65, 0.25, 0.6, 1.3);
             leaf.rotation.set(0.4 * Math.sin(a), -a, 0.4 * Math.cos(a));
           }
         } else if (isReal && isSnakePlant) {
-          // ต้นไม้จริง: ลิ้นมังกร (Snake Plant / Sansevieria) ใบดาบตั้งตรงพร้อมขอบทอง
+          // ลิ้นมังกร (Snake Plant / Sansevieria)
           const numBlades = 9;
           for (let i = 0; i < numBlades; i++) {
             const a = (i / numBlades) * Math.PI * 2;
-            const bH = (h - potH) * (0.6 + (i % 3) * 0.18);
+            const bH = foliageH * (0.6 + (i % 3) * 0.18);
             const bx = Math.cos(a) * potR * 0.4;
             const bz = Math.sin(a) * potR * 0.4;
-            const blade = rbox(g, M.leaf, 3.2, bH, 0.8, bx, potH * 1.1 + bH / 2, bz, 0.4);
+            const blade = rbox(g, M.leaf, 3.2, bH, 0.8, bx, soilY + bH / 2, bz, 0.4);
             blade.rotation.y = a;
             blade.rotation.x = Math.sin(a) * 0.12;
             blade.rotation.z = Math.cos(a) * 0.12;
-            // ขอบใบด่างสีทอง (Variegated Yellow Margin)
-            rbox(g, M.gold, 0.4, bH, 0.85, bx + 1.5, potH * 1.1 + bH / 2, bz, 0.2);
-            rbox(g, M.gold, 0.4, bH, 0.85, bx - 1.5, potH * 1.1 + bH / 2, bz, 0.2);
+            rbox(g, M.gold, 0.4, bH, 0.85, bx + 1.5, soilY + bH / 2, bz, 0.2);
+            rbox(g, M.gold, 0.4, bH, 0.85, bx - 1.5, soilY + bH / 2, bz, 0.2);
           }
         } else {
-          // ต้นไม้ปลอม: Monstera Deliciosa แผ่ใบฉลุแฉกสวยงาม
+          // มอนสเตอร่า (Monstera Deliciosa)
           const numLeaves = 14;
           for (let i = 0; i < numLeaves; i++) {
             const a = (i / numLeaves) * Math.PI * 2 + (i % 3) * 0.45;
-            const stemH = (h - potH) * (0.45 + (i / numLeaves) * 0.55);
+            const stemH = foliageH * (0.45 + (i / numLeaves) * 0.55);
             const reach = potR * (0.8 + (i % 4) * 0.4);
 
-            const stem = cyl(g, M.leaf, 0.7, 1.1, stemH, 0, potH * 1.1 + stemH * 0.45, 0, 12);
+            const stem = cyl(g, M.leaf, 0.7, 1.1, stemH, 0, soilY + stemH * 0.45, 0, 12);
             stem.rotation.x = Math.sin(a) * 0.35;
             stem.rotation.z = Math.cos(a) * 0.35;
 
             const lx = Math.cos(a) * reach * 1.4;
-            const ly = potH * 1.1 + stemH * 0.85;
+            const ly = soilY + stemH * 0.85;
             const lz = Math.sin(a) * reach * 1.4;
 
             const leafMat = i % 2 === 0 ? M.leaf : M.leaf2;
@@ -1402,14 +1751,32 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     // 16) โคมไฟและไฟแขวนจอ / ไฟ RGB & Ambient / โคมไฟตั้งโต๊ะ / โคมไฟพื้น
     // ==========================================
     case "lighting": {
+      const isBulb =
+        nameLower.includes("หลอดไฟ") ||
+        nameLower.includes("bulb") ||
+        nameLower.includes("kajplats") ||
+        nameLower.includes("e14") ||
+        nameLower.includes("e27");
+
+      const isSnowman =
+        nameLower.includes("สโนว์แมน") ||
+        nameLower.includes("snowman") ||
+        nameLower.includes("stråla") ||
+        nameLower.includes("ประดับโต๊ะ");
+
+      const isGlobe = nameLower.includes("fado") || nameLower.includes("ทรงกลม") || nameLower.includes("globe");
+
+      const isRanarp = nameLower.includes("ranarp") || nameLower.includes("รอนนาร์ป");
+
       const isFloorLamp =
         h >= 100 ||
         nameLower.includes("ตั้งพื้น") ||
         nameLower.includes("floor") ||
         nameLower.includes("uplight") ||
+        nameLower.includes("lersta") ||
+        nameLower.includes("akterspring") ||
         nameLower.includes("barlast") ||
-        nameLower.includes("årstid") ||
-        nameLower.includes("pilskott");
+        nameLower.includes("årstid");
 
       const isLightBar =
         nameLower.includes("lightbar") ||
@@ -1422,16 +1789,83 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         nameLower.includes("stänkregn") ||
         nameLower.includes("nanoleaf") ||
         nameLower.includes("หกเหลี่ยม") ||
-        nameLower.includes("strip") ||
-        nameLower.includes("ambient") ||
-        nameLower.includes("ตกแต่ง");
+        nameLower.includes("ambient");
 
-      if (isLightBar) {
+      if (isBulb) {
+        // หลอดไฟ LED อัจฉริยะ (Smart LED Light Bulb เช่น KAJPLATS, Philips Hue)
+        // ขั้วเกลียวโลหะทองเหลือง/สแตนเลส (E27/E14 Screw Base)
+        cyl(g, M.chrome, 1.4, 1.4, 2.5, 0, 1.25, 0, 24);
+        torus(g, M.chrome, 1.4, 0.25, 0, 0.8, 0, Math.PI / 2, 0, 0);
+        torus(g, M.chrome, 1.4, 0.25, 0, 1.6, 0, Math.PI / 2, 0, 0);
+        // คอระบายความร้อนเซรามิกสีขาว
+        cyl(g, M.white, 2.4, 1.5, 2.8, 0, 3.8, 0, 24);
+        // กระเปาะแก้วโอปอลขาวเรืองแสง (Frosted Opal Glass Dome)
+        const bulbMat = night ? M.warmLight : M.warmWhite;
+        ball(g, bulbMat, 3.6, 0, 7.0, 0, 1.15, 1.0, 1.0);
+        if (night) {
+          const bulbLight = new THREE.PointLight("#ffedd5", 2.8, 4.0, 1.5);
+          bulbLight.position.set(0, 7.0 * CM, 0);
+          g.add(bulbLight);
+        }
+      } else if (isSnowman) {
+        // ไฟประดับรูปสโนว์แมน / เทศกาล (STRÅLA Sculptural Snowman Table Light)
+        const snowMat = night ? M.warmLight : M.white;
+        // ลำตัวล่าง
+        ball(g, snowMat, 8.5, 0, 8.5, 0, 0.95, 1.0, 1.0);
+        // หัว
+        ball(g, snowMat, 6.0, 0, 20.0, 0);
+        // หมวกทรงสูงสีดำ
+        cyl(g, M.black, 6.2, 6.2, 0.8, 0, 24.5, 0, 24);
+        cyl(g, M.black, 4.0, 4.0, 6.0, 0, 27.5, 0, 24);
+        // ผ้าพันคอ
+        torus(g, M.rgbCoral, 5.2, 0.9, 0, 15.5, 0, Math.PI / 2, 0, 0);
+        // จมูกแครอทสีส้ม
+        cyl(g, M.gold, 0.2, 0.8, 3.2, 0, 20.0, 6.5, 12).rotation.x = Math.PI / 2;
+        if (night) {
+          const snowLight = new THREE.PointLight("#fff7ed", 2.2, 3.5, 1.8);
+          snowLight.position.set(0, 14.0 * CM, 0);
+          g.add(snowLight);
+        }
+      } else if (isGlobe) {
+        // โคมไฟตั้งโต๊ะทรงกลมแก้วโอปอล (FADO Spherical Globe Table Lamp)
+        cyl(g, M.darkGrey, 8.0, 8.0, 1.2, 0, 0.6, 0, 32);
+        const globeR = Math.min(w, h) * 0.42;
+        const globeMat = night ? M.warmLight : M.warmWhite;
+        ball(g, globeMat, globeR, 0, globeR + 1.2, 0);
+        if (night) {
+          const globeLight = new THREE.PointLight("#ffedd5", 2.6, 4.0, 1.5);
+          globeLight.position.set(0, (globeR + 1.2) * CM, 0);
+          g.add(globeLight);
+        }
+      } else if (isRanarp) {
+        // โคมไฟตั้งโต๊ะย้อนยุคทรงกระดิ่งเหล็ก (RANARP Work Lamp with Brass Accents)
+        const shadeCol = it.color || "#f8f9fa";
+        const bodyMat = mk(shadeCol, 0.45);
+        // ฐานเหล็กหล่อทรงกลม
+        cyl(g, bodyMat, 9.5, 10.5, 2.6, 0, 1.3, 0, 32);
+        // เสาเหล็กตรงพร้อมข้อต่อทองเหลือง
+        cyl(g, bodyMat, 1.2, 1.2, h * 0.55, 0, h * 0.3, 0, 16);
+        cyl(g, M.gold, 1.6, 1.6, 3.0, 0, h * 0.55, 0, 16);
+        // แขนโค้งยื่นไปข้างหน้า
+        const arm = cyl(g, bodyMat, 1.1, 1.1, h * 0.38, 0, h * 0.72, 6, 16);
+        arm.rotation.x = 0.55;
+        // โคมครอบทรงกระดิ่งเหล็ก (Flared Bell Shade)
+        const bell = cyl(g, bodyMat, 4.0, 12.0, 14.0, 0, h * 0.85, 12, 32);
+        bell.rotation.x = 0.85;
+        torus(g, M.gold, 4.2, 0.6, 0, h * 0.92, 9, 0.85, 0, 0);
+        // หลอดไฟอุ่น
+        ball(g, night ? M.warmLight : M.white, 3.5, 0, h * 0.82, 13.5);
+        if (night) {
+          const spot = new THREE.SpotLight("#ffedd5", 2.5, 4.0, Math.PI / 3, 0.4);
+          spot.position.set(0, h * 0.85 * CM, 12 * CM);
+          spot.target.position.set(0, 0, 15 * CM);
+          g.add(spot, spot.target);
+        }
+      } else if (isLightBar) {
         // ไฟแขวนหน้าจอถนอมสายตา (Monitor ScreenBar)
         const barW = Math.max(w, 45);
         cyl(g, M.darkGrey, 1.5, 1.5, barW, 0, h - 2, 0, 24).rotation.z = Math.PI / 2;
         cyl(g, night ? M.warmLight : M.white, 0.8, 0.8, barW - 4, 0, h - 3, 0.8, 16).rotation.z = Math.PI / 2;
-        // ตุ้มถ่วงน้ำหนักด้านหลัง
         rbox(g, M.black, 4.5, 4.0, 6.5, 0, h - 3, -3.2, 0.8);
         if (night) {
           const barLight = new THREE.SpotLight("#ffedd5", 2.4, 3.5, Math.PI / 3, 0.35, 1.8);
@@ -1440,10 +1874,9 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
           g.add(barLight, barLight.target);
         }
       } else if (isRgbAmbient) {
-        // ไฟ Ambient & RGB โคมไฟโดนัทแก้ว VARMBLIXT / แผงไฟโมดูลาร์หรูหรา
+        // ไฟ Ambient & โดนัท VARMBLIXT
         const isDonut = nameLower.includes("varmblixt");
         if (isDonut) {
-          // โคมไฟทรงโดนัทแก้วสีส้มอำพันอันโด่งดังของ IKEA VARMBLIXT
           const donutMat = new THREE.MeshPhysicalMaterial({
             color: "#f97316",
             emissive: "#ea580c",
@@ -1462,7 +1895,6 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
             g.add(glow);
           }
         } else {
-          // แผงไฟโมดูลาร์หกเหลี่ยม / วงแหวน RGB Ambient
           torus(g, M.rgbGlow, Math.min(w, h) * 0.36, 1.2, 0, h / 2, 0, 0, 0, 0);
           torus(g, M.rgbPurple, Math.min(w, h) * 0.22, 0.8, 0, h / 2, 0.5, 0, 0, 0);
           if (night) {
@@ -1472,7 +1904,7 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
           }
         }
       } else if (isFloorLamp) {
-        // โคมไฟตั้งพื้นมินิมอลทรงสูง (BARLAST / ÅRSTID / PILSKOTT)
+        // โคมไฟตั้งพื้นทรงสูง (LERSTA / AKTERSPRING / BARLAST)
         const baseR = Math.max(12, Math.min(18, w * 0.45));
         cyl(g, M.darkGrey, baseR, baseR * 1.08, 3.2, 0, 1.6, 0, 32);
         const poleH = h - 35;
@@ -1490,8 +1922,10 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
           g.add(floorLight);
         }
       } else {
-        // โคมไฟโต๊ะทำงานก้านสปริงข้อต่อคู่ปรับมุมได้ (TERTIAL / FORSÅ architect spring lamp)
-        cyl(g, M.darkGrey, 8.5, 9.5, 2.4, 0, 1.2, 0, 32);
+        // โคมไฟก้านสปริง TERTIAL
+        const lampCol = it.color || "#ffffff";
+        const bodyMat = mk(lampCol, 0.5);
+        cyl(g, bodyMat, 8.5, 9.5, 2.4, 0, 1.2, 0, 32);
         cyl(g, M.gold, 1.2, 1.2, 1.5, 4.5, 2.6, 0, 16);
         const arm1H = h * 0.48;
         const arm1 = cyl(g, M.chrome, 0.9, 0.9, arm1H, 0, arm1H * 0.5 + 2, 0, 16);
@@ -1504,11 +1938,10 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         const shadeX = -15;
         const shadeY = h * 0.88;
         const shadeZ = 4;
-        const shade = cyl(g, baseBody, 4.5, 11.5, 14, shadeX, shadeY, shadeZ, 32);
+        const shade = cyl(g, bodyMat, 4.5, 11.5, 14, shadeX, shadeY, shadeZ, 32);
         shade.rotation.z = 0.65;
         shade.rotation.x = 0.25;
         ball(g, night ? M.warmLight : M.white, 3.2, shadeX - 1.5, shadeY - 3.5, shadeZ + 1.2);
-
         if (night) {
           const lampLight = new THREE.PointLight("#ffedd5", 2.2, 3.2, 1.8);
           lampLight.position.set(shadeX * CM, (shadeY - 4) * CM, (shadeZ + 2) * CM);
@@ -1518,9 +1951,6 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
       break;
     }
 
-    // ==========================================
-    // 17) พรมปูพื้นห้อง (Woven Area Rug with Tassels)
-    // ==========================================
     case "rug": {
       const rugMat = tex(rugTex(it.color === "#9aa6b2" ? "#64748b" : it.color), 0.98, [1, 1]);
       rbox(g, rugMat, w, 1.2, d, 0, 0.6, 0, 2.5);
