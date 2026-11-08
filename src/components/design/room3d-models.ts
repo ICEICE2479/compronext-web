@@ -427,7 +427,7 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     }
 
     // ==========================================
-    // 3) โต๊ะคอม / โต๊ะทำงาน (Desk: Gaming & Standing Desk เช่น FREDDE, BEKANT, UPPSPEL)
+    // 3) โต๊ะคอม / โต๊ะทำงาน (Desk: Gaming & Standing Desk เช่น FREDDE, BEKANT, UPPSPEL, MICKE, LAGKAPTEN)
     // ==========================================
     case "desk": {
       const isStanding =
@@ -436,8 +436,74 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         nameLower.includes("standing") ||
         nameLower.includes("lift");
 
+      const isCorner =
+        nameLower.includes("เข้ามุม") ||
+        nameLower.includes("ตัว l") ||
+        nameLower.includes("l-shape") ||
+        nameLower.includes("corner");
+
+      const hasAlexSupport =
+        nameLower.includes("alex") || nameLower.includes("อเล็กซ์");
+
       const topT = 2.8; // ความหนาท็อปโต๊ะ
       const topY = h - topT / 2;
+
+      if (isCorner) {
+        // โต๊ะรูปตัว L (L-Shaped Battlestation Corner Desk)
+        const wingW = Math.max(d, 60);
+        const wingD = Math.max(w * 0.65, 80);
+        // ท็อปโต๊ะหลัก
+        rbox(g, woodBody, w, topT, wingW, 0, topY, 0, 1.4);
+        // ปีกท็อปตัว L ยื่นออกไปด้านข้าง
+        rbox(g, woodBody, wingW, topT, wingD, -w / 2 + wingW / 2, topY, wingW / 2 + wingD / 2, 1.4);
+
+        // เสาขาโต๊ะเหล็ก 5 จุดรอบตัว L
+        const legPts = [
+          [-w / 2 + 8, -wingW / 2 + 8],
+          [w / 2 - 8, -wingW / 2 + 8],
+          [w / 2 - 8, wingW / 2 - 8],
+          [-w / 2 + 8, wingW / 2 + wingD - 8],
+          [-w / 2 + wingW - 8, wingW / 2 + wingD - 8],
+        ];
+        for (const [lx, lz] of legPts) {
+          cyl(g, M.darkGrey, 2.6, 2.6, h - topT, lx, (h - topT) / 2, lz, 16);
+          cyl(g, M.black, 3.4, 3.4, 1.5, lx, 0.75, lz, 16);
+        }
+
+        // ช่องร้อยสายไฟ 2 จุด
+        cyl(g, M.darkGrey, 3.2, 3.2, topT + 0.2, 0, topY + 0.1, -wingW / 2 + 10, 24);
+        cyl(g, M.black, 2.2, 2.2, topT + 0.4, 0, topY + 0.2, -wingW / 2 + 10, 24);
+        cyl(g, M.darkGrey, 3.2, 3.2, topT + 0.2, -w / 2 + wingW / 2, topY + 0.1, wingW / 2 + wingD - 12, 24);
+        cyl(g, M.black, 2.2, 2.2, topT + 0.4, -w / 2 + wingW / 2, topY + 0.2, wingW / 2 + wingD - 12, 24);
+        break;
+      }
+
+      if (hasAlexSupport) {
+        // โต๊ะยอดนิยม IKEA Battlestation: LAGKAPTEN + ตู้ลิ้นชัก ALEX รองรับข้างขวา + ขา ADILS ข้างซ้าย
+        rbox(g, woodBody, w, topT, d, 0, topY, 0, 1.4);
+        const alexW = Math.min(36, w * 0.32);
+        const alexH = h - topT;
+        const alexX = w / 2 - alexW / 2 - 2;
+        // ตัวตู้ ALEX ใต้โต๊ะ
+        rbox(g, woodBody, alexW, alexH, d * 0.92, alexX, alexH / 2, 0, 0.8);
+        const numD = 5;
+        const dH = (alexH - 4) / numD;
+        for (let i = 0; i < numD; i++) {
+          const dy = 2 + i * dH + dH / 2;
+          rbox(g, woodBody, alexW - 1.2, dH - 0.8, 1.4, alexX, dy, (d * 0.92) / 2 + 0.4, 0.3);
+          cyl(g, M.darkGrey, 3.5, 3.5, 1.2, alexX, dy + dH * 0.25, (d * 0.92) / 2 + 0.7, 20).rotation.x = Math.PI / 2;
+        }
+        // ขา Adils ทรงกระบอก 2 ขาด้านซ้าย
+        const leftX = -w / 2 + 10;
+        for (const sz of [-1, 1]) {
+          cyl(g, M.darkGrey, 2.4, 2.4, alexH, leftX, alexH / 2, sz * (d * 0.38), 16);
+          cyl(g, M.black, 3.2, 3.2, 1.5, leftX, 0.75, sz * (d * 0.38), 16);
+        }
+        // ช่องร้อยสายไฟ
+        cyl(g, M.darkGrey, 3.2, 3.2, topT + 0.2, 0, topY + 0.1, -d / 2 + 10, 24);
+        cyl(g, M.black, 2.2, 2.2, topT + 0.4, 0, topY + 0.2, -d / 2 + 10, 24);
+        break;
+      }
 
       // 1) ท็อปโต๊ะไม้ขอบมน + ปาดเว้า Ergonomic ด้านหน้า
       rbox(g, woodBody, w, topT, d, 0, topY, 0, 1.4);
@@ -493,9 +559,47 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     }
 
     // ==========================================
-    // 4) คอมพิวเตอร์เคสเกมมิ่งระดับท็อป (Gaming PC Chassis)
+    // 4) คอมพิวเตอร์เคสเกมมิ่ง / อุปกรณ์ไอที (Gaming PC & Tech Gadgets)
     // ==========================================
     case "computer": {
+      const isWristRest =
+        nameLower.includes("wrist rest") ||
+        nameLower.includes("ที่รองข้อมือ") ||
+        nameLower.includes("palmrest");
+      const isSmallGadget =
+        nameLower.includes("m.2") ||
+        nameLower.includes("enclosure") ||
+        nameLower.includes("adapter") ||
+        nameLower.includes("dvd") ||
+        nameLower.includes("external") ||
+        nameLower.includes("dongle") ||
+        nameLower.includes("การ์ดไวไฟ") ||
+        nameLower.includes("กล่องใส่") ||
+        h < 22;
+
+      if (isWristRest) {
+        // ที่รองข้อมือคีย์บอร์ด Ergonomic Wrist Rest
+        const padW = Math.max(w, 36);
+        const padD = Math.max(d, 8);
+        const padH = Math.min(h, 2.5);
+        rbox(g, M.black, padW, 0.4, padD, 0, 0.2, 0, 0.5);
+        rbox(g, M.fabric, padW - 0.6, padH, padD - 0.6, 0, padH / 2, 0, 1.2);
+        break;
+      }
+
+      if (isSmallGadget) {
+        // กล่องอุปกรณ์ M.2 Enclosure / External Drive / Adapter พรีเมียมอะลูมิเนียม CNC
+        const gadW = Math.min(w, 15);
+        const gadD = Math.min(d, 8);
+        const gadH = Math.min(h, 2.5);
+        rbox(g, M.darkGrey, gadW, gadH, gadD, 0, gadH / 2, 0, 0.6);
+        rbox(g, M.metal, gadW - 0.6, 0.4, gadD - 0.6, 0, gadH + 0.1, 0, 0.4);
+        // ไฟสถานะ LED & พอร์ต Type-C
+        rbox(g, M.rgbGlow, 0.8, 0.4, 0.4, gadW / 2 - 1.5, gadH + 0.2, 0, 0.2);
+        rbox(g, M.black, 1.6, 0.6, 0.6, gadW / 2 + 0.1, gadH / 2, 0, 0.2);
+        break;
+      }
+
       // โครงเคสหลักสีดำ/ขาว ผิวด้านเรียบหรู (Dual Chamber Chassis เช่น Lian Li O11 / NZXT H9)
       rbox(g, baseBody, w, h, d, 0, h / 2, 0, 1.6);
 
@@ -852,23 +956,121 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     }
 
     // ==========================================
-    // 14) ตู้ลิ้นชัก ALEX / ชั้นวางของ KALLAX / ตู้หนังสือ BILLY (Storage & Shelving)
+    // 14) ตู้ลิ้นชัก ALEX/MALM / ราวแขวนผ้า / ชั้นตะแกรงเหล็ก OMAR / ตู้หนังสือ BILLY / KALLAX (Storage & Shelving)
     // ==========================================
     case "storage": {
-      const isAlexDrawer = nameLower.includes("alex") || nameLower.includes("ลิ้นชัก") || nameLower.includes("drawer");
+      const isWireRack =
+        nameLower.includes("omar") ||
+        nameLower.includes("กัลวาไนซ์") ||
+        nameLower.includes("ตะแกรง") ||
+        nameLower.includes("ลวด") ||
+        nameLower.includes("wire");
 
-      if (isAlexDrawer) {
-        // ตู้ลิ้นชัก IKEA ALEX 5 ลิ้นชักอันโด่งดัง (Signature Scooped Cutout Handles)
-        rbox(g, woodBody, w, h, d, 0, h / 2, 0, 1.2);
-        const numDrawers = 5;
-        const dH = (h - 6) / numDrawers;
+      const isClothesRail =
+        nameLower.includes("ราวแขวนผ้า") ||
+        nameLower.includes("ราวแขวน") ||
+        nameLower.includes("ราวตาก") ||
+        nameLower.includes("clothes rail") ||
+        nameLower.includes("garment");
+
+      const isDrawerUnit =
+        nameLower.includes("alex") ||
+        nameLower.includes("ลิ้นชัก") ||
+        nameLower.includes("drawer") ||
+        nameLower.includes("malm") ||
+        nameLower.includes("hauga") ||
+        nameLower.includes("lastare") ||
+        nameLower.includes("vihals") ||
+        nameLower.includes("kilberget") ||
+        nameLower.includes("gursken") ||
+        nameLower.includes("fågelfjället") ||
+        nameLower.includes("storklinta") ||
+        nameLower.includes("rådmansö");
+
+      if (isWireRack) {
+        // ชั้นวางตะแกรงเหล็ก OMAR / ลวดกัลวาไนซ์สไตล์อินดัสเทรียล
+        const poleR = 1.3;
+        const cornerInset = 2.0;
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const px = sx * (w / 2 - cornerInset);
+            const pz = sz * (d / 2 - cornerInset);
+            cyl(g, M.chrome, poleR, poleR, h, px, h / 2, pz, 16);
+            cyl(g, M.black, poleR * 1.3, poleR * 1.3, 1.2, px, 0.6, pz, 16);
+            cyl(g, M.black, poleR * 1.1, poleR * 1.1, 0.8, px, h + 0.4, pz, 16);
+          }
+        }
+        const numShelves = Math.max(3, Math.round(h / 45));
+        for (let k = 0; k < numShelves; k++) {
+          const sy = 8 + (k / (numShelves - 1)) * (h - 14);
+          rbox(g, M.chrome, w, 1.4, d, 0, sy, 0, 0.4);
+          const numWires = Math.round(w / 4);
+          for (let wi = 0; wi < numWires; wi++) {
+            const wx = -w / 2 + 2.5 + wi * 4;
+            cyl(g, M.chrome, 0.25, 0.25, d - 4, wx, sy, 0, 8).rotation.x = Math.PI / 2;
+          }
+          if (k === 1) {
+            rbox(g, M.fabric, w * 0.45, 18, d * 0.75, -w * 0.2, sy + 9, 0, 0.8);
+          }
+        }
+      } else if (isClothesRail) {
+        // ราวแขวนผ้ามินิมอล (Minimal Clothes Rail)
+        const railR = 1.4;
+        rbox(g, baseBody, 4.0, 2.5, d * 0.8, -w / 2 + 4, 1.25, 0, 0.6);
+        rbox(g, baseBody, 4.0, 2.5, d * 0.8, w / 2 - 4, 1.25, 0, 0.6);
+        rbox(g, baseBody, w - 8, 2.0, 3.5, 0, 1.0, 0, 0.4);
+
+        cyl(g, M.chrome, railR, railR, h - 3, -w / 2 + 4, h / 2, 0, 16);
+        cyl(g, M.chrome, railR, railR, h - 3, w / 2 - 4, h / 2, 0, 16);
+
+        const topRail = cyl(g, M.chrome, railR, railR, w - 8, 0, h - 2, 0, 16);
+        topRail.rotation.z = Math.PI / 2;
+
+        const numHangers = Math.max(4, Math.min(10, Math.round(w / 12)));
+        const shirtMats = [
+          mk("#f8fafc", 0.8),
+          mk("#334155", 0.85),
+          mk("#94a3b8", 0.8),
+          mk("#e2e8f0", 0.75),
+          mk("#475569", 0.85),
+        ];
+        for (let hi = 0; hi < numHangers; hi++) {
+          const hx = -w / 2 + 10 + hi * ((w - 20) / (numHangers - 1));
+          rbox(g, M.woodLeg, 12, 1.0, 0.8, hx, h - 6, 0, 0.3);
+          torus(g, M.chrome, 1.2, 0.2, hx, h - 3.5, 0, 0, 0, Math.PI / 2);
+          const sMat = shirtMats[hi % shirtMats.length];
+          const shirtH = Math.min(55, h * 0.55);
+          rbox(g, sMat, 8.5, shirtH, 4.5, hx, h - 6 - shirtH / 2, 0, 1.2);
+        }
+      } else if (isDrawerUnit) {
+        // ตู้ลิ้นชัก ALEX / MALM / HAUGA / LASTARE / VIHALS
+        const plinthH = 4.0;
+        rbox(g, woodBody, w, h - plinthH, d, 0, (h + plinthH) / 2, 0, 0.8);
+        rbox(g, mk(it.color, 0.75), w - 4, plinthH, d - 4, 0, plinthH / 2, 0, 0.4);
+
+        let numDrawers = 4;
+        const dMatch = nameLower.match(/(\d+)\s*(ลิ้นชัก|drawer)/);
+        if (dMatch) {
+          numDrawers = parseInt(dMatch[1], 10);
+        } else if (nameLower.includes("alex")) {
+          numDrawers = 5;
+        } else {
+          numDrawers = Math.max(2, Math.min(8, Math.round(h / 24)));
+        }
+
+        const isAlex = nameLower.includes("alex");
+        const usableH = h - plinthH - 2;
+        const dH = usableH / numDrawers;
 
         for (let i = 0; i < numDrawers; i++) {
-          const dy = 4 + i * dH + dH / 2;
-          // หน้าบานลิ้นชัก
+          const dy = plinthH + 1 + i * dH + dH / 2;
           rbox(g, woodBody, w - 1.2, dH - 0.8, 1.8, 0, dy, d / 2 + 0.6, 0.4);
-          // ร่องมือจับเว้าโค้งทรงรีอันเป็นเอกลักษณ์ของ ALEX
-          cyl(g, M.darkGrey, 4.5, 4.5, 1.4, 0, dy + dH * 0.28, d / 2 + 0.9, 24).rotation.x = Math.PI / 2;
+
+          if (isAlex) {
+            cyl(g, M.darkGrey, 4.5, 4.5, 1.4, 0, dy + dH * 0.28, d / 2 + 0.9, 24).rotation.x = Math.PI / 2;
+          } else {
+            rbox(g, M.metal, Math.min(16, w * 0.25), 1.2, 1.6, 0, dy + dH * 0.25, d / 2 + 1.2, 0.3);
+          }
         }
       } else {
         // ชั้นวางของ KALLAX / BILLY พร้อมหนังสือและของแต่ง
@@ -900,7 +1102,6 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
             const bookMat = M.book[(b + sh) % M.book.length];
 
             const book = rbox(g, bookMat, bThick, bHeight, d * 0.7, curX + bThick / 2, y0 + bHeight / 2, 0, 0.4);
-            // หนังสือเล่มสุดท้ายเอียงพิงธรรมชาติ
             if (b === 5) {
               book.rotation.z = 0.18;
               book.position.x += 1.5;
@@ -908,6 +1109,112 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
             curX += bThick + 0.6;
           }
         }
+      }
+      break;
+    }
+
+    // ==========================================
+    // 15) ของตกแต่งห้อง / อุปกรณ์จัดระเบียบ (Decor, Organizers & Wall Shelves)
+    // ==========================================
+    case "decor": {
+      const isWallShelf =
+        nameLower.includes("ชั้น") ||
+        nameLower.includes("shelf") ||
+        nameLower.includes("burhult") ||
+        nameLower.includes("bergshult") ||
+        nameLower.includes("pershult") ||
+        nameLower.includes("แขวนผนัง") ||
+        nameLower.includes("ติดผนัง");
+
+      const isBox =
+        nameLower.includes("กล่อง") ||
+        nameLower.includes("dröna") ||
+        nameLower.includes("drona") ||
+        nameLower.includes("pärkla") ||
+        nameLower.includes("jäll") ||
+        nameLower.includes("box") ||
+        nameLower.includes("basket") ||
+        nameLower.includes("ถุงใส่ผ้า");
+
+      const isTray =
+        nameLower.includes("ถาด") ||
+        nameLower.includes("komplement") ||
+        nameLower.includes("แผ่นรอง") ||
+        nameLower.includes("ที่แบ่งช่อง") ||
+        nameLower.includes("tray") ||
+        nameLower.includes("divider");
+
+      const isFrame =
+        nameLower.includes("กรอบรูป") ||
+        nameLower.includes("frame") ||
+        nameLower.includes("picture") ||
+        nameLower.includes("art");
+
+      const isWristRest =
+        nameLower.includes("wrist rest") ||
+        nameLower.includes("ที่รองข้อมือ") ||
+        nameLower.includes("palmrest");
+
+      if (isWristRest) {
+        const padW = Math.max(w, 36);
+        const padD = Math.max(d, 8);
+        const padH = Math.min(h, 2.5);
+        rbox(g, M.black, padW, 0.4, padD, 0, 0.2, 0, 0.5);
+        rbox(g, M.fabric, padW - 0.6, padH, padD - 0.6, 0, padH / 2, 0, 1.2);
+      } else if (isWallShelf) {
+        // ชั้นวางของแขวนผนัง (Wall Shelf เช่น BURHULT / PERSHULT)
+        const shelfT = 2.4;
+        rbox(g, woodBody, w, shelfT, d, 0, h - shelfT / 2, 0, 0.6);
+        const bW = 2.4;
+        const bH = Math.min(24, d * 0.8);
+        for (const sx of [-1, 1]) {
+          const bx = sx * (w / 2 - 8);
+          rbox(g, M.darkGrey, bW, bH, 1.2, bx, h - shelfT - bH / 2, -d / 2 + 0.6, 0.3);
+          rbox(g, M.darkGrey, bW, 1.2, d * 0.75, bx, h - shelfT - 0.6, -d / 2 + (d * 0.75) / 2, 0.3);
+          const strut = cyl(g, M.darkGrey, 0.6, 0.6, Math.hypot(bH, d * 0.75), bx, h - shelfT - bH * 0.45, -d / 2 + d * 0.35, 12);
+          strut.rotation.x = Math.atan2(d * 0.75, bH);
+        }
+        cyl(g, M.potCeramic, 3.2, 2.6, 6, -w * 0.25, h + 3, 0, 16);
+        ball(g, M.leaf, 4.2, -w * 0.25, h + 7.5, 0, 0.7);
+        for (let bi = 0; bi < 4; bi++) {
+          const bMat = M.book[bi % M.book.length];
+          rbox(g, bMat, 2.4, 16 - bi * 1.5, d * 0.6, w * 0.15 + bi * 3, h + 8 - bi * 0.75, 0, 0.4);
+        }
+      } else if (isBox) {
+        // กล่องเก็บของ DRÖNA / ตะกร้าผ้า
+        rbox(g, M.fabric, w, h, d, 0, h / 2, 0, 1.4);
+        rbox(g, M.darkGrey, w + 0.4, 1.2, d + 0.4, 0, h - 0.6, 0, 0.4);
+        cyl(g, M.darkGrey, 3.2, 3.2, 1.2, 0, h * 0.72, d / 2 + 0.2, 24).rotation.x = Math.PI / 2;
+      } else if (isTray) {
+        // ถาดแบ่งช่อง KOMPLEMENT สำหรับลิ้นชักหรือโต๊ะ
+        const wallT = 1.0;
+        const baseH = 0.8;
+        rbox(g, mk(it.color, 0.8), w, baseH, d, 0, baseH / 2, 0, 0.4);
+        for (const sx of [-1, 1]) {
+          rbox(g, mk(it.color, 0.8), wallT, h, d, sx * (w / 2 - wallT / 2), h / 2, 0, 0.3);
+          rbox(g, mk(it.color, 0.8), w, h, wallT, 0, h / 2, sx * (d / 2 - wallT / 2), 0.3);
+        }
+        const cols = Math.max(2, Math.min(4, Math.round(w / 18)));
+        const rows = Math.max(2, Math.min(4, Math.round(d / 18)));
+        for (let c = 1; c < cols; c++) {
+          rbox(g, mk(it.color, 0.8), 0.6, h * 0.85, d - wallT * 2, -w / 2 + c * (w / cols), h * 0.45, 0, 0.2);
+        }
+        for (let r = 1; r < rows; r++) {
+          rbox(g, mk(it.color, 0.8), w - wallT * 2, h * 0.85, 0.6, 0, h * 0.45, -d / 2 + r * (d / rows), 0.2);
+        }
+      } else if (isFrame) {
+        // กรอบรูปติดผนัง / ตั้งโต๊ะพร้อมขอบและกระจกใส
+        const frameT = 2.0;
+        const depth = Math.max(2.5, d);
+        rbox(g, M.black, w, h, depth, 0, h / 2, 0, 0.4);
+        rbox(g, M.white, w - frameT * 2, h - frameT * 2, 0.4, 0, h / 2, depth / 2 + 0.1, 0.2);
+        rbox(g, mk(it.color, 0.9), w - frameT * 3.5, h - frameT * 3.5, 0.4, 0, h / 2, depth / 2 + 0.2, 0.2);
+        rbox(g, M.glass, w - frameT * 1.5, h - frameT * 1.5, 0.2, 0, h / 2, depth / 2 + 0.4, 0.1);
+      } else {
+        // ของแต่งห้องมินิมอล (Sculptural Desk Clock / Minimalist Ornament)
+        cyl(g, M.potCeramic, w * 0.38, w * 0.42, h * 0.85, 0, h * 0.45, 0, 24);
+        torus(g, M.gold, w * 0.22, 0.8, 0, h * 0.45, d * 0.42, 0, 0, 0);
+        ball(g, M.chrome, w * 0.12, 0, h * 0.92, 0);
       }
       break;
     }
@@ -965,41 +1272,70 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     }
 
     // ==========================================
-    // 16) โคมไฟตั้งโต๊ะ / โคมไฟพื้น (Architect Desk Lamp & Ambient Lighting)
+    // 16) โคมไฟตั้งโต๊ะ / โคมไฟพื้น (Architect Desk Lamp & Floor Lamp)
     // ==========================================
     case "lighting": {
-      // ฐานเหล็กหล่อทรงกลมถ่วงน้ำหนักพร้อมสวิตช์
-      cyl(g, M.darkGrey, 8.5, 9.5, 2.4, 0, 1.2, 0, 32);
-      cyl(g, M.gold, 1.2, 1.2, 1.5, 4.5, 2.6, 0, 16); // สวิตช์ทองเหลือง
+      const isFloorLamp =
+        h >= 100 ||
+        nameLower.includes("ตั้งพื้น") ||
+        nameLower.includes("floor") ||
+        nameLower.includes("uplight") ||
+        nameLower.includes("barlast") ||
+        nameLower.includes("årstid") ||
+        nameLower.includes("pilskott");
 
-      // ก้านข้อต่อสปริงยืดหด 2 ท่อน (Articulated Spring Arms)
-      const arm1H = h * 0.48;
-      const arm1 = cyl(g, M.chrome, 0.9, 0.9, arm1H, 0, arm1H * 0.5 + 2, 0, 16);
-      arm1.rotation.z = 0.28;
+      if (isFloorLamp) {
+        // โคมไฟตั้งพื้นมินิมอลทรงสูง (BARLAST / ÅRSTID / PILSKOTT)
+        const baseR = Math.max(12, Math.min(18, w * 0.45));
+        cyl(g, M.darkGrey, baseR, baseR * 1.08, 3.2, 0, 1.6, 0, 32);
+        const poleH = h - 35;
+        cyl(g, M.chrome, 1.4, 1.4, poleH, 0, poleH / 2 + 3.2, 0, 20);
+        const shadeR = Math.max(14, Math.min(22, w * 0.42));
+        const shadeH = 28;
+        const shadeY = h - shadeH / 2;
+        cyl(g, M.warmWhite, shadeR, shadeR, shadeH, 0, shadeY, 0, 32);
+        torus(g, M.gold, shadeR, 0.5, 0, shadeY + shadeH / 2, 0, Math.PI / 2, 0, 0);
+        torus(g, M.gold, shadeR, 0.5, 0, shadeY - shadeH / 2, 0, Math.PI / 2, 0, 0);
+        ball(g, night ? M.warmLight : M.white, 3.8, 0, shadeY, 0);
+        if (night) {
+          const floorLight = new THREE.PointLight("#ffedd5", 2.6, 4.5, 1.6);
+          floorLight.position.set(0, shadeY * CM, 0);
+          g.add(floorLight);
+        }
+      } else {
+        // ฐานเหล็กหล่อทรงกลมถ่วงน้ำหนักพร้อมสวิตช์
+        cyl(g, M.darkGrey, 8.5, 9.5, 2.4, 0, 1.2, 0, 32);
+        cyl(g, M.gold, 1.2, 1.2, 1.5, 4.5, 2.6, 0, 16); // สวิตช์ทองเหลือง
 
-      const arm2H = h * 0.42;
-      const arm2 = cyl(g, M.chrome, 0.9, 0.9, arm2H, -7, arm1H + arm2H * 0.4, 0, 16);
-      arm2.rotation.z = -0.58;
+        // ก้านข้อต่อสปริงยืดหด 2 ท่อน (Articulated Spring Arms)
+        const arm1H = h * 0.48;
+        const arm1 = cyl(g, M.chrome, 0.9, 0.9, arm1H, 0, arm1H * 0.5 + 2, 0, 16);
+        arm1.rotation.z = 0.28;
 
-      // สปริงและลูกบิดปรับมุม (Springs & Knuckle Joints)
-      torus(g, M.chrome, 1.6, 0.4, -7, arm1H + 2, 0, 0, Math.PI / 2, 0);
+        const arm2H = h * 0.42;
+        const arm2 = cyl(g, M.chrome, 0.9, 0.9, arm2H, -7, arm1H + arm2H * 0.4, 0, 16);
+        arm2.rotation.z = -0.58;
 
-      // โคมครอบสปันเมทัลทรงกรวย (Spun-Metal Lamp Shade)
-      const shadeX = -15;
-      const shadeY = h * 0.88;
-      const shadeZ = 4;
-      const shade = cyl(g, baseBody, 4.5, 11.5, 14, shadeX, shadeY, shadeZ, 32);
-      shade.rotation.z = 0.65;
-      shade.rotation.x = 0.25;
+        // สปริงและลูกบิดปรับมุม (Springs & Knuckle Joints)
+        torus(g, M.chrome, 1.6, 0.4, -7, arm1H + 2, 0, 0, Math.PI / 2, 0);
 
-      // หลอดไฟ LED แสงอุ่น 2700K Warm Light
-      ball(g, night ? M.warmLight : M.white, 3.2, shadeX - 1.5, shadeY - 3.5, shadeZ + 1.2);
+        // โคมครอบสปันเมทัลทรงกรวย (Spun-Metal Lamp Shade)
+        const shadeX = -15;
+        const shadeY = h * 0.88;
+        const shadeZ = 4;
+        const shade = cyl(g, baseBody, 4.5, 11.5, 14, shadeX, shadeY, shadeZ, 32);
+        shade.rotation.z = 0.65;
+        shade.rotation.x = 0.25;
 
-      if (night) {
-        // แสงไฟโคมไฟส่องสว่างนวลตาในห้อง
-        const lampLight = new THREE.PointLight("#ffedd5", 2.2, 3.2, 1.8);
-        lampLight.position.set(shadeX * CM, (shadeY - 4) * CM, (shadeZ + 2) * CM);
-        g.add(lampLight);
+        // หลอดไฟ LED แสงอุ่น 2700K Warm Light
+        ball(g, night ? M.warmLight : M.white, 3.2, shadeX - 1.5, shadeY - 3.5, shadeZ + 1.2);
+
+        if (night) {
+          // แสงไฟโคมไฟส่องสว่างนวลตาในห้อง
+          const lampLight = new THREE.PointLight("#ffedd5", 2.2, 3.2, 1.8);
+          lampLight.position.set(shadeX * CM, (shadeY - 4) * CM, (shadeZ + 2) * CM);
+          g.add(lampLight);
+        }
       }
       break;
     }
@@ -1040,6 +1376,129 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
       const handleY = h * 0.48;
       cyl(g, M.chrome, 3.2, 3.2, 0.8, handleX, handleY, d * 0.3, 24).rotation.x = Math.PI / 2;
       rbox(g, M.chrome, 12.0, 2.2, 4.5, handleX - 4.5, handleY, d * 0.36, 0.6);
+      break;
+    }
+
+    // ==========================================
+    // 19) กล้องเว็บแคม (Webcam: Logitech Brio / C270 / Razer Kiyo)
+    // ==========================================
+    case "webcam": {
+      const isRingLight = nameLower.includes("kiyo") || nameLower.includes("ring");
+      const isC270 = nameLower.includes("c270");
+
+      rbox(g, M.black, 4.0, 1.2, 6.0, 0, 0.6, 0, 0.4);
+      rbox(g, M.darkGrey, 3.5, 4.0, 1.2, 0, 2.6, -2.5, 0.3);
+      cyl(g, M.metal, 0.8, 0.8, 3.8, 0, 2.0, 0, 16).rotation.z = Math.PI / 2;
+
+      if (isRingLight) {
+        cyl(g, M.black, 4.2, 4.2, 2.8, 0, 6.0, 0, 32).rotation.x = Math.PI / 2;
+        torus(g, M.white, 3.2, 0.6, 0, 6.0, 1.4, 0, 0, 0);
+        cyl(g, M.glass, 1.6, 1.6, 0.6, 0, 6.0, 1.5, 24).rotation.x = Math.PI / 2;
+        ball(g, M.rgbGlow, 0.4, 0, 6.0, 1.6);
+      } else if (isC270) {
+        rbox(g, M.darkGrey, 7.5, 3.2, 3.0, 0, 5.0, 0, 1.2);
+        cyl(g, M.metal, 1.2, 1.2, 0.6, -1.8, 5.0, 1.5, 20).rotation.x = Math.PI / 2;
+        cyl(g, M.glass, 0.8, 0.8, 0.4, -1.8, 5.0, 1.7, 20).rotation.x = Math.PI / 2;
+        cyl(g, M.black, 0.3, 0.3, 0.4, 1.8, 5.0, 1.5, 12).rotation.x = Math.PI / 2;
+        rbox(g, M.leaf2, 0.4, 0.4, 0.2, 0.6, 5.0, 1.5, 0.2);
+      } else {
+        cyl(g, M.black, 2.2, 2.2, 9.5, 0, 5.2, 0, 24).rotation.z = Math.PI / 2;
+        rbox(g, M.glass, 8.8, 3.6, 0.4, 0, 5.2, 2.1, 0.8);
+        cyl(g, M.metal, 1.4, 1.4, 0.8, 0, 5.2, 2.2, 24).rotation.x = Math.PI / 2;
+        cyl(g, M.glass, 0.9, 0.9, 0.4, 0, 5.2, 2.6, 20).rotation.x = Math.PI / 2;
+        ball(g, M.rgbGlow, 0.25, 2.5, 5.2, 2.2);
+      }
+      break;
+    }
+
+    // ==========================================
+    // 20) อุปกรณ์เสริมโต๊ะทำงาน / สตรีมมิ่ง (Desk Accessories & Streaming Gear)
+    // ==========================================
+    case "other": {
+      const isWalkingPad =
+        nameLower.includes("walking pad") ||
+        nameLower.includes("treadmill") ||
+        nameLower.includes("ลู่วิ่ง");
+
+      const isLaptopStand =
+        nameLower.includes("แท่นวางโน้ตบุ๊ก") ||
+        nameLower.includes("ขาตั้งโน้ตบุ๊ก") ||
+        nameLower.includes("laptop stand");
+
+      const isStreamDeck =
+        nameLower.includes("คอนโทรลเลอร์สตรีม") ||
+        nameLower.includes("stream") ||
+        nameLower.includes("lcd");
+
+      const isAudioInterface =
+        nameLower.includes("ออดิโอ") ||
+        nameLower.includes("audio") ||
+        nameLower.includes("interface");
+
+      const isFootrest =
+        nameLower.includes("ที่วางเท้า") ||
+        nameLower.includes("footrest");
+
+      if (isWalkingPad) {
+        rbox(g, M.darkGrey, w, 12, d, 0, 6, 0, 2.5);
+        rbox(g, M.rubber, w * 0.78, 1.2, d * 0.86, 0, 12.2, 0, 0.4);
+        rbox(g, M.black, w * 0.4, 3.5, 8.0, 0, 12.0, -d / 2 + 6, 0.8);
+        rbox(g, M.rgbGlow, w * 0.25, 1.0, 0.2, 0, 13.8, -d / 2 + 7, 0.2);
+        for (const sx of [-1, 1]) {
+          rbox(g, M.metal, 3.0, 2.0, d * 0.9, sx * (w / 2 - 2.5), 12.5, 0, 0.4);
+        }
+      } else if (isLaptopStand) {
+        rbox(g, M.metal, w * 0.85, 0.6, d * 0.8, 0, 0.3, 0, 0.6);
+        for (const sx of [-1, 1]) {
+          const arm = rbox(g, M.metal, 2.4, 0.6, 18, sx * (w * 0.3), 8, -2, 0.3);
+          arm.rotation.x = -0.55;
+        }
+        const plate = rbox(g, M.metal, w, 0.6, d, 0, 15, -1, 0.8);
+        plate.rotation.x = -0.32;
+        for (const sx of [-1, 1]) {
+          rbox(g, M.rubber, 2.5, 1.8, 1.0, sx * (w * 0.32), 15.6, d * 0.38, 0.3);
+        }
+      } else if (isStreamDeck) {
+        const body = rbox(g, M.darkGrey, w, h, d, 0, h / 2, 0, 1.0);
+        body.rotation.x = 0.38;
+        const btnCols = 5;
+        const btnRows = 3;
+        const bW = (w - 5) / btnCols;
+        const bH = (d - 4) / btnRows;
+        for (let r = 0; r < btnRows; r++) {
+          for (let c = 0; c < btnCols; c++) {
+            const bx = -w / 2 + 3.0 + c * bW + bW / 2;
+            const bz = -d / 2 + 2.5 + r * bH + bH / 2;
+            const btn = rbox(g, M.glass, bW * 0.78, 1.2, bH * 0.78, bx, h * 0.6, bz, 0.2);
+            btn.rotation.x = 0.38;
+            const iconMat = (r + c) % 3 === 0 ? M.rgbGlow : (r + c) % 3 === 1 ? M.rgbPurple : M.rgbCoral;
+            const icon = rbox(g, iconMat, bW * 0.55, 0.4, bH * 0.55, bx, h * 0.65, bz, 0.1);
+            icon.rotation.x = 0.38;
+          }
+        }
+      } else if (isAudioInterface) {
+        rbox(g, baseBody, w, h, d, 0, h / 2, 0, 0.8);
+        rbox(g, M.black, w - 0.8, h - 0.8, 0.6, 0, h / 2, d / 2 + 0.3, 0.4);
+        for (let ci = 0; ci < 2; ci++) {
+          const cx = -w / 2 + 4.5 + ci * 6.5;
+          torus(g, M.metal, 1.6, 0.4, cx, h / 2, d / 2 + 0.4, 0, 0, 0);
+          cyl(g, M.black, 1.0, 1.0, 0.6, cx, h / 2, d / 2 + 0.4, 16).rotation.x = Math.PI / 2;
+        }
+        cyl(g, M.chrome, 2.2, 2.2, 1.8, 2.0, h / 2, d / 2 + 0.8, 24).rotation.x = Math.PI / 2;
+        torus(g, M.gold, 1.0, 0.3, w / 2 - 3.5, h / 2, d / 2 + 0.4, 0, 0, 0);
+      } else if (isFootrest) {
+        rbox(g, M.darkGrey, w * 0.88, 3.5, d * 0.88, 0, 1.75, 0, 0.8);
+        const footPlate = rbox(g, M.rubber, w, 2.0, d, 0, 7.5, 0, 1.0);
+        footPlate.rotation.x = -0.26;
+        for (let ri = -3; ri <= 3; ri++) {
+          const rMesh = rbox(g, M.metal, w * 0.75, 0.6, 1.2, 0, 8.6 + ri * 0.8, ri * 4.2, 0.3);
+          rMesh.rotation.x = -0.26;
+        }
+      } else {
+        rbox(g, woodBody, w, h, d, 0, h / 2, 0, 0.8);
+        rbox(g, M.darkGrey, w * 0.8, 0.8, d * 0.3, 0, h - 0.2, -d * 0.2, 0.4);
+        cyl(g, M.gold, 0.6, 0.6, 14, -w * 0.2, h + 6, -d * 0.2, 16).rotation.x = 0.3;
+      }
       break;
     }
 
