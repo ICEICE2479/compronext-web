@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { SEED_PRODUCTS, SEED_ROOMS } from "./seed";
+import { SEED_ROOMS } from "./seed";
 import type {
   CatalogCategoryRecord,
   Product,
@@ -402,21 +402,73 @@ const SEED_ADMIN_ORDERS: AdminWalletOrder[] = [];
 
 const SEED_ADMIN_USERS: AdminClerkKycUser[] = [];
 
+/** ตรวจสอบว่าสินค้ามีแหล่งขายจริง และมีรูปภาพจากผู้จัดจำหน่ายจริง ไม่ใช่ mock หรือรูปเจน */
+export function isAuthenticProduct(p: Product): boolean {
+  if (!p || !p.id || typeof p.id !== "string") return false;
+  if (p.id.startsWith("gear-")) return false;
+  if (p.isSample === true) return false;
+
+  const buy = (p.buyUrl || "").trim();
+  if (!buy.startsWith("http://") && !buy.startsWith("https://")) return false;
+  if (
+    buy.includes("google.com") ||
+    buy.includes("/search") ||
+    buy.includes("keyword=") ||
+    buy.includes("catalog/?q=") ||
+    buy.includes("?q=") ||
+    buy === "#"
+  ) {
+    return false;
+  }
+
+  const isRealMerchantProduct =
+    buy.includes("ikea.com/th/th/p/") ||
+    buy.includes("ihavecpu.com/product/") ||
+    (buy.includes("ihavecpu.com/") && !buy.includes("/search")) ||
+    buy.includes("jib.co.th/web/product/") ||
+    (buy.includes("shopee.co.th/") && !buy.includes("/search")) ||
+    buy.includes("lazada.co.th/products/") ||
+    buy.includes("homepro.co.th/p/") ||
+    buy.includes("indexlivingmall.com/") ||
+    buy.includes("apple.com/th/shop/buy-");
+
+  if (!isRealMerchantProduct) return false;
+
+  const img = (p.imageUrl || (p as unknown as { image?: string }).image || "").trim();
+  if (!img.startsWith("http://") && !img.startsWith("https://")) return false;
+  if (img.includes("images.unsplash.com")) return false;
+  if (img.includes("placeholder") || img.includes("dummy")) return false;
+
+  const isRealCdnImage =
+    img.includes("ikea.com/th/th/images/products/") ||
+    img.includes("ihcupload-bkk.s3.ap-southeast-7.amazonaws.com") ||
+    img.includes("jib.co.th/img_master/product/") ||
+    img.includes("store.storeimages.cdn-apple.com") ||
+    img.includes("assets.corsair.com") ||
+    img.includes("static.gigabyte.com") ||
+    img.includes("resource.logitechg.com") ||
+    img.includes("image.benq.com") ||
+    img.includes("c1.neweggimages.com") ||
+    img.includes("i01.appmifile.com");
+
+  if (!isRealCdnImage) return false;
+  return true;
+}
+
 function buildMergedSeedProducts(): Product[] {
-  const base = structuredClone(SEED_PRODUCTS).map((p, i) => ({
-    ...p,
-    published: p.published ?? true,
-    featured: p.featured ?? i < 6,
-  }));
-  const seen = new Set(base.map((p) => p.id));
-  const extras = getBuilderPartsAsProducts()
-    .filter((b) => !seen.has(b.id))
-    .map((b) => ({
-      ...b,
-      published: true,
-      featured: false,
-    }));
-  return [...base, ...extras];
+  try {
+    for (const f of [DB_FILE, BUNDLED_DB_FILE]) {
+      if (fs.existsSync(/*turbopackIgnore: true*/ f)) {
+        let raw = fs.readFileSync(/*turbopackIgnore: true*/ f, "utf8");
+        if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.products) && parsed.products.length > 0) {
+          return parsed.products.filter(isAuthenticProduct);
+        }
+      }
+    }
+  } catch {}
+  return [];
 }
 
 function createInitialDb(): RuntimeDatabase {
@@ -536,21 +588,8 @@ function getSqlite(): DatabaseSync | null {
 function normalizeRuntimeDb(parsed: Partial<RuntimeDatabase>): RuntimeDatabase {
   const seed = createInitialDb();
 
-  // Merge existing products with SEED_PRODUCTS and builder catalog parts if not yet present
-  let products = Array.isArray(parsed.products) ? parsed.products : seed.products;
-  const seenIds = new Set(products.map((p) => p.id));
-  for (const sp of SEED_PRODUCTS) {
-    if (!seenIds.has(sp.id)) {
-      products.push({ ...sp, published: true, featured: false });
-      seenIds.add(sp.id);
-    }
-  }
-  for (const bp of getBuilderPartsAsProducts()) {
-    if (!seenIds.has(bp.id)) {
-      products.push({ ...bp, published: true, featured: false });
-      seenIds.add(bp.id);
-    }
-  }
+  // กรองเฉพาะสินค้าจริง 100% ที่มีแหล่งขายจริงและรูปสินค้าจริง
+  let products = (Array.isArray(parsed.products) ? parsed.products : seed.products).filter(isAuthenticProduct);
   products = products.map((p) => {
     const category = p.id === "decor-plant-ceramic" ? "fake_plant" : p.category;
     return {
