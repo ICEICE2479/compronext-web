@@ -133,8 +133,8 @@ const CATEGORIES = [
 ];
 
 export function Room3DStudioClient() {
-  // Mode: "blueprint" (2D room plan) or "studio" (3D room)
-  const [mode, setMode] = useState<"blueprint" | "studio">("blueprint");
+  // Mode: "blueprint" (2D room plan) or "studio" (3D room) - defaults to 3D studio for immediate access
+  const [mode, setMode] = useState<"blueprint" | "studio">("studio");
 
   // Doors & Windows
   const [doors, setDoors] = useState<BlueprintDoor[]>([
@@ -175,8 +175,14 @@ export function Room3DStudioClient() {
   const planner3DRef = useRef<RoomPlanner3DHandle>(null);
   const catalogAsideRef = useRef<HTMLElement>(null);
 
-  // Catalog Drawer state
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  // Catalog Drawer state (opens automatically on desktop >= 1024px, collapses on mobile for maximum 3D view)
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+      setDrawerOpen(true);
+    }
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCat, setSelectedCat] = useState("all");
   const [products, setProducts] = useState<FoundProduct[]>([]);
@@ -897,43 +903,85 @@ export function Room3DStudioClient() {
           className={`relative flex flex-col overflow-hidden bg-surface ${
             isFullscreen
               ? "h-full flex-1 rounded-none border-0"
-              : "h-[calc(100dvh-7.75rem)] min-h-[560px] max-h-[680px] rounded-2xl border border-ink-200 shadow-card"
+              : "h-[calc(100dvh-5.5rem)] sm:h-[calc(100dvh-7.75rem)] min-h-[460px] sm:min-h-[560px] max-h-[92vh] sm:max-h-[720px] rounded-2xl border border-ink-200 shadow-card"
           }`}
         >
-          {/* Top 3D Control Bar แบบกะทัดรัด */}
-          <div className="relative z-30 flex flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 border-b border-ink-200 bg-surface/95 px-3 py-2 text-ink-950 shadow-xs backdrop-blur-md">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* 2-Step Mode Switcher Pill */}
-              <div className="inline-flex items-center rounded-lg border border-ink-200 bg-paper p-0.5 text-[11px]">
+                    {/* Top 3D Control Bar: Responsive 2-tier design for Mobile & Desktop */}
+          <div className="relative z-30 flex flex-col border-b border-ink-200 bg-surface/95 text-ink-950 shadow-xs backdrop-blur-md">
+            {/* Tier 1: Main Header (Mode, Dimensions, Price, Cart, Fullscreen) */}
+            <div className="flex items-center justify-between gap-1.5 px-3 py-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                {/* 2-Step Mode Switcher Pill */}
+                <div className="inline-flex shrink-0 items-center rounded-lg border border-ink-200 bg-paper p-0.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setMode("blueprint")}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-ink-700 hover:bg-surface hover:text-info transition"
+                  >
+                    <PenTool className="h-3 w-3" />
+                    <span className="hidden sm:inline">1. แปลน 2D</span>
+                    <span className="sm:hidden">แปลน 2D</span>
+                  </button>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-info px-2 py-0.5 font-bold text-white shadow-xs">
+                    <Box className="h-3 w-3" />
+                    <span className="hidden sm:inline">2. ห้อง 3D</span>
+                    <span className="sm:hidden">ห้อง 3D</span>
+                  </span>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setMode("blueprint")}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-ink-700 hover:bg-surface hover:text-info transition"
+                  onClick={() => setMeasureModalOpen(true)}
+                  title="กดเพื่อกรอกขนาดห้อง หรือวัดขนาดห้องจริงด้วยกล้องมือถือ"
+                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-info/35 bg-info-bg/70 px-2 text-[11px] font-bold text-info hover:bg-info hover:text-white transition"
                 >
-                  <PenTool className="h-3 w-3" />
-                  <span>1. แปลน 2D</span>
+                  <Ruler className="h-3 w-3" />
+                  <span>
+                    {Number((room.w / 100).toFixed(1))}×{Number((room.d / 100).toFixed(1))} ม.
+                  </span>
                 </button>
-                <span className="inline-flex items-center gap-1 rounded-md bg-info px-2 py-0.5 font-bold text-white shadow-xs">
-                  <Box className="h-3 w-3" />
-                  <span>2. ห้อง 3D</span>
-                </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setMeasureModalOpen(true)}
-                title="กดเพื่อกรอกขนาดห้อง หรือวัดขนาดห้องจริงด้วยกล้องมือถือ / นับกระเบื้อง / เทียบ A4 / วาดแปลน"
-                className="inline-flex h-7 items-center gap-1 rounded-lg border border-info/35 bg-info-bg/70 px-2 text-[11px] font-bold text-info hover:bg-info hover:text-white transition"
-              >
-                <Ruler className="h-3 w-3" />
-                <span>
-                  {Number((room.w / 100).toFixed(1))}×{Number((room.d / 100).toFixed(1))} ม.
-                </span>
-              </button>
+              {/* Price, Cart & Fullscreen */}
+              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                <div className="text-right">
+                  <span className="hidden sm:block text-[10px] text-ink-500">รวม ({productCount} ชิ้น)</span>
+                  <span className="font-mono text-xs sm:text-sm font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddSetupToCart}
+                  className="btn btn-primary h-7 sm:h-8 rounded-xl px-2.5 sm:px-3 text-xs font-bold shadow-sm"
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">ใส่ตะกร้า</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "ย่อจอ" : "เต็มจอ"}
+                  className="inline-flex h-7 sm:h-8 items-center gap-1 rounded-xl border border-ink-200 bg-paper px-2 sm:px-2.5 text-xs font-semibold text-ink-800 hover:bg-ink-100 transition-all"
+                >
+                  {isFullscreen ? (
+                    <>
+                      <Minimize2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">ย่อจอ</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">เต็มจอ</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Quick Actions & Toggles (Compact & Grouped) */}
-            <div className="flex flex-wrap items-center gap-1.5">
+            {/* Tier 2: Scrollable Toolbar for All 3D Tools */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-t border-ink-100/70 bg-paper/40 px-3 py-1.5">
+{/* Quick Actions & Toggles (Compact & Grouped) */}
+            
               {/* Sun & Compass Floating Popover Toggle */}
               <div className="relative">
                 <button
@@ -1444,46 +1492,11 @@ export function Room3DStudioClient() {
                 )}
                 <span className="hidden sm:inline">{drawerOpen ? "ซ่อนคลัง" : "คลังสินค้า"}</span>
               </button>
-            </div>
-
-            {/* Total Price, Cart & Fullscreen Toggle */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="text-right">
-                <span className="block text-[10px] text-ink-500">รวม ({productCount} ชิ้น)</span>
-                <span className="font-mono text-sm font-extrabold text-info">{formatTHB(totalRoomPrice)}</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddSetupToCart}
-                className="btn btn-primary h-8 sm:h-9 rounded-xl px-3.5 text-xs font-bold shadow-sm"
-              >
-                <ShoppingBag className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">ใส่ตะกร้าทั้งหมด</span>
-                <span className="sm:hidden">ใส่ตะกร้า</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                title={isFullscreen ? "ย่อออกจากเต็มจอ (กด Esc หรือ F)" : "เปิดเต็มจอนั่งจัดห้อง (กด F)"}
-                className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-ink-200 bg-paper px-3 text-xs font-semibold text-ink-800 hover:bg-ink-100 transition-all"
-              >
-                {isFullscreen ? (
-                  <>
-                    <Minimize2 className="h-3.5 w-3.5" />
-                    <span>ย่อจอ</span>
-                  </>
-                ) : (
-                  <>
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    <span>เต็มจอ</span>
-                  </>
-                )}
-              </button>
+            
             </div>
           </div>
 
-          {/* Main Workspace Split: 3D Viewport (Left/Full) + Collapsible Product Catalog Dock (Right/Bottom) */}
+{/* Main Workspace Split: 3D Viewport (Left/Full) + Collapsible Product Catalog Dock (Right/Bottom) */}
           <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
             {/* 3D Viewport Canvas Container */}
             <div className="relative flex-1 min-h-[260px] lg:min-h-0 h-full w-full bg-slate-950">
@@ -1548,9 +1561,24 @@ export function Room3DStudioClient() {
                 </button>
               )}
 
+              
+              {/* Floating button to open Catalog on mobile when drawer is hidden */}
+              {!drawerOpen && !selectedItem && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-full bg-info px-5 py-2.5 text-xs font-extrabold text-white shadow-pop hover:scale-105 active:scale-95 transition"
+                  >
+                    <PackagePlus className="h-4 w-4" />
+                    <span>+ เลือกสินค้าลงห้อง (2,100+ ชิ้น)</span>
+                  </button>
+                </div>
+              )}
+
               {/* Selected Item Floating Inspector */}
               {selectedItem && (
-                <div className="absolute bottom-4 left-4 z-30 flex max-w-[95%] flex-col gap-2 rounded-2xl border border-white/20 bg-slate-900/92 p-2.5 shadow-2xl backdrop-blur-md text-white">
+                <div className="fixed bottom-3 left-2 right-2 sm:absolute sm:bottom-4 sm:left-4 sm:right-auto sm:max-w-md z-40 flex flex-col gap-2 rounded-2xl border border-white/20 bg-slate-900/95 p-2.5 sm:p-3 shadow-pop backdrop-blur-md text-white">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="flex items-center gap-2 pr-2 border-r border-white/20">
                       <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-info/30 text-xs font-bold text-info">
@@ -1725,11 +1753,23 @@ export function Room3DStudioClient() {
 
             {/* Collapsible Catalog Sidebar / Dock (2,100+ Products) */}
             {drawerOpen && (
-              <aside
-                ref={catalogAsideRef}
-                data-catalog-sidebar="true"
-                className="relative flex h-[210px] lg:h-full lg:w-[270px] xl:w-[290px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface overflow-hidden"
-              >
+                            <>
+                {/* Mobile Backdrop */}
+                <div
+                  className="fixed inset-0 z-40 bg-ink-950/60 backdrop-blur-xs lg:hidden"
+                  onClick={() => setDrawerOpen(false)}
+                  aria-hidden="true"
+                />
+
+                <aside
+                  ref={catalogAsideRef}
+                  data-catalog-sidebar="true"
+                  className="fixed inset-x-0 bottom-0 z-50 flex h-[76vh] max-h-[620px] flex-col rounded-t-3xl border-t border-ink-200 bg-surface shadow-2xl transition-transform animate-in slide-in-from-bottom duration-200 lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-[280px] xl:w-[300px] lg:shrink-0 lg:rounded-none lg:border-t-0 lg:border-l lg:shadow-none overflow-hidden"
+                >
+                  {/* Mobile pull handle */}
+                  <div className="flex items-center justify-center pt-2.5 pb-1 lg:hidden">
+                    <div className="h-1.5 w-12 rounded-full bg-ink-300" />
+                  </div>
                 {/* Drag-to-Delete Drop Zone Overlay directly on Catalog Sidebar */}
                 {dragDeleteState.isDragging && (
                   <div
@@ -1880,6 +1920,7 @@ export function Room3DStudioClient() {
                   )}
                 </div>
               </aside>
+              </>
             )}
           </div>
         </div>

@@ -1075,6 +1075,11 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         }
       }
       if (!d && downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5) propsRef.current.onSelect(null);
+      if (renderer.domElement.hasPointerCapture(e.pointerId)) {
+        try {
+          renderer.domElement.releasePointerCapture(e.pointerId);
+        } catch {}
+      }
       drag = null;
       downAt = null;
       controls.enabled = true;
@@ -1139,7 +1144,12 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
     };
     window.addEventListener("keydown", onDragKeyRotate, true);
-    const onCancelEv = () => {
+    const onCancelEv = (e?: PointerEvent) => {
+      if (e && renderer.domElement.hasPointerCapture(e.pointerId)) {
+        try {
+          renderer.domElement.releasePointerCapture(e.pointerId);
+        } catch {}
+      }
       if (drag) {
         propsRef.current.onDragStateChange?.(false, false, null);
         drag = null;
