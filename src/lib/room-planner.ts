@@ -140,6 +140,12 @@ const COLOR: Record<string, string> = {
   plant_pot: "#a86f4c",
 };
 
+/** สีของชิ้นนี้เป็นสีเดาจากหมวด (ไม่ได้มาจากชื่อสินค้า/ผู้ใช้เลือก) → ใช้สีจริงจากรูปแทนได้ */
+export function isGuessedColor(it: { name: string; category: string; color: string }): boolean {
+  if (detectProductColor(it.name)) return false;
+  return it.color === (COLOR[it.category] ?? "#a8b0ba");
+}
+
 let seq = 0;
 export function newUid(): string {
   seq = (seq + 1) % 1_000_000;
@@ -263,7 +269,11 @@ export function itemFromProduct(p: {
   let itemD = num(p.dimensions?.depth, def[1]);
   let itemH = num(p.dimensions?.height, def[2]);
 
-  if (!p.dimensions?.height) {
+  // ไม่มีขนาดจากร้าน → อ่านจากชื่อสินค้า (จอ 27 นิ้ว / แผ่นรองเมาส์ 450 x 400 mm / พรม 160x230 ซม.)
+  const fromName = real ? null : sizeFromName(p.name, effectiveCategory);
+  if (fromName) {
+    [itemW, itemD, itemH] = fromName;
+  } else if (!p.dimensions?.height) {
     // ปรับความสูงตามฟอร์มแฟคเตอร์เฉพาะ
     if (effectiveCategory === "lighting") {
       if (nameLower.includes("หลอดไฟ") || nameLower.includes("bulb") || nameLower.includes("e14") || nameLower.includes("e27")) {
@@ -316,6 +326,41 @@ export function itemFromProduct(p: {
     price: p.price ?? 0,
     imageUrl: p.imageUrl ?? null,
   };
+}
+
+/**
+ * ขนาดจริงจากชื่อสินค้า (ซม. [กว้าง, ลึก, สูง]) · อ่านไม่ได้ = null
+ * - จอ: ขนาดนิ้ว + สัดส่วน (16:9 / อัลตร้าไวด์ 21:9 / 32:9) → กว้างจอจริง สูงรวมขาตั้ง
+ * - ของแบน/เฟอร์นิเจอร์: “A x B (x C) มม./ซม.”
+ */
+export function sizeFromName(name: string, category: string): [number, number, number] | null {
+  const n = name || "";
+  if (category === "monitor") {
+    const m = n.match(/(?:^|[\s\-(])((?:1[5-9]|[2-5]\d)(?:\.\d)?)\s*(?:"|”|''|นิ้ว|inch\b|in\b|(?=\s*(?:fast\s*)?(?:ips|va|tn|oled|qd-oled|w?oled|nano|fhd|qhd|uhd|wqhd|wfhd|4k|2k|curved|โค้ง)\b))/i);
+    if (!m) return null;
+    const diag = Number(m[1]) * 2.54;
+    const ultra = /32:9|super\s*ultra|dqhd/i.test(n) ? 32 / 9 : /21:9|ultra\s*-?wide|uwqhd|wfhd|3440|2560\s*x\s*1080/i.test(n) || (Number(m[1]) >= 34 && !/4k|uhd/i.test(n)) ? 21 / 9 : 16 / 9;
+    const th = Math.atan(1 / ultra);
+    const pw = diag * Math.cos(th);
+    const ph = diag * Math.sin(th);
+    return [Math.round(pw + 2), 22, Math.round(ph + 16)];
+  }
+  if (!["mousepad", "keyboard_pad", "rug", "desk", "bed", "wardrobe", "storage", "decor"].includes(category)) return null;
+  const m = n.match(/(\d{2,4}(?:\.\d+)?)\s*[x×X*]\s*(\d{2,4}(?:\.\d+)?)(?:\s*[x×X*]\s*(\d{1,4}(?:\.\d+)?))?\s*(มม|mm|ซม|cm|ม\.|m\b)?/i);
+  if (!m) return null;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  const c = m[3] ? Number(m[3]) : null;
+  const unit = (m[4] || "").toLowerCase();
+  const flat = category === "mousepad" || category === "keyboard_pad" || category === "rug";
+  // ไม่บอกหน่วย: แผ่นรองเมาส์เลขหลักร้อย = มม. นอกนั้น = ซม.
+  const k = unit.startsWith("ม") && unit !== "มม" ? 100 : unit === "m" ? 100 : unit === "มม" || unit === "mm" || (!unit && flat && category !== "rug" && Math.max(a, b) >= 150) ? 0.1 : 1;
+  const W = a * k;
+  const D = b * k;
+  if (W < 5 || D < 2 || W > 600 || D > 600) return null;
+  if (flat) return [Math.round(W), Math.round(D), Math.max(0.3, c ? +(c * (unit === "mm" || unit === "มม" || (!unit && k === 0.1) ? 0.1 : k)).toFixed(1) : category === "rug" ? 1.2 : 0.3)];
+  if (c === null) return null;
+  return [Math.round(W), Math.round(D), Math.round(c * k)];
 }
 
 /* ============================================================================

@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.data/img-cache
+*.zip
+.vercel
+tsconfig.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*

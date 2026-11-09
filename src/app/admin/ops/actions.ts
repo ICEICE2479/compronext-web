@@ -229,3 +229,31 @@ export async function hideProducts(form: FormData) {
   await logOps({ kind: "admin", title: `แอดมินซ่อนสินค้า ${n} ชิ้น`, ok: true });
   done();
 }
+
+/** บันทึกคีย์ AI (GEMINI_API_KEY / ANTHROPIC_API_KEY) และโหมดการเจนรูปจากหน้าหลังบ้าน */
+export async function saveAiConfig(form: FormData) {
+  await guard();
+  const db = readDb();
+  const prev = db.aiConfig ?? {};
+  const geminiRaw = String(form.get("geminiApiKey") ?? "").trim();
+  const anthropicRaw = String(form.get("anthropicApiKey") ?? "").trim();
+  const prefRaw = String(form.get("preferredImageProvider") ?? "auto").trim();
+  const clearGemini = form.get("clearGemini") === "1";
+  const clearAnthropic = form.get("clearAnthropic") === "1";
+
+  const preferredImageProvider: "auto" | "gemini" | "cloudflare" =
+    prefRaw === "gemini" || prefRaw === "cloudflare" ? prefRaw : "auto";
+
+  db.aiConfig = {
+    geminiApiKey: clearGemini ? "" : geminiRaw ? geminiRaw : prev.geminiApiKey,
+    anthropicApiKey: clearAnthropic ? "" : anthropicRaw ? anthropicRaw : prev.anthropicApiKey,
+    preferredImageProvider,
+  };
+  writeDb(db);
+  await logOps({
+    kind: "admin",
+    title: `อัปเดตตั้งค่าคีย์ AI (โหมดภาพ: ${preferredImageProvider}, Gemini: ${db.aiConfig.geminiApiKey ? "ตั้งคีย์แล้ว" : "ไม่ได้ตั้ง"})`,
+    ok: true,
+  });
+  done();
+}

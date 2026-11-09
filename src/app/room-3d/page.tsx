@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function Room3DPage() {
   return (
-    <div className="mx-auto w-full max-w-[1720px] px-2 py-2 sm:px-4 sm:py-3">
+    <div className="container-page py-3 sm:py-4">
       <Room3DStudioClient />
     </div>
   );

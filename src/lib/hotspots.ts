@@ -4,27 +4,91 @@ export interface Spot {
   y: number;
 }
 
-// ตำแหน่งที่ของแต่ละหมวดมักอยู่ในภาพห้อง (มุมกล้องระดับสายตา)
+export type LayoutZonePreset = "center" | "window-left" | "window-right" | "bedroom";
+
+// ตำแหน่งที่ของแต่ละหมวดมักอยู่ในภาพห้อง (มุมกล้องระดับสายตา — โซนกลางผนังหลัก)
 const CATEGORY_SPOT: Record<string, Spot> = {
   desk: { x: 50, y: 66 },
-  chair: { x: 36, y: 78 },
-  monitor: { x: 50, y: 44 },
-  monitor_arm: { x: 58, y: 40 },
-  keyboard: { x: 48, y: 60 },
-  mouse: { x: 60, y: 61 },
-  mousepad: { x: 54, y: 63 },
-  speaker: { x: 30, y: 50 },
-  headphone: { x: 66, y: 55 },
-  lighting: { x: 72, y: 28 },
-  storage: { x: 86, y: 56 },
-  wardrobe: { x: 12, y: 42 },
-  bed: { x: 50, y: 72 },
-  rug: { x: 50, y: 90 },
-  decor: { x: 76, y: 50 },
-  fake_plant: { x: 90, y: 70 },
-  real_plant: { x: 90, y: 70 },
-  plant_pot: { x: 88, y: 76 },
+  chair: { x: 46, y: 78 },
+  monitor: { x: 50, y: 45 },
+  monitor_arm: { x: 56, y: 42 },
+  keyboard: { x: 50, y: 60 },
+  mouse: { x: 59, y: 61 },
+  mousepad: { x: 52, y: 62 },
+  speaker: { x: 37, y: 52 },
+  headphone: { x: 64, y: 54 },
+  computer: { x: 65, y: 53 },
+  lighting: { x: 67, y: 44 },
+  storage: { x: 84, y: 56 },
+  wardrobe: { x: 14, y: 44 },
+  bed: { x: 32, y: 72 },
+  rug: { x: 50, y: 88 },
+  decor: { x: 82, y: 48 },
+  fake_plant: { x: 16, y: 68 },
+  real_plant: { x: 16, y: 68 },
+  plant_pot: { x: 16, y: 74 },
 };
+
+const ZONE_SPOT_OVERRIDES: Record<LayoutZonePreset, Partial<Record<string, Spot>>> = {
+  center: {},
+  "window-left": {
+    desk: { x: 38, y: 66 },
+    chair: { x: 42, y: 78 },
+    monitor: { x: 38, y: 45 },
+    monitor_arm: { x: 44, y: 42 },
+    keyboard: { x: 38, y: 60 },
+    mouse: { x: 47, y: 61 },
+    mousepad: { x: 40, y: 62 },
+    speaker: { x: 26, y: 52 },
+    lighting: { x: 53, y: 44 },
+    storage: { x: 78, y: 56 },
+    rug: { x: 40, y: 88 },
+    fake_plant: { x: 88, y: 70 },
+    real_plant: { x: 88, y: 70 },
+  },
+  "window-right": {
+    desk: { x: 62, y: 66 },
+    chair: { x: 58, y: 78 },
+    monitor: { x: 62, y: 45 },
+    monitor_arm: { x: 56, y: 42 },
+    keyboard: { x: 62, y: 60 },
+    mouse: { x: 70, y: 61 },
+    mousepad: { x: 64, y: 62 },
+    speaker: { x: 50, y: 52 },
+    lighting: { x: 47, y: 44 },
+    storage: { x: 22, y: 56 },
+    rug: { x: 60, y: 88 },
+    fake_plant: { x: 12, y: 70 },
+    real_plant: { x: 12, y: 70 },
+  },
+  bedroom: {
+    bed: { x: 32, y: 72 },
+    wardrobe: { x: 12, y: 46 },
+    desk: { x: 72, y: 66 },
+    chair: { x: 68, y: 78 },
+    monitor: { x: 72, y: 46 },
+    keyboard: { x: 72, y: 60 },
+    lighting: { x: 85, y: 45 },
+    storage: { x: 88, y: 58 },
+    rug: { x: 52, y: 88 },
+    fake_plant: { x: 54, y: 66 },
+  },
+};
+
+export function detectLayoutZoneFromPrompt(prompt: string): LayoutZonePreset {
+  if (/ห้องนอน|เตียง|bed/i.test(prompt)) return "bedroom";
+  if (/มุมซ้าย|ฝั่งซ้าย|หน้าต่างซ้าย|ชิดซ้าย|ปลั๊กไฟ.*ซ้าย|เต้ารับ.*ซ้าย/i.test(prompt)) return "window-left";
+  if (/มุมขวา|ฝั่งขวา|หน้าต่างขวา|ชิดขวา|ริมหน้าต่าง|ปลั๊กไฟ.*ขวา|เต้ารับ.*ขวา/i.test(prompt)) return "window-right";
+  return "center";
+}
+
+/** ตรวจจับว่าผู้ใช้ระบุหรือต้องการจัดโต๊ะตามตำแหน่งเต้ารับปลั๊กไฟหรือไม่ */
+export function detectOutletAwareness(prompt: string): { requested: boolean; side: "left" | "right" | "center" } {
+  const requested = /ปลั๊กไฟ|เต้ารับ|outlet|power/i.test(prompt);
+  if (/ซ้าย|left/i.test(prompt) && requested) return { requested: true, side: "left" };
+  if (/ขวา|right/i.test(prompt) && requested) return { requested: true, side: "right" };
+  return { requested, side: "center" };
+}
 
 const clamp = (n: number) => Math.min(92, Math.max(8, Math.round(n)));
 
@@ -71,9 +135,28 @@ export function spreadSpots(list: Spot[], min: Spot = { x: 6.5, y: 9 }): Spot[] 
  * จุดของสินค้าแต่ละชิ้น — ใช้ตำแหน่งจาก AI ถ้ามี ไม่งั้นเดาจากหมวด
  * แล้วขยับจุดที่ซ้อนกันออกจากกันให้แตะได้
  */
-export function placeSpots(items: Array<{ id: string; category: string; spot?: Spot | null }>): Record<string, Spot> {
+export function placeSpots(
+  items: Array<{ id: string; category: string; spot?: Spot | null }>,
+  zoneOrPrompt?: string
+): Record<string, Spot> {
+  const zone: LayoutZonePreset =
+    zoneOrPrompt === "center" ||
+    zoneOrPrompt === "window-left" ||
+    zoneOrPrompt === "window-right" ||
+    zoneOrPrompt === "bedroom"
+      ? zoneOrPrompt
+      : zoneOrPrompt
+        ? detectLayoutZoneFromPrompt(zoneOrPrompt)
+        : items.some((it) => it.category === "bed")
+          ? "bedroom"
+          : "center";
+  const zoneMap = ZONE_SPOT_OVERRIDES[zone] ?? {};
   const base = items.map((it, i) => {
-    const b = it.spot && isSpot(it.spot) ? it.spot : CATEGORY_SPOT[it.category] ?? { x: 20 + ((i * 23) % 60), y: 35 + ((i * 13) % 35) };
+    const b =
+      it.spot && isSpot(it.spot)
+        ? it.spot
+        : zoneMap[it.category] ??
+          CATEGORY_SPOT[it.category] ?? { x: 20 + ((i * 23) % 60), y: 35 + ((i * 13) % 35) };
     return { x: clamp(b.x), y: clamp(b.y) };
   });
   const spread = spreadSpots(base);

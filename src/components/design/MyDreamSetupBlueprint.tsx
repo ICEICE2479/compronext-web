@@ -103,6 +103,7 @@ interface MyDreamSetupBlueprintProps {
   ) => void;
   onProceedTo3D: () => void;
   onCancel?: () => void;
+  onOpenMeasure?: () => void;
 }
 
 const VB_W = 1140;
@@ -181,6 +182,7 @@ export function MyDreamSetupBlueprint({
   onChange,
   onProceedTo3D,
   onCancel,
+  onOpenMeasure,
 }: MyDreamSetupBlueprintProps) {
   // เครื่องมือหลักฝั่งซ้าย: ปากกาวาดห้อง | หน้าต่าง | ประตู
   const [activeTool, setActiveTool] = useState<"pencil" | "window" | "door">("pencil");
@@ -194,6 +196,10 @@ export function MyDreamSetupBlueprint({
   );
   const [polyHistory, setPolyHistory] = useState<BlueprintHistoryItem[]>([]);
   const [isBlankCanvas, setIsBlankCanvas] = useState(false);
+
+  // โหมดมุมมองและการซูม: fit = พอดีห้องอัตโนมัติ (ไม่เล็กไป ไม่ใหญ่เกิน), full = ตารางเต็ม 11×7 เมตร
+  const [viewMode, setViewMode] = useState<"fit" | "full">("fit");
+  const [customZoom, setCustomZoom] = useState<number>(1);
 
   // จุดที่กำลังวาดในโหมดคลิกจุดต่อจุด (Point-to-Point Wall Pen)
   const [draftPointsCm, setDraftPointsCm] = useState<Pt2[]>([]);
@@ -313,6 +319,49 @@ export function MyDreamSetupBlueprint({
 
   const widthCm = normalizedRoom?.widthCm ?? 350;
   const depthCm = normalizedRoom?.depthCm ?? 400;
+
+  // คำนวณ ViewBox สำหรับการแสดงผลให้ห้อง "พอดีจอ" เสมอ ไม่เล็กไป ไม่ใหญ่เกิน
+  const computedViewBox = useMemo(() => {
+    if (viewMode === "full" || isBlankCanvas || canvasPolyCm.length < 3) {
+      return { x: 0, y: 0, w: VB_W, h: VB_H };
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of canvasPolyCm) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+    const [minSx, minSy] = cmToSvg(minX, minZ);
+    const [maxSx, maxSy] = cmToSvg(maxX, maxZ);
+    const roomW = Math.max(80, maxSx - minSx);
+    const roomH = Math.max(80, maxSy - minSy);
+    const centerX = (minSx + maxSx) / 2;
+    const centerY = (minSy + maxSy) / 2;
+
+    // เผื่อขอบข้างให้ตัวเลขบอกขนาดและเครื่องมือลอย
+    const padX = 140;
+    const padY = 95;
+    const neededW = (roomW + padX * 2) / customZoom;
+    const neededH = (roomH + padY * 2) / customZoom;
+
+    const aspect = VB_W / VB_H; // 1140 / 680 = 1.676
+    let w = neededW;
+    let h = neededH;
+    if (w / h < aspect) {
+      w = h * aspect;
+    } else {
+      h = w / aspect;
+    }
+    w = Math.min(Math.max(w, 360), VB_W * 1.3);
+    h = w / aspect;
+    const x = centerX - w / 2;
+    const y = centerY - h / 2;
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  }, [canvasPolyCm, isBlankCanvas, viewMode, customZoom]);
 
   // ย้ายประตู/หน้าต่างให้เกาะผนังที่ใกล้ที่สุดเสมอเมื่อรูปทรงห้องเปลี่ยน
   const reattachOpeningsToPoly = useCallback(
@@ -580,128 +629,156 @@ export function MyDreamSetupBlueprint({
     }
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
-    const sx = ((clientX - rect.left) / rect.width) * VB_W;
-    const sy = ((clientY - rect.top) / rect.height) * VB_H;
+    const sx = ((clientX - rect.left) / rect.width) * computedViewBox.w + computedViewBox.x;
+    const sy = ((clientY - rect.top) / rect.height) * computedViewBox.h + computedViewBox.y;
     const [xCm, zCm] = svgToCm(sx, sy);
     return { sx, sy, xCm, zCm };
-  }, []);
+  }, [computedViewBox]);
+
+  // เริ่มลากปลายกำแพงในห้อง (แยกออกมาจาก JSX: อ่าน ref ตอนกดเมาส์เท่านั้น ไม่อ่านตอน render)
+  const startInteriorEndDrag = useCallback(
+    (e: React.MouseEvent<SVGGElement>) => {
+      const wallId = e.currentTarget.dataset.wall ?? "";
+      const end = e.currentTarget.dataset.end === "2" ? 2 : 1;
+      if (e.button !== 0 || !wallId) return;
+      e.stopPropagation();
+      const pt = clientToSvgAndCm(e.clientX, e.clientY);
+      if (!pt) return;
+      selectInteriorWall(wallId);
+      setPolyHistory((h) => [...h.slice(-19), { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas }]);
+      setHandleDrag({
+        kind: "interior-end",
+        wallId,
+        end,
+        startMouseCm: [pt.xCm, pt.zCm],
+        basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+        baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
+      });
+    },
+    [clientToSvgAndCm, selectInteriorWall, canvasPolyCm, interiorWalls, isBlankCanvas]
+  );
 
   // จัดระเบียบตำแหน่งหน้าต่างและประตูไม่ให้ชิดมุมกำแพง ทะลุกำแพงกั้นในห้อง หรือซ้อนทับกันอัตโนมัติ (ทั้งตอนโหลดห้องเดิมและเมื่อปรับผนัง/กั้นกำแพงใหม่)
-  useEffect(() => {
-    if (isBlankCanvas || canvasPolyCm.length < 3) return;
+  // (ทำตอน render เมื่อรูปห้อง/กำแพงเปลี่ยน แทน useEffect → ไม่ render ซ้ำ 2 รอบ)
+  const [openingsLayout, setOpeningsLayout] = useState<{ poly: typeof canvasPolyCm; walls: typeof interiorWalls; blank: boolean } | null>(null);
+  if (!openingsLayout || openingsLayout.poly !== canvasPolyCm || openingsLayout.walls !== interiorWalls || openingsLayout.blank !== isBlankCanvas) {
+    setOpeningsLayout({ poly: canvasPolyCm, walls: interiorWalls, blank: isBlankCanvas });
+    (() => {
+        if (isBlankCanvas || canvasPolyCm.length < 3) return;
 
-    setWindows((prevWins) => {
-      let changed = false;
-      const placedByEdge = new Map<number, OpeningObstacleRange[]>();
-      const nextWins = prevWins.map((w) => {
-        const edgeIdx =
-          w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length ? w.edgeIndex : 0;
-        const info = getEdgeInfo(canvasPolyCm, edgeIdx);
-        const sibs = placedByEdge.get(edgeIdx) ?? [];
-        const clamped = clampOpeningOnSegment({
-          rawPos: w.pos,
-          desiredWidthCm: w.width,
-          minWidthCm: 55,
-          segX1: info.x1,
-          segZ1: info.z1,
-          segEx: info.ex,
-          segEz: info.ez,
-          segLenCm: info.lengthCm,
-          cornerClearanceCm: 24,
-          interiorWalls,
-          siblingRangesCm: sibs,
-        });
-        if (!clamped) return w;
-        const centerCm = clamped.pos * info.lengthCm;
-        sibs.push({
-          startCm: centerCm - clamped.widthCm / 2 - 14,
-          endCm: centerCm + clamped.widthCm / 2 + 14,
-        });
-        placedByEdge.set(edgeIdx, sibs);
-        if (Math.abs(clamped.pos - w.pos) > 0.001 || clamped.widthCm !== w.width) {
-          changed = true;
-          return { ...w, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
-        }
-        return w;
-      });
-      return changed ? nextWins : prevWins;
-    });
-
-    setDoors((prevDoors) => {
-      let changed = false;
-      const placedByKey = new Map<string, OpeningObstacleRange[]>();
-      const nextDoors = prevDoors.map((d) => {
-        if (d.interiorWallId) {
-          const iw = interiorWalls.find((item) => item.id === d.interiorWallId);
-          if (!iw) return d;
-          const dx = iw.x2 - iw.x1;
-          const dz = iw.z2 - iw.z1;
-          const lenCm = Math.hypot(dx, dz);
-          if (lenCm < 50) return d;
-          const key = `iw:${iw.id}`;
-          const sibs = placedByKey.get(key) ?? [];
-          const clamped = clampOpeningOnSegment({
-            rawPos: d.pos,
-            desiredWidthCm: d.width,
-            minWidthCm: 55,
-            segX1: iw.x1,
-            segZ1: iw.z1,
-            segEx: dx / lenCm,
-            segEz: dz / lenCm,
-            segLenCm: lenCm,
-            cornerClearanceCm: 16,
-            interiorWalls,
-            excludeInteriorWallId: iw.id,
-            siblingRangesCm: sibs,
+        setWindows((prevWins) => {
+          let changed = false;
+          const placedByEdge = new Map<number, OpeningObstacleRange[]>();
+          const nextWins = prevWins.map((w) => {
+            const edgeIdx =
+              w.edgeIndex !== undefined && w.edgeIndex < canvasPolyCm.length ? w.edgeIndex : 0;
+            const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+            const sibs = placedByEdge.get(edgeIdx) ?? [];
+            const clamped = clampOpeningOnSegment({
+              rawPos: w.pos,
+              desiredWidthCm: w.width,
+              minWidthCm: 55,
+              segX1: info.x1,
+              segZ1: info.z1,
+              segEx: info.ex,
+              segEz: info.ez,
+              segLenCm: info.lengthCm,
+              cornerClearanceCm: 24,
+              interiorWalls,
+              siblingRangesCm: sibs,
+            });
+            if (!clamped) return w;
+            const centerCm = clamped.pos * info.lengthCm;
+            sibs.push({
+              startCm: centerCm - clamped.widthCm / 2 - 14,
+              endCm: centerCm + clamped.widthCm / 2 + 14,
+            });
+            placedByEdge.set(edgeIdx, sibs);
+            if (Math.abs(clamped.pos - w.pos) > 0.001 || clamped.widthCm !== w.width) {
+              changed = true;
+              return { ...w, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
+            }
+            return w;
           });
-          if (!clamped) return d;
-          const centerCm = clamped.pos * lenCm;
-          sibs.push({
-            startCm: centerCm - clamped.widthCm / 2 - 12,
-            endCm: centerCm + clamped.widthCm / 2 + 12,
-          });
-          placedByKey.set(key, sibs);
-          if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
-            changed = true;
-            return { ...d, pos: clamped.pos, width: clamped.widthCm };
-          }
-          return d;
-        }
+          return changed ? nextWins : prevWins;
+        });
 
-        const edgeIdx =
-          d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length ? d.edgeIndex : 0;
-        const info = getEdgeInfo(canvasPolyCm, edgeIdx);
-        const key = `edge:${edgeIdx}`;
-        const sibs = placedByKey.get(key) ?? [];
-        const clamped = clampOpeningOnSegment({
-          rawPos: d.pos,
-          desiredWidthCm: d.width,
-          minWidthCm: 55,
-          segX1: info.x1,
-          segZ1: info.z1,
-          segEx: info.ex,
-          segEz: info.ez,
-          segLenCm: info.lengthCm,
-          cornerClearanceCm: 16,
-          interiorWalls,
-          siblingRangesCm: sibs,
+        setDoors((prevDoors) => {
+          let changed = false;
+          const placedByKey = new Map<string, OpeningObstacleRange[]>();
+          const nextDoors = prevDoors.map((d) => {
+            if (d.interiorWallId) {
+              const iw = interiorWalls.find((item) => item.id === d.interiorWallId);
+              if (!iw) return d;
+              const dx = iw.x2 - iw.x1;
+              const dz = iw.z2 - iw.z1;
+              const lenCm = Math.hypot(dx, dz);
+              if (lenCm < 50) return d;
+              const key = `iw:${iw.id}`;
+              const sibs = placedByKey.get(key) ?? [];
+              const clamped = clampOpeningOnSegment({
+                rawPos: d.pos,
+                desiredWidthCm: d.width,
+                minWidthCm: 55,
+                segX1: iw.x1,
+                segZ1: iw.z1,
+                segEx: dx / lenCm,
+                segEz: dz / lenCm,
+                segLenCm: lenCm,
+                cornerClearanceCm: 16,
+                interiorWalls,
+                excludeInteriorWallId: iw.id,
+                siblingRangesCm: sibs,
+              });
+              if (!clamped) return d;
+              const centerCm = clamped.pos * lenCm;
+              sibs.push({
+                startCm: centerCm - clamped.widthCm / 2 - 12,
+                endCm: centerCm + clamped.widthCm / 2 + 12,
+              });
+              placedByKey.set(key, sibs);
+              if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
+                changed = true;
+                return { ...d, pos: clamped.pos, width: clamped.widthCm };
+              }
+              return d;
+            }
+
+            const edgeIdx =
+              d.edgeIndex !== undefined && d.edgeIndex < canvasPolyCm.length ? d.edgeIndex : 0;
+            const info = getEdgeInfo(canvasPolyCm, edgeIdx);
+            const key = `edge:${edgeIdx}`;
+            const sibs = placedByKey.get(key) ?? [];
+            const clamped = clampOpeningOnSegment({
+              rawPos: d.pos,
+              desiredWidthCm: d.width,
+              minWidthCm: 55,
+              segX1: info.x1,
+              segZ1: info.z1,
+              segEx: info.ex,
+              segEz: info.ez,
+              segLenCm: info.lengthCm,
+              cornerClearanceCm: 16,
+              interiorWalls,
+              siblingRangesCm: sibs,
+            });
+            if (!clamped) return d;
+            const centerCm = clamped.pos * info.lengthCm;
+            sibs.push({
+              startCm: centerCm - clamped.widthCm / 2 - 12,
+              endCm: centerCm + clamped.widthCm / 2 + 12,
+            });
+            placedByKey.set(key, sibs);
+            if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
+              changed = true;
+              return { ...d, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
+            }
+            return d;
+          });
+          return changed ? nextDoors : prevDoors;
         });
-        if (!clamped) return d;
-        const centerCm = clamped.pos * info.lengthCm;
-        sibs.push({
-          startCm: centerCm - clamped.widthCm / 2 - 12,
-          endCm: centerCm + clamped.widthCm / 2 + 12,
-        });
-        placedByKey.set(key, sibs);
-        if (Math.abs(clamped.pos - d.pos) > 0.001 || clamped.widthCm !== d.width) {
-          changed = true;
-          return { ...d, edgeIndex: edgeIdx, pos: clamped.pos, width: clamped.widthCm };
-        }
-        return d;
-      });
-      return changed ? nextDoors : prevDoors;
-    });
-  }, [canvasPolyCm, interiorWalls, isBlankCanvas]);
+    })();
+  }
 
   // ค้นหาผนังที่ใกล้ที่สุดพร้อมกันชนมุมกำแพง + กันชนกำแพงกั้นในห้อง + กันซ้อนทับบานอื่น
   const findClosestTargetWall = useCallback(
@@ -1910,39 +1987,45 @@ export function MyDreamSetupBlueprint({
 
   return (
     <div
-      className={`relative flex flex-col overflow-hidden bg-gradient-to-b from-[#2f76eb] to-[#2563eb] select-none w-full text-white ${
+      className={`relative flex flex-col overflow-hidden bg-gradient-to-b from-[#134694] via-[#0f3878] to-[#0a2552] select-none w-full text-white ${
         isFullscreen
           ? "h-full flex-1 rounded-none border-0"
-          : "min-h-[600px] lg:h-[calc(100dvh-5.25rem)] rounded-2xl border border-[#1d4ed8] shadow-xl"
+          : "h-[calc(100dvh-7.75rem)] min-h-[560px] max-h-[680px] rounded-2xl border border-ink-200 shadow-card"
       }`}
       onContextMenu={(e) => {
         e.preventDefault();
         cancelActiveDrawing();
       }}
     >
-      {/* แถบควบคุมหลักเพียงแถวเดียวด้านบน: เรียบ สะอาด จัดหมวดหมู่เป็นระเบียบ */}
-      <div className="relative z-30 flex w-full flex-wrap items-center justify-between gap-2 border-b border-white/15 bg-slate-900/45 px-3.5 py-2 backdrop-blur-md sm:px-5">
-        {/* ฝั่งซ้าย: ชื่อหน้า + ขนาดห้องและเพดานในกล่องเดียว */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-white">
-              <PenTool className="h-3.5 w-3.5" />
+      {/* แถบควบคุมหลักด้านบนแบบกะทัดรัด (เรียงบรรทัดเดียวบนจอคอม ไม่ตกบรรทัด) */}
+      <div className="relative z-30 flex w-full flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 border-b border-ink-200 bg-surface/95 px-3 py-2 text-ink-950 shadow-xs backdrop-blur-md">
+        {/* ฝั่งซ้าย: สวิตช์โหมด 2D/3D + ขนาดห้องและเพดานในกล่องเดียว */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="inline-flex items-center rounded-lg border border-ink-200 bg-paper p-0.5 text-[11px]">
+            <span className="inline-flex items-center gap-1 rounded-md bg-info px-2 py-0.5 font-bold text-white shadow-xs">
+              <PenTool className="h-3 w-3" />
+              <span>1. แปลน 2D</span>
             </span>
-            <h1 className="font-display text-sm font-bold tracking-wide text-white sm:text-base">
-              วาดแปลนห้อง
-            </h1>
+            <button
+              type="button"
+              disabled={isBlankCanvas}
+              onClick={onProceedTo3D}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-ink-700 hover:bg-surface hover:text-info transition disabled:opacity-40"
+            >
+              <span>2. ห้อง 3D</span>
+            </button>
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-slate-950/35 px-3 py-1 text-xs">
-            <span className="font-mono font-semibold text-white">
-              {isBlankCanvas ? "รอวาดห้อง" : `${widthM} × ${depthM} ม.`}
+          <div className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-paper px-2 py-0.5 text-[11px] text-ink-900">
+            <span className="font-mono font-semibold text-ink-950">
+              {isBlankCanvas ? "รอวาดห้อง" : `${widthM}×${depthM} ม.`}
             </span>
             {!isBlankCanvas && (
-              <span className="font-mono font-bold text-amber-300">({areaM2} ตร.ม.)</span>
+              <span className="font-mono font-bold text-info">({areaM2} ตร.ม.)</span>
             )}
-            <span className="text-white/25">|</span>
+            <span className="text-ink-200">|</span>
             <label className="flex items-center gap-1" title="พิมพ์ความสูงเพดานละเอียดระดับ 0.1 เมตร (1.8 - 6.0 ม.)">
-              <span className="text-blue-100 hidden sm:inline">เพดาน</span>
+              <span className="text-ink-600 hidden sm:inline">สูง</span>
               <input
                 type="number"
                 min="1.8"
@@ -1970,18 +2053,18 @@ export function MyDreamSetupBlueprint({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                 }}
-                className="w-11 rounded border border-white/20 bg-white/10 px-1 py-0.5 text-center font-mono text-xs font-bold text-white focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                className="w-11 rounded border border-ink-200 bg-surface px-1 py-0.5 text-center font-mono text-xs font-bold text-info focus:border-info focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-              <span className="text-blue-100">ม.</span>
+              <span className="text-ink-600">ม.</span>
             </label>
           </div>
         </div>
 
-        {/* ตรงกลาง: แถบเครื่องมือย่อยตามสิ่งที่กำลังทำอยู่ (ไม่ซ้อนหลายบรรทัด) */}
+        {/* ตรงกลาง: แถบเครื่องมือย่อยตามสิ่งที่กำลังทำอยู่ */}
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {selectedElement ? (
-            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/25 bg-slate-950/65 px-2.5 py-1 text-white">
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 pr-1.5 border-r border-white/15">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-info/30 bg-info-bg/70 px-2.5 py-1 text-ink-950">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-info pr-1.5 border-r border-info/20">
                 {selectedElement.type === "door" ? (
                   <>
                     <DoorClosed className="h-3.5 w-3.5" /> ประตู
@@ -2002,8 +2085,8 @@ export function MyDreamSetupBlueprint({
                       onClick={() => changeSelectedWidth(w)}
                       className={`rounded-md px-1.5 py-0.5 transition ${
                         (selectedElement.type === "door" ? selectedDoor?.width : selectedWin?.width) === w
-                          ? "bg-amber-400 text-slate-950 font-bold"
-                          : "bg-white/10 hover:bg-white/20"
+                          ? "bg-info text-white font-bold shadow-xs"
+                          : "bg-surface text-ink-700 hover:bg-ink-100"
                       }`}
                     >
                       {w}cm
@@ -2015,7 +2098,7 @@ export function MyDreamSetupBlueprint({
               <button
                 type="button"
                 onClick={moveSelectedToNextWall}
-                className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-2 py-0.5 text-[11px] font-semibold text-ink-800 hover:bg-ink-100"
               >
                 สลับผนัง
               </button>
@@ -2024,7 +2107,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={duplicateSelected}
                 title="คัดลอกเพิ่มอีกบาน"
-                className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white"
+                className="rounded-md bg-surface border border-ink-200 p-1 hover:bg-ink-100 text-ink-800"
               >
                 <Copy className="h-3.5 w-3.5" />
               </button>
@@ -2032,7 +2115,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={deleteSelected}
                 title="ลบออก"
-                className="rounded-md bg-rose-500/90 p-1 hover:bg-rose-500 text-white"
+                className="rounded-md bg-bad p-1 hover:opacity-90 text-white"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -2040,14 +2123,14 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => setSelectedElement(null)}
                 title="ยกเลิกการเลือก"
-                className="rounded-md bg-white/10 p-1 hover:bg-white/20 text-white/80"
+                className="rounded-md bg-surface border border-ink-200 p-1 hover:bg-ink-100 text-ink-600"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : editingWallInfo && editingWallIndex !== null ? (
-            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-300/60 bg-slate-950/75 px-2.5 py-1 text-white shadow-sm">
-              <span className="inline-flex items-center gap-1 border-r border-white/15 pr-2 text-[11px] font-bold text-amber-300">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-info/35 bg-info-bg/80 px-2.5 py-1 text-ink-950 shadow-xs">
+              <span className="inline-flex items-center gap-1 border-r border-info/20 pr-2 text-[11px] font-bold text-info">
                 <Ruler className="h-3.5 w-3.5" />
                 ผนัง #{editingWallIndex + 1} (
                 {degToCardinal((editingWallInfo.outwardBaseDeg + sun.orientationDeg) % 360).cardinal}
@@ -2058,7 +2141,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => nudgeWallLengthMeters(-0.1)}
                 title="ลดความยาวผนัง 0.1 เมตร"
-                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-100"
               >
                 -0.1
               </button>
@@ -2079,16 +2162,16 @@ export function MyDreamSetupBlueprint({
                       setEditingWallIndex(null);
                     }
                   }}
-                  className="w-14 rounded-md border border-amber-300/60 bg-slate-900 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  className="w-14 rounded-md border border-info/50 bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-bold text-info focus:border-info focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
-                <span className="text-[11px] text-slate-300">ม.</span>
+                <span className="text-[11px] text-ink-600">ม.</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => nudgeWallLengthMeters(0.1)}
                 title="เพิ่มความยาวผนัง 0.1 เมตร"
-                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-100"
               >
                 +0.1
               </button>
@@ -2099,7 +2182,7 @@ export function MyDreamSetupBlueprint({
                   const val = parseFloat(wallLenInput);
                   if (Number.isFinite(val)) applyWallLengthMeters(editingWallIndex, val);
                 }}
-                className="inline-flex items-center gap-0.5 rounded-md bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300"
+                className="inline-flex items-center gap-0.5 rounded-md bg-info px-2 py-0.5 text-[11px] font-bold text-white hover:opacity-95"
               >
                 <Check className="h-3 w-3" />
                 ตกลง
@@ -2109,7 +2192,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => {
                   const val = parseFloat(wallLenInput);
-                  let baseLen = canvasPolyCm.length;
+                  const baseLen = canvasPolyCm.length;
                   if (Number.isFinite(val)) {
                     applyWallLengthMeters(editingWallIndex, val);
                   }
@@ -2118,7 +2201,7 @@ export function MyDreamSetupBlueprint({
                   }
                 }}
                 title="ไปแก้ไขผนังด้านถัดไป"
-                className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-2 py-0.5 text-[11px] font-semibold text-ink-800 hover:bg-ink-100"
               >
                 ผนังถัดไป ↻
               </button>
@@ -2127,14 +2210,14 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => setEditingWallIndex(null)}
                 title="ปิดช่องใส่ตัวเลขผนัง"
-                className="rounded-md bg-white/10 p-1 text-white/80 hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 p-1 text-ink-600 hover:bg-ink-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : selectedInteriorWall ? (
-            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-300/60 bg-slate-950/75 px-2.5 py-1 text-white shadow-sm">
-              <span className="inline-flex items-center gap-1 border-r border-white/15 pr-2 text-[11px] font-bold text-amber-300">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-info/35 bg-info-bg/80 px-2.5 py-1 text-ink-950 shadow-xs">
+              <span className="inline-flex items-center gap-1 border-r border-info/20 pr-2 text-[11px] font-bold text-info">
                 <Ruler className="h-3.5 w-3.5" />
                 กำแพงในห้อง
               </span>
@@ -2143,7 +2226,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => nudgeInteriorWallLength(-0.1)}
                 title="ลดความยาวกำแพง 0.1 เมตร"
-                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-100"
               >
                 -0.1
               </button>
@@ -2166,16 +2249,16 @@ export function MyDreamSetupBlueprint({
                       setSelectedInteriorWallId(null);
                     }
                   }}
-                  className="w-14 rounded-md border border-amber-300/60 bg-slate-900 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  className="w-14 rounded-md border border-info/50 bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-bold text-info focus:border-info focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
-                <span className="text-[11px] text-slate-300">ม.</span>
+                <span className="text-[11px] text-ink-600">ม.</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => nudgeInteriorWallLength(0.1)}
                 title="เพิ่มความยาวกำแพง 0.1 เมตร"
-                className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 px-1.5 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-100"
               >
                 +0.1
               </button>
@@ -2188,7 +2271,7 @@ export function MyDreamSetupBlueprint({
                     applyInteriorWallLengthMeters(selectedInteriorWall.id, val);
                   }
                 }}
-                className="inline-flex items-center gap-0.5 rounded-md bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-slate-950 hover:bg-amber-300"
+                className="inline-flex items-center gap-0.5 rounded-md bg-info px-2 py-0.5 text-[11px] font-bold text-white hover:opacity-95"
               >
                 <Check className="h-3 w-3" />
                 ตกลง
@@ -2198,7 +2281,7 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={deleteSelectedInteriorWall}
                 title="ลบกำแพงในห้องนี้"
-                className="rounded-md bg-rose-500/90 p-1 text-white hover:bg-rose-500"
+                className="rounded-md bg-bad p-1 text-white hover:opacity-90"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -2207,14 +2290,14 @@ export function MyDreamSetupBlueprint({
                 type="button"
                 onClick={() => setSelectedInteriorWallId(null)}
                 title="ยกเลิกการเลือก"
-                className="rounded-md bg-white/10 p-1 text-white/80 hover:bg-white/20"
+                className="rounded-md bg-surface border border-ink-200 p-1 text-ink-600 hover:bg-ink-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : activeTool === "pencil" ? (
             <>
-              <div className="inline-flex items-center gap-0.5 rounded-xl border border-white/15 bg-slate-950/40 p-0.5">
+              <div className="inline-flex items-center gap-0.5 rounded-lg border border-ink-200 bg-paper p-0.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -2222,13 +2305,13 @@ export function MyDreamSetupBlueprint({
                     setDraftPointsCm([]);
                   }}
                   title="คลิกลากเพื่อต่อเติมบล็อกห้องสี่เหลี่ยม หรือลากในห้องเพื่อเพิ่มกำแพงกั้น"
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold transition ${
                     penMode === "paint-add"
-                      ? "bg-amber-400 text-slate-950 shadow-sm"
-                      : "text-white/90 hover:bg-white/10"
+                      ? "bg-info text-white shadow-xs"
+                      : "text-ink-700 hover:bg-surface hover:text-ink-950"
                   }`}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-3 w-3" />
                   วาดเพิ่ม
                 </button>
 
@@ -2238,13 +2321,13 @@ export function MyDreamSetupBlueprint({
                     setPenMode("paint-erase");
                     setDraftPointsCm([]);
                   }}
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold transition ${
                     penMode === "paint-erase"
-                      ? "bg-rose-500 text-white shadow-sm"
-                      : "text-white/90 hover:bg-white/10"
+                      ? "bg-bad text-white shadow-xs"
+                      : "text-ink-700 hover:bg-surface hover:text-ink-950"
                   }`}
                 >
-                  <Minus className="h-3.5 w-3.5" />
+                  <Minus className="h-3 w-3" />
                   ตัดเว้า
                 </button>
 
@@ -2254,18 +2337,18 @@ export function MyDreamSetupBlueprint({
                     setPenMode("point-pen");
                     setDraftPointsCm([]);
                   }}
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold transition ${
                     penMode === "point-pen"
-                      ? "bg-emerald-400 text-slate-950 shadow-sm"
-                      : "text-white/90 hover:bg-white/10"
+                      ? "bg-info text-white shadow-xs"
+                      : "text-ink-700 hover:bg-surface hover:text-ink-950"
                   }`}
                 >
-                  <Waypoints className="h-3.5 w-3.5" />
+                  <Waypoints className="h-3 w-3" />
                   วาดเส้น
                 </button>
               </div>
 
-              {/* เมนูทรงห้องสำเร็จรูป (รวมไว้ในปุ่มเดียวไม่ให้รกตา) */}
+              {/* เมนูทรงห้องสำเร็จรูป */}
               <div className="relative">
                 <button
                   type="button"
@@ -2273,18 +2356,20 @@ export function MyDreamSetupBlueprint({
                     setShapeMenuOpen((v) => !v);
                     setSunPanelOpen(false);
                   }}
-                  className={`inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                    shapeMenuOpen ? "bg-white text-slate-900" : "bg-slate-950/35 text-white hover:bg-slate-950/55"
+                  className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] font-semibold transition ${
+                    shapeMenuOpen
+                      ? "border-info bg-info-bg text-info shadow-xs"
+                      : "border-ink-200 bg-paper text-ink-800 hover:bg-ink-100"
                   }`}
                 >
-                  <LayoutGrid className="h-3.5 w-3.5" />
+                  <LayoutGrid className="h-3 w-3 text-info" />
                   <span>ทรงห้อง</span>
                   <ChevronDown className={`h-3 w-3 transition-transform ${shapeMenuOpen ? "rotate-180" : ""}`} />
                 </button>
 
                 {shapeMenuOpen && (
-                  <div className="absolute left-0 top-full mt-1.5 z-50 w-48 rounded-2xl border border-white/20 bg-slate-900/95 p-1.5 text-xs text-white shadow-2xl backdrop-blur-xl">
-                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="absolute left-0 top-full mt-1.5 z-50 w-52 rounded-2xl border border-ink-200 bg-surface p-1.5 text-xs text-ink-900 shadow-pop">
+                    <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-ink-500">
                       เลือกทรงห้องเริ่มต้น
                     </div>
                     {[
@@ -2301,19 +2386,19 @@ export function MyDreamSetupBlueprint({
                           applyQuickShape(p.id as "rect" | "L-left" | "L-right" | "U" | "alcove");
                           setShapeMenuOpen(false);
                         }}
-                        className="flex w-full items-center rounded-xl px-2.5 py-1.5 text-left font-medium text-slate-100 hover:bg-white/10 transition"
+                        className="flex w-full items-center rounded-xl px-2.5 py-1.5 text-left font-medium text-ink-800 hover:bg-info-bg hover:text-info transition"
                       >
                         {p.label}
                       </button>
                     ))}
-                    <div className="my-1 border-t border-white/10" />
+                    <div className="my-1 border-t border-ink-100" />
                     <button
                       type="button"
                       onClick={() => {
                         clearCanvasForFreshDraw();
                         setShapeMenuOpen(false);
                       }}
-                      className="flex w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-left font-semibold text-rose-300 hover:bg-rose-500/20 transition"
+                      className="flex w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-left font-semibold text-bad hover:bg-bad-bg transition"
                     >
                       <Eraser className="h-3.5 w-3.5" />
                       ล้างกระดานวาดใหม่
@@ -2327,10 +2412,10 @@ export function MyDreamSetupBlueprint({
                   type="button"
                   onClick={() => openWallEditor(0)}
                   title="คลิกเพื่อพิมพ์ตัวเลขความยาวผนังแต่ละด้านแบบละเอียด 0.1 เมตร (หรือคลิกที่ป้ายตัวเลขบนผนังโดยตรง)"
-                  className="inline-flex items-center gap-1 rounded-xl border border-white/15 bg-slate-950/35 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-950/55 transition"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-ink-200 bg-paper px-2 text-[11px] font-semibold text-ink-800 hover:bg-ink-100 transition"
                 >
-                  <Ruler className="h-3.5 w-3.5 text-amber-300" />
-                  <span>ใส่ตัวเลขผนัง</span>
+                  <Ruler className="h-3 w-3 text-info" />
+                  <span>แก้เลขผนัง</span>
                 </button>
               )}
 
@@ -2339,7 +2424,7 @@ export function MyDreamSetupBlueprint({
                   type="button"
                   onClick={handleUndoRoomShape}
                   title="ย้อนกลับรูปทรงห้อง"
-                  className="inline-flex items-center gap-1 rounded-xl border border-white/15 bg-slate-950/35 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-950/55"
+                  className="inline-flex items-center gap-1 rounded-xl border border-ink-200 bg-paper px-2.5 py-1.5 text-[11px] font-semibold text-ink-800 hover:bg-ink-100"
                 >
                   <Undo2 className="h-3.5 w-3.5" />
                   <span className="hidden xl:inline">ย้อนกลับ</span>
@@ -2350,7 +2435,7 @@ export function MyDreamSetupBlueprint({
                 <button
                   type="button"
                   onClick={() => finishPointPenPolygon(draftPointsCm, false)}
-                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-2.5 py-1.5 text-[11px] font-bold text-slate-950 shadow hover:bg-amber-300"
+                  className="inline-flex items-center gap-1 rounded-xl bg-info px-2.5 py-1.5 text-[11px] font-bold text-white shadow-xs hover:opacity-95"
                 >
                   <Check className="h-3.5 w-3.5" />
                   สร้างกำแพงในห้อง ({draftPointsCm.length - 1})
@@ -2359,7 +2444,7 @@ export function MyDreamSetupBlueprint({
                 <button
                   type="button"
                   onClick={() => finishPointPenPolygon(draftPointsCm, true)}
-                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                  className="inline-flex items-center gap-1 rounded-xl bg-info px-2.5 py-1.5 text-[11px] font-bold text-white shadow-xs hover:opacity-95"
                 >
                   <Check className="h-3.5 w-3.5" />
                   เชื่อมรวมกับห้องหลัก ({draftPointsCm.length})
@@ -2370,7 +2455,7 @@ export function MyDreamSetupBlueprint({
                   <button
                     type="button"
                     onClick={() => finishPointPenPolygon(draftPointsCm, true)}
-                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow hover:bg-emerald-400"
+                    className="inline-flex items-center gap-1 rounded-xl bg-info px-2.5 py-1.5 text-[11px] font-bold text-white shadow-xs hover:opacity-95"
                   >
                     <Check className="h-3.5 w-3.5" />
                     เชื่อมปิดห้อง ({draftPointsCm.length})
@@ -2383,7 +2468,7 @@ export function MyDreamSetupBlueprint({
                   type="button"
                   onClick={() => cancelActiveDrawing()}
                   title="ยกเลิกและลบเส้นที่กำลังวาด (คลิกขวา หรือปุ่ม Esc)"
-                  className="inline-flex items-center gap-1 rounded-xl border border-rose-300/40 bg-rose-500/80 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-rose-500"
+                  className="inline-flex items-center gap-1 rounded-xl bg-bad px-2.5 py-1.5 text-[11px] font-bold text-white hover:opacity-90"
                 >
                   <X className="h-3.5 w-3.5" />
                   ยกเลิกเส้น (คลิกขวา)
@@ -2391,15 +2476,15 @@ export function MyDreamSetupBlueprint({
               )}
             </>
           ) : (
-            <div className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-950/45 px-3 py-1 text-[11px] font-medium text-blue-100">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-info/30 bg-info-bg/70 px-3 py-1 text-[11px] font-medium text-ink-800">
               {activeTool === "window" ? (
                 <>
-                  <WindowPaneIcon className="h-3.5 w-3.5 text-rose-300 shrink-0" />
+                  <WindowPaneIcon className="h-3.5 w-3.5 text-bad shrink-0" />
                   <span>คลิกบนเส้นผนังเพื่อวางหน้าต่าง หรือลากบานสีแดงเพื่อย้าย</span>
                 </>
               ) : (
                 <>
-                  <DoorClosed className="h-3.5 w-3.5 text-sky-300 shrink-0" />
+                  <DoorClosed className="h-3.5 w-3.5 text-info shrink-0" />
                   <span>คลิกบนเส้นผนังเพื่อวางประตู หรือลากบานสีฟ้าเพื่อย้าย</span>
                 </>
               )}
@@ -2407,8 +2492,19 @@ export function MyDreamSetupBlueprint({
           )}
         </div>
 
-        {/* ฝั่งขวา: ปุ่มทิศและแสงแดด (Popover) + เปิดเต็มจอ + เข้าห้อง 3D */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        {/* ฝั่งขวา: ปุ่มวัดขนาดห้องจริง + ปุ่มทิศและแสงแดด (Popover) + เปิดเต็มจอ + เข้าห้อง 3D */}
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          {onOpenMeasure && (
+            <button
+              type="button"
+              onClick={onOpenMeasure}
+              title="วัดขนาดห้องจริงด้วยกล้องมือถือ / นับกระเบื้อง / เทียบ A4 / วาดแปลน"
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-info/35 bg-info-bg px-2 font-bold text-info shadow-xs hover:bg-info hover:text-white transition"
+            >
+              <Ruler className="h-3 w-3" />
+              <span>วัดห้อง</span>
+            </button>
+          )}
           <div className="relative">
             <button
               type="button"
@@ -2417,33 +2513,30 @@ export function MyDreamSetupBlueprint({
                 setShapeMenuOpen(false);
               }}
               title="ตั้งค่าทิศห้อง เวลาแสงแดด และอุณหภูมิ"
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 font-semibold transition ${
+              className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 font-semibold transition ${
                 sunPanelOpen
-                  ? "border-amber-300 bg-amber-400 text-slate-950 shadow-sm"
-                  : "border-white/20 bg-slate-950/35 text-white hover:bg-slate-950/55"
+                  ? "border-info bg-info-bg text-info shadow-xs"
+                  : "border-ink-200 bg-paper text-ink-800 hover:bg-ink-100"
               }`}
             >
-              <Compass className="h-3.5 w-3.5" />
+              <Compass className="h-3 w-3 text-info" />
               <span className="font-mono">
-                {degToCardinal(sun.orientationDeg).cardinal} {Number(sun.orientationDeg.toFixed(1))}°
+                {degToCardinal(sun.orientationDeg).cardinal} {Number(sun.orientationDeg.toFixed(0))}°
               </span>
-              <span className="opacity-40">·</span>
-              <Sun className="h-3.5 w-3.5 text-amber-300" />
+              <Sun className="h-3 w-3 text-amber-500" />
               <span className="font-mono">{formattedTime}</span>
-              <span className="hidden sm:inline opacity-40">·</span>
-              <span className="hidden sm:inline font-mono">{sunlightAdvice.roomTempC}°C</span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${sunPanelOpen ? "rotate-180" : ""}`} />
+              <ChevronDown className={`h-3 w-3 transition-transform ${sunPanelOpen ? "rotate-180" : ""}`} />
             </button>
 
-            {/* กล่องตั้งค่าทิศ แสงแดด และอุณหภูมิแบบลอย (เปิดเมื่อกดใช้ ไม่รกหน้าจอ) */}
+            {/* กล่องตั้งค่าทิศ แสงแดด และอุณหภูมิแบบลอย (สไตล์เดียวกับ 3D Studio) */}
             {sunPanelOpen && (
-              <div className="absolute right-0 top-full mt-2 z-50 w-[310px] sm:w-[356px] space-y-3 rounded-2xl border border-white/20 bg-slate-900/95 p-4 text-xs text-white shadow-2xl backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                  <span className="font-bold text-sm text-white">ทิศห้อง แสงแดด & อุณหภูมิ</span>
+              <div className="absolute right-0 top-full mt-2 z-50 w-[310px] sm:w-[356px] space-y-3 rounded-2xl border border-ink-200 bg-surface p-4 text-xs text-ink-900 shadow-pop">
+                <div className="flex items-center justify-between border-b border-ink-100 pb-2">
+                  <span className="font-bold text-sm text-ink-950">ทิศห้อง แสงแดด & อุณหภูมิ</span>
                   <button
                     type="button"
                     onClick={() => setSunPanelOpen(false)}
-                    className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                    className="rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-900"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -2452,8 +2545,8 @@ export function MyDreamSetupBlueprint({
                 {/* 1. ทิศห้อง (ละเอียดระดับ 0.1°) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-300">ผนังด้านบนหันทิศ</span>
-                    <span className="font-mono font-bold text-amber-300">
+                    <span className="font-semibold text-ink-600">ผนังด้านบนหันทิศ</span>
+                    <span className="font-mono font-bold text-info">
                       {degToCardinal(sun.orientationDeg).label} ({sun.orientationDeg.toFixed(1)}°)
                     </span>
                   </div>
@@ -2474,8 +2567,8 @@ export function MyDreamSetupBlueprint({
                         onClick={() => setOrientationDeg01(deg)}
                         className={`rounded-lg py-1 text-[11px] font-semibold transition ${
                           Math.abs(((sun.orientationDeg - deg + 540) % 360) - 180) < 22
-                            ? "bg-amber-400 text-slate-950 font-bold"
-                            : "bg-white/10 text-slate-200 hover:bg-white/20"
+                            ? "bg-info text-white font-bold"
+                            : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                         }`}
                       >
                         {label}
@@ -2489,15 +2582,15 @@ export function MyDreamSetupBlueprint({
                     step="0.1"
                     value={sun.orientationDeg}
                     onChange={(e) => setOrientationDeg01(Number(e.target.value))}
-                    className="w-full accent-amber-400"
+                    className="w-full accent-info cursor-pointer"
                   />
                   <div className="flex items-center justify-between gap-2 pt-0.5">
-                    <span className="text-[11px] text-slate-400">พิมพ์องศาละเอียด (0.1°)</span>
+                    <span className="text-[11px] text-ink-500">พิมพ์องศาละเอียด (0.1°)</span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => setOrientationDeg01(sun.orientationDeg - 0.1)}
-                        className="rounded-md bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                        className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-200"
                       >
                         -0.1°
                       </button>
@@ -2515,12 +2608,12 @@ export function MyDreamSetupBlueprint({
                             (e.target as HTMLInputElement).blur();
                           }
                         }}
-                        className="w-16 rounded-md border border-white/20 bg-slate-950 px-1.5 py-0.5 text-center font-mono text-xs font-bold text-amber-300 focus:border-amber-300 focus:outline-none"
+                        className="w-16 rounded-md border border-ink-200 bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-bold text-info focus:border-info focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => setOrientationDeg01(sun.orientationDeg + 0.1)}
-                        className="rounded-md bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold hover:bg-white/20"
+                        className="rounded-md bg-ink-100 px-2 py-0.5 font-mono text-[11px] font-bold text-ink-800 hover:bg-ink-200"
                       >
                         +0.1°
                       </button>
@@ -2529,10 +2622,10 @@ export function MyDreamSetupBlueprint({
                 </div>
 
                 {/* 2. เวลาแสงเข้า */}
-                <div className="space-y-1.5 border-t border-white/10 pt-2.5">
+                <div className="space-y-1.5 border-t border-ink-100 pt-2.5">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-300">ช่วงเวลาแสงแดด</span>
-                    <span className="font-mono font-bold text-amber-300">{formattedTime} น.</span>
+                    <span className="font-semibold text-ink-600">ช่วงเวลาแสงแดด</span>
+                    <span className="font-mono font-bold text-amber-600">{formattedTime} น.</span>
                   </div>
                   <input
                     type="range"
@@ -2541,7 +2634,7 @@ export function MyDreamSetupBlueprint({
                     step="0.25"
                     value={sun.timeHour}
                     onChange={(e) => setSun((prev) => ({ ...prev, timeHour: Number(e.target.value) }))}
-                    className="w-full accent-amber-400"
+                    className="w-full accent-amber-500 cursor-pointer"
                   />
                   <div className="grid grid-cols-5 gap-1">
                     {[
@@ -2557,8 +2650,8 @@ export function MyDreamSetupBlueprint({
                         onClick={() => setSun((prev) => ({ ...prev, timeHour: hour, colorTempK: k }))}
                         className={`rounded-lg py-1 font-mono text-[11px] font-semibold transition ${
                           Math.abs(sun.timeHour - hour) < 0.4
-                            ? "bg-amber-400 text-slate-950 font-bold"
-                            : "bg-white/10 text-slate-200 hover:bg-white/20"
+                            ? "bg-info text-white font-bold"
+                            : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                         }`}
                       >
                         {label}
@@ -2568,10 +2661,10 @@ export function MyDreamSetupBlueprint({
                 </div>
 
                 {/* 3. โทนแสง & อุณหภูมิ */}
-                <div className="space-y-1.5 border-t border-white/10 pt-2.5">
+                <div className="space-y-1.5 border-t border-ink-100 pt-2.5">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-300">โทนสีแสง (Kelvin)</span>
-                    <span className="font-mono font-bold text-sky-300">{sun.colorTempK}K</span>
+                    <span className="font-semibold text-ink-600">โทนสีแสง (Kelvin)</span>
+                    <span className="font-mono font-bold text-ink-900">{sun.colorTempK}K</span>
                   </div>
                   <input
                     type="range"
@@ -2582,20 +2675,20 @@ export function MyDreamSetupBlueprint({
                     onChange={(e) =>
                       setSun((prev) => ({ ...prev, colorTempK: Number(e.target.value) }))
                     }
-                    className="w-full accent-sky-400"
+                    className="w-full accent-info cursor-pointer"
                   />
 
-                  <div className="rounded-xl bg-white/5 p-2.5 text-[11px] space-y-1">
+                  <div className="rounded-xl bg-paper border border-ink-100 p-2.5 text-[11px] space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-slate-300">
-                        <Thermometer className="h-3.5 w-3.5 text-amber-300" />
+                      <span className="inline-flex items-center gap-1 text-ink-600">
+                        <Thermometer className="h-3.5 w-3.5 text-amber-500" />
                         อุณหภูมิห้องโดยประมาณ
                       </span>
-                      <span className="font-mono font-bold text-emerald-300">
+                      <span className="font-mono font-bold text-ink-950">
                         ~{sunlightAdvice.roomTempC}°C (นอก {sunlightAdvice.outdoorTempC}°C)
                       </span>
                     </div>
-                    <p className="text-[11px] text-blue-200/90 leading-snug">
+                    <p className="text-[11px] text-ink-600 leading-snug">
                       {sunlightAdvice.statusText}
                     </p>
                   </div>
@@ -2609,16 +2702,16 @@ export function MyDreamSetupBlueprint({
               type="button"
               onClick={onToggleFullscreen}
               title={isFullscreen ? "ออกจากโหมดเต็มจอ (กด Esc หรือ F)" : "ขยายเต็มจอ (กด F)"}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-slate-950/35 px-3 py-1.5 font-semibold text-white hover:bg-slate-950/55 transition"
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-ink-200 bg-paper px-2 font-semibold text-ink-800 hover:bg-ink-100 transition"
             >
               {isFullscreen ? (
                 <>
-                  <Minimize2 className="h-3.5 w-3.5" />
+                  <Minimize2 className="h-3 w-3" />
                   <span>ย่อจอ</span>
                 </>
               ) : (
                 <>
-                  <Maximize2 className="h-3.5 w-3.5" />
+                  <Maximize2 className="h-3 w-3" />
                   <span>เต็มจอ</span>
                 </>
               )}
@@ -2629,26 +2722,26 @@ export function MyDreamSetupBlueprint({
             type="button"
             disabled={isBlankCanvas}
             onClick={onProceedTo3D}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-1.5 font-bold text-white shadow-sm hover:bg-emerald-400 transition disabled:opacity-40"
+            className="btn btn-primary h-7 rounded-lg px-2.5 text-[11px] font-bold shadow-xs disabled:opacity-40"
           >
-            <span>จัดห้อง 3D</span>
-            <ArrowRight className="h-3.5 w-3.5" />
+            <span>ไป 3D</span>
+            <ArrowRight className="h-3 w-3" />
           </button>
         </div>
       </div>
 
       {/* พื้นที่กระดาษแปลนห้องหลัก */}
       <div className="relative flex flex-1 min-h-0 w-full items-center justify-center overflow-hidden">
-        {/* แถบเครื่องมือหลักฝั่งซ้าย 5 ปุ่ม (เรียบสะอาด ใช้งานง่าย) */}
-        <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 rounded-2xl border border-white/20 bg-slate-900/45 p-2 shadow-xl backdrop-blur-md">
+        {/* แถบเครื่องมือหลักฝั่งซ้าย 5 ปุ่มแบบกะทัดรัด */}
+        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5 rounded-2xl border border-white/25 bg-[#0a192f]/80 p-1.5 shadow-pop backdrop-blur-md">
           {/* 1. ปุ่ม X (รีเซ็ตค่าเริ่มต้น) */}
           <button
             type="button"
             onClick={onCancel || resetBlueprint}
             title="รีเซ็ตแปลนห้องใหม่"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-800 shadow transition-colors hover:bg-slate-100"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-ink-800 shadow transition-colors hover:bg-ink-100"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
 
           {/* 2. ปุ่มปากกาวาดตัวห้อง */}
@@ -2659,13 +2752,13 @@ export function MyDreamSetupBlueprint({
               setSelectedElement(null);
             }}
             title="ปากกาวาดตัวห้อง / ปรับขนาดผนัง"
-            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
+            className={`flex h-8 w-8 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "pencil"
-                ? "bg-slate-950 text-amber-300 ring-2 ring-amber-300"
-                : "bg-white text-slate-800 hover:bg-slate-100"
+                ? "bg-info text-white ring-2 ring-white"
+                : "bg-white text-ink-800 hover:bg-ink-100"
             }`}
           >
-            <PenTool className="h-4 w-4" />
+            <PenTool className="h-3.5 w-3.5" />
           </button>
 
           {/* 3. ปุ่มหน้าต่าง */}
@@ -2678,13 +2771,13 @@ export function MyDreamSetupBlueprint({
               setSelectedInteriorWallId(null);
             }}
             title="วางและขยับหน้าต่าง"
-            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
+            className={`flex h-8 w-8 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "window"
                 ? "bg-rose-500 text-white ring-2 ring-rose-200"
-                : "bg-white text-slate-800 hover:bg-slate-100"
+                : "bg-white text-ink-800 hover:bg-ink-100"
             }`}
           >
-            <WindowPaneIcon className="h-4 w-4" />
+            <WindowPaneIcon className="h-3.5 w-3.5" />
           </button>
 
           {/* 4. ปุ่มประตู */}
@@ -2697,13 +2790,13 @@ export function MyDreamSetupBlueprint({
               setSelectedInteriorWallId(null);
             }}
             title="วางและขยับประตู (วางได้ทั้งผนังนอกและกำแพงในห้อง)"
-            className={`flex h-10 w-10 items-center justify-center rounded-full shadow transition-colors ${
+            className={`flex h-8 w-8 items-center justify-center rounded-full shadow transition-colors ${
               activeTool === "door"
                 ? "bg-sky-400 text-slate-950 ring-2 ring-sky-200"
-                : "bg-white text-slate-800 hover:bg-slate-100"
+                : "bg-white text-ink-800 hover:bg-ink-100"
             }`}
           >
-            <DoorClosed className="h-4 w-4" />
+            <DoorClosed className="h-3.5 w-3.5" />
           </button>
 
           {/* 5. ปุ่มไปต่อ (เข้าสู่ห้อง 3D) */}
@@ -2712,21 +2805,21 @@ export function MyDreamSetupBlueprint({
             disabled={isBlankCanvas}
             onClick={onProceedTo3D}
             title="เข้าสู่ห้อง 3D"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow transition-colors hover:bg-emerald-400 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-info text-white shadow transition-colors hover:opacity-95 disabled:opacity-40"
           >
-            <ArrowRight className="h-5 w-5" />
+            <ArrowRight className="h-4 w-4" />
           </button>
         </div>
 
-        {/* เข็มทิศแบบหมุนได้ 0.1° + ช่องพิมพ์ตัวเลขด้านล่างเข็มทิศโดยตรง (มุมขวาบน) */}
+        {/* เข็มทิศแบบหมุนได้ 0.1° แบบกะทัดรัด (มุมขวาบน) */}
         <div
-          className="absolute right-3 sm:right-4 top-3 z-20 flex flex-col items-center rounded-2xl border border-white/20 bg-slate-900/65 px-2 py-2 shadow-xl backdrop-blur-md"
+          className="absolute right-2.5 top-2.5 z-20 flex flex-col items-center rounded-xl border border-white/20 bg-slate-900/65 px-1.5 py-1.5 shadow-xl backdrop-blur-md"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <svg
             ref={compassDialRef}
             viewBox="0 0 80 80"
-            className="h-[68px] w-[68px] cursor-grab active:cursor-grabbing select-none"
+            className="h-[48px] w-[48px] cursor-grab active:cursor-grabbing select-none"
             onMouseDown={(e) => {
               e.stopPropagation();
               const dialEl = compassDialRef.current;
@@ -2850,18 +2943,80 @@ export function MyDreamSetupBlueprint({
               ? "ลบเส้นที่กำลังวาด"
               : "ล้างผนังห้องเพื่อวาดห้องใหม่"
           }
-          className="absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg hover:bg-rose-50 hover:text-rose-600 transition-colors"
+          className="absolute bottom-3 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-lg hover:bg-rose-50 hover:text-rose-600 transition-colors"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
 
-        {/* กระดาษพิมพ์เขียว SVG (สเกลคงที่ 1 ช่อง = 0.50 ม. ไม่สั่น ไม่เด้ง รองรับเต็มจอทุกความละเอียด) */}
+        {/* แถบควบคุมมุมมองและซูมให้พอดีห้อง (Auto-Fit & Zoom) */}
+        <div className="absolute bottom-3 right-13 z-20 flex items-center gap-1 rounded-full border border-white/20 bg-slate-900/85 px-2 py-1 shadow-lg backdrop-blur-md text-[11px] text-white select-none">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("fit");
+              setCustomZoom(1);
+            }}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold transition-all ${
+              viewMode === "fit" && customZoom === 1
+                ? "bg-sky-500 text-white shadow-xs"
+                : "text-slate-300 hover:text-white hover:bg-white/10"
+            }`}
+            title="ปรับขนาดและมุมมองให้ห้องพอดีจอ ไม่เล็กไป ไม่ใหญ่เกิน"
+          >
+            <Maximize2 className="h-3 w-3" />
+            <span>พอดีจอ</span>
+          </button>
+          <span className="text-white/25">|</span>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("fit");
+              setCustomZoom((z) => Math.max(0.6, Math.round((z - 0.15) * 100) / 100));
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-white/15 text-white font-bold leading-none"
+            title="ซูมออก (-)"
+          >
+            -
+          </button>
+          <span className="font-mono text-[10px] text-sky-300 min-w-[32px] text-center">
+            {Math.round((viewMode === "full" ? 1 : customZoom) * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("fit");
+              setCustomZoom((z) => Math.min(2.5, Math.round((z + 0.15) * 100) / 100));
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-white/15 text-white font-bold leading-none"
+            title="ซูมเข้า (+)"
+          >
+            +
+          </button>
+          <span className="text-white/25">|</span>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("full");
+              setCustomZoom(1);
+            }}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all ${
+              viewMode === "full"
+                ? "bg-white/25 text-white"
+                : "text-slate-400 hover:text-white hover:bg-white/10"
+            }`}
+            title="แสดงตารางทั้งหมด 11×7 เมตร (100%)"
+          >
+            ตารางเต็ม
+          </button>
+        </div>
+
+        {/* กระดาษพิมพ์เขียว SVG (คำนวณ ViewBox ให้ห้องพอดีจอเสมอ ชัดเจน ใช้งานง่าย ไม่เล็กหรือใหญ่ล้น) */}
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${VB_W} ${VB_H}`}
+          viewBox={`${computedViewBox.x} ${computedViewBox.y} ${computedViewBox.w} ${computedViewBox.h}`}
           preserveAspectRatio="xMidYMid meet"
           className={`w-full cursor-crosshair touch-none ${
-            isFullscreen ? "h-full max-h-full" : "h-full min-h-[360px]"
+            isFullscreen ? "h-full max-h-full" : "h-full min-h-[260px]"
           }`}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={(e) => {
@@ -3426,25 +3581,9 @@ export function MyDreamSetupBlueprint({
                         className="cursor-move"
                         onMouseEnter={() => setHoveredHandle(hid)}
                         onMouseLeave={() => setHoveredHandle(null)}
-                        onMouseDown={(e) => {
-                          if (e.button !== 0) return;
-                          e.stopPropagation();
-                          const pt = clientToSvgAndCm(e.clientX, e.clientY);
-                          if (!pt) return;
-                          selectInteriorWall(iw.id);
-                          setPolyHistory((h) => [
-                            ...h.slice(-19),
-                            { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
-                          ]);
-                          setHandleDrag({
-                            kind: "interior-end",
-                            wallId: iw.id,
-                            end,
-                            startMouseCm: [pt.xCm, pt.zCm],
-                            basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
-                            baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
-                          });
-                        }}
+                        data-wall={iw.id}
+                        data-end={end}
+                        onMouseDown={startInteriorEndDrag}
                       >
                         <circle cx={hx} cy={hy} r={14} fill="transparent" />
                         {(isHov || isSel) && (

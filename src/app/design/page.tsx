@@ -25,27 +25,27 @@ export default async function DesignPage({ searchParams }: { searchParams: Promi
       </div>
 
       {/* Blueprint / 3D Room Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 p-4 sm:p-5 dark:border-sky-800/40 dark:from-sky-950/30 dark:via-blue-950/20 dark:to-indigo-950/20">
+      <div className="relative overflow-hidden rounded-2xl border border-info/25 bg-gradient-to-r from-info-bg via-surface to-info-bg p-4 shadow-card sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info text-white shadow-xs">
               <Box className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-ink-950">อยากวาดแปลนห้องและจัดวางสินค้า 3D ด้วยตัวเอง?</span>
-                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">ใหม่</span>
+                <span className="font-semibold text-ink-950">อยากวาดแปลนห้อง 2D และจัดวางสินค้า 3D เต็มจอ?</span>
+                <span className="rounded-full bg-info/15 px-2.5 py-0.5 text-[11px] font-bold text-info">ใหม่ · 3D Studio</span>
               </div>
               <p className="mt-0.5 text-xs sm:text-sm text-ink-600">
-                วาดขนาดห้อง ประตู หน้าต่าง ปรับทิศแสงแดด แล้วหยิบสินค้าทุกชิ้นในร้านมาวางหมุนในห้อง 3D ได้อิสระ
+                วาดแปลนห้อง ประตู หน้าต่าง ปรับทิศแสงแดด 0.1° แล้วหยิบสินค้าจริง 1,612+ ชิ้นมาวางหมุนในห้อง 3D ได้อิสระ
               </p>
             </div>
           </div>
           <Link
             href="/room-3d"
-            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 active:scale-95"
+            className="btn btn-primary h-10 shrink-0 rounded-full px-5 text-xs sm:text-sm font-bold shadow-sm"
           >
-            ไปที่จัดห้อง 3D
+            เปิดสตูดิโอจัดห้อง 3D
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>

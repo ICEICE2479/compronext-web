@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -17,12 +17,14 @@ import {
   type RoomSize,
 } from "@/lib/room-planner";
 import { buildItem, CM, disposeGroup, makeMats } from "./room3d-models";
+import { lookFor, subscribeLooks, withLook } from "./product-look";
 import { calculateSunState, type SunSettings } from "@/lib/sun-simulation";
 
 export interface RoomPlanner3DHandle {
   /** ภาพมุมกล้องปัจจุบัน (ใช้ส่งให้ AI วาดเป็นห้องจริง) + ตำแหน่งของแต่ละชิ้นบนภาพ (%) ไว้วางจุดแตะ */
   snapshot: () => Promise<{ blob: Blob; spots: Record<string, { x: number; y: number }> } | null>;
   resetView: () => void;
+  focusDeskView: () => void;
 }
 
 interface Props {
@@ -370,6 +372,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     selGizmo: SelectionAngleGizmo;
     fit: () => void;
     resetView: () => void;
+    focusDeskView: () => void;
   } | null>(null);
   const propsRef = useRef({
     room,
@@ -469,9 +472,42 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     };
     const resetView = () => {
       const { room: r } = propsRef.current;
+      controls.minDistance = viewDist * 0.35;
+      controls.maxPolarAngle = 1.25;
       const c = new THREE.Vector3((r.w * CM) / 2, (r.h * CM) / 3, (r.d * CM) / 2);
       controls.target.copy(c);
       camera.position.copy(c).addScaledVector(new THREE.Vector3(6, 4.3, 6.4).normalize(), viewDist);
+      controls.update();
+    };
+    const focusDeskView = () => {
+      const { room: r, items: list } = propsRef.current;
+      const desk = list.find((i) => i.category === "desk") ?? list.find((i) => i.category === "monitor") ?? list[0];
+      const chair = list.find((i) => i.category === "chair");
+      controls.minDistance = 0.25;
+      controls.maxPolarAngle = 1.52;
+      if (desk) {
+        const target = new THREE.Vector3(desk.x * CM, 1.02, desk.z * CM);
+        controls.target.copy(target);
+        if (chair) {
+          const dir = new THREE.Vector3(chair.x * CM - target.x, 0, chair.z * CM - target.z);
+          if (dir.lengthSq() < 0.04) dir.set(0, 0, 1);
+          dir.normalize();
+          camera.position.set(
+            target.x + dir.x * 1.15,
+            1.24,
+            target.z + dir.z * 1.15
+          );
+        } else {
+          const rad = (-desk.rot * Math.PI) / 180;
+          const fx = Math.sin(rad);
+          const fz = Math.cos(rad);
+          camera.position.set(target.x + fx * 1.25, 1.24, target.z + fz * 1.25);
+        }
+      } else {
+        const target = new THREE.Vector3((r.w * CM) / 2, 1.05, (r.d * CM) * 0.25);
+        controls.target.copy(target);
+        camera.position.set((r.w * CM) / 2, 1.25, (r.d * CM) * 0.72);
+      }
       controls.update();
     };
 
@@ -580,6 +616,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       selGizmo,
       fit,
       resetView,
+      focusDeskView,
     };
     fit();
     resetView();
@@ -1809,22 +1846,28 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
     a.fit();
   }, [room, night, sunSettings]);
 
+  // หน้าตาจริงจากรูปสินค้า (สี/ลาย) โหลดเสร็จ → สร้างชิ้นนั้นใหม่
+  const [lookVer, setLookVer] = useState(0);
+  useEffect(() => subscribeLooks(() => setLookVer((v) => v + 1)), []);
+
   // ---------- ของในห้อง (สร้างใหม่เฉพาะชิ้นที่ขนาด/หมวด/สีเปลี่ยน) ----------
   useEffect(() => {
     const a = api.current;
     if (!a) return;
     const M = makeMats();
     const seen = new Set<string>();
-    for (const it of items) {
-      seen.add(it.uid);
-      const key = `${it.category}|${it.name || ""}|${it.w}|${it.d}|${it.h}|${it.color}|${night}`;
+    for (const raw of items) {
+      seen.add(raw.uid);
+      const look = lookFor(raw);
+      const it = withLook(raw, look);
+      const key = `${it.category}|${it.name || ""}|${it.w}|${it.d}|${it.h}|${it.color}|${night}|${look?.photo ? 1 : 0}`;
       let rec = a.meshes.get(it.uid);
       if (!rec || rec.key !== key) {
         if (rec) {
           a.itemsRoot.remove(rec.group);
           disposeGroup(rec.group);
         }
-        const group = buildItem(it, M, night);
+        const group = buildItem(it, M, night, look?.photo);
         group.userData.uid = it.uid;
         a.itemsRoot.add(group);
         rec = { group, key };
@@ -1840,7 +1883,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         disposeGroup(rec.group);
         a.meshes.delete(uid);
       }
-  }, [items, night]);
+  }, [items, night, lookVer]);
 
   // ---------- กรอบสีฟ้า + วงแหวนเข็มทิศแสดงองศาสดรอบชิ้นที่เลือก ----------
   useEffect(() => {
@@ -1882,6 +1925,7 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       return blob ? { blob, spots } : null;
     },
     resetView: () => api.current?.resetView(),
+    focusDeskView: () => api.current?.focusDeskView(),
   }));
 
   return <div ref={mountRef} className="h-full w-full cursor-grab active:cursor-grabbing" aria-label="ห้อง 3 มิติ ลากของเพื่อย้าย ลากพื้นที่ว่างเพื่อหมุนมุมมอง" />;

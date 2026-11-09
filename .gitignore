@@ -43,3 +43,4 @@ Claude outputs/
 *.zip
 
 .vercel
+.env*

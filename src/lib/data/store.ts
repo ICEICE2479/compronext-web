@@ -104,6 +104,12 @@ export interface RuntimeDatabase {
   roomPlans: Record<string, RoomPlanRecord[]>;
   /** โควตา AI รายวัน (ใช้เมื่อไม่มี Postgres) key = u:<userId> | ip:<ip> */
   aiUsage?: Record<string, { day: string; count: number }>;
+  /** ตั้งค่าคีย์ AI จากหน้าหลังบ้าน (สลับ FLUX → Gemini 2.5 Flash Image / Claude อัตโนมัติโดยไม่ต้องแก้โค้ด) */
+  aiConfig?: {
+    geminiApiKey?: string;
+    anthropicApiKey?: string;
+    preferredImageProvider?: "auto" | "gemini" | "cloudflare";
+  };
   updatedAt: string;
 }
 
@@ -421,37 +427,12 @@ export function isAuthenticProduct(p: Product): boolean {
     return false;
   }
 
-  const isRealMerchantProduct =
-    buy.includes("ikea.com/th/th/p/") ||
-    buy.includes("ihavecpu.com/product/") ||
-    (buy.includes("ihavecpu.com/") && !buy.includes("/search")) ||
-    buy.includes("jib.co.th/web/product/") ||
-    (buy.includes("shopee.co.th/") && !buy.includes("/search")) ||
-    buy.includes("lazada.co.th/products/") ||
-    buy.includes("homepro.co.th/p/") ||
-    buy.includes("indexlivingmall.com/") ||
-    buy.includes("apple.com/th/shop/buy-");
-
-  if (!isRealMerchantProduct) return false;
-
-  const img = (p.imageUrl || (p as unknown as { image?: string }).image || "").trim();
+  // ไม่ใช้รายชื่อร้าน/CDN แบบตายตัว: สินค้าที่ย้ายรูปมาเก็บเอง (cron สำรองรูป), สินค้าพาร์ตเนอร์
+  // และสินค้าที่แอดมินลงเอง จะโดนลบทิ้งถาวรตอนบันทึกฐานข้อมูล — คัดออกเฉพาะของปลอม/ตัวอย่างที่ชัดเจน
+  const img = (p.sourceImageUrl || p.imageUrl || (p as unknown as { image?: string }).image || "").trim();
   if (!img.startsWith("http://") && !img.startsWith("https://")) return false;
   if (img.includes("images.unsplash.com")) return false;
   if (img.includes("placeholder") || img.includes("dummy")) return false;
-
-  const isRealCdnImage =
-    img.includes("ikea.com/th/th/images/products/") ||
-    img.includes("ihcupload-bkk.s3.ap-southeast-7.amazonaws.com") ||
-    img.includes("jib.co.th/img_master/product/") ||
-    img.includes("store.storeimages.cdn-apple.com") ||
-    img.includes("assets.corsair.com") ||
-    img.includes("static.gigabyte.com") ||
-    img.includes("resource.logitechg.com") ||
-    img.includes("image.benq.com") ||
-    img.includes("c1.neweggimages.com") ||
-    img.includes("i01.appmifile.com");
-
-  if (!isRealCdnImage) return false;
   return true;
 }
 
@@ -687,6 +668,7 @@ function normalizeRuntimeDb(parsed: Partial<RuntimeDatabase>): RuntimeDatabase {
     creditOrders: Array.isArray(parsed.creditOrders) ? parsed.creditOrders : [],
     roomPlans: parsed.roomPlans && typeof parsed.roomPlans === "object" ? parsed.roomPlans : {},
     ...(parsed.aiUsage && typeof parsed.aiUsage === "object" ? { aiUsage: parsed.aiUsage } : {}),
+    ...(parsed.aiConfig && typeof parsed.aiConfig === "object" ? { aiConfig: parsed.aiConfig } : {}),
     updatedAt: parsed.updatedAt ?? new Date().toISOString(),
   };
 }
@@ -787,6 +769,7 @@ function syncToSqlite(data: RuntimeDatabase) {
     upsertKv.run("creditOrders", JSON.stringify(data.creditOrders ?? []), now);
     upsertKv.run("roomPlans", JSON.stringify(data.roomPlans ?? {}), now);
     upsertKv.run("aiUsage", JSON.stringify(data.aiUsage ?? {}), now);
+    upsertKv.run("aiConfig", JSON.stringify(data.aiConfig ?? {}), now);
     upsertKv.run("updatedAt", data.updatedAt, now);
 
     sqlite.exec("COMMIT");
@@ -873,6 +856,7 @@ function readFromSqlite(): RuntimeDatabase | null {
       creditOrders: JSON.parse(kv("creditOrders") ?? "[]") as CreditOrderRecord[],
       roomPlans: JSON.parse(kv("roomPlans") ?? "{}") as RuntimeDatabase["roomPlans"],
       aiUsage: JSON.parse(kv("aiUsage") ?? "{}") as NonNullable<RuntimeDatabase["aiUsage"]>,
+      aiConfig: JSON.parse(kv("aiConfig") ?? "{}") as NonNullable<RuntimeDatabase["aiConfig"]>,
       updatedAt: updatedRow?.value || new Date().toISOString(),
     });
   } catch {
@@ -884,12 +868,12 @@ function readFromSqlite(): RuntimeDatabase | null {
 function readLocalDb(): RuntimeDatabase {
   // 1. Primary: Read from SQLite relational database if populated with complete catalog
   const fromSqlite = readFromSqlite();
-  if (fromSqlite && fromSqlite.products.length >= 1000 && fromSqlite.rooms.length >= 50) {
+  if (fromSqlite && fromSqlite.products.length >= 100 && fromSqlite.rooms.length >= 10) {
     return fromSqlite;
   }
 
-  // 2. Migrate from JSON snapshot if present (runtime or bundled)
-  for (const candidateFile of [BUNDLED_DB_FILE, DB_FILE]) {
+  // 2. Migrate from JSON snapshot if present (runtime DB_FILE first so admin edits persist, then BUNDLED_DB_FILE)
+  for (const candidateFile of [DB_FILE, BUNDLED_DB_FILE]) {
     try {
       if (fs.existsSync(/*turbopackIgnore: true*/ candidateFile)) {
         let raw = fs.readFileSync(/*turbopackIgnore: true*/ candidateFile, "utf8");

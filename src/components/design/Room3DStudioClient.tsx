@@ -27,7 +27,19 @@ import {
   Clock,
   Thermometer,
   ChevronDown,
+  Camera,
+  QrCode,
+  Sparkles,
+  Download,
+  Check,
+  Ruler,
+  Eye,
+  Wand2,
+  FileText,
+  SlidersHorizontal,
+  Zap,
 } from "lucide-react";
+import { RoomSizeInputs } from "./RoomSizeInputs";
 import { toast, openCartDrawer } from "@/lib/toast";
 import Spinner from "@/components/Spinner";
 import { CATEGORY_LABELS, formatTHB } from "@/lib/format";
@@ -35,7 +47,9 @@ import {
   alignItemToNearestWall,
   autoLayout,
   clampToRoom,
+  decodePlan,
   DEFAULT_ROOM,
+  encodePlan,
   findNearestWallForItem,
   getItemAxes,
   itemFromProduct,
@@ -59,6 +73,16 @@ import {
   type SunSettings,
 } from "@/lib/sun-simulation";
 import { getEdgeInfo } from "@/lib/blueprint-geometry";
+import {
+  analyzeErgonomics,
+  AUTO_FURNISH_PRESETS,
+  buildAutoFurnishLayout,
+  estimateRoomPower,
+  generateRoomQrSvg,
+  openPrintableQuotationPdf,
+  renderShareableSetupCard,
+  type AutoFurnishPreset,
+} from "./studio-tools";
 
 const RoomPlanner3D = dynamic(
   () => import("./RoomPlanner3D").then((m) => m.RoomPlanner3D),
@@ -496,7 +520,7 @@ export function Room3DStudioClient() {
         id: it.productId!,
         name: it.name,
         price: it.price,
-        imageUrl: p?.imageUrl || null,
+        imageUrl: p?.imageUrl || it.imageUrl || null,
         buyUrl: p?.buyUrl || `/products/${it.productId}`,
         storeName: p?.storeName || "พาร์ตเนอร์ ComproNext",
         category: it.category,
@@ -591,6 +615,259 @@ export function Room3DStudioClient() {
     });
   };
 
+  // --- 1) โหลดห้อง 3D จากลิงก์แชร์ / QR Code (?setup=... หรือ ?plan=...) หรือจากที่วัดไว้ในเครื่อง (cn-room-plan-v1) ---
+  const [blueprintKey, setBlueprintKey] = useState(0);
+  const [measureModalOpen, setMeasureModalOpen] = useState(false);
+  const [povMode, setPovMode] = useState(false);
+  const [sendingToAi, setSendingToAi] = useState(false);
+  const loadedFromStorageRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const code = sp.get("setup") || sp.get("plan");
+    const wantStudio = sp.get("mode") === "studio" || sp.get("mode") === "3d";
+    const wantMeasure = sp.get("tool") === "measure" || sp.get("tool") === "shape";
+    if (wantMeasure) {
+      setMeasureModalOpen(true);
+    }
+
+    let initialItems: PlanItem[] = [];
+    if (code) {
+      const decoded = decodePlan(code);
+      if (decoded) {
+        setRoom((prev) => ({
+          ...prev,
+          ...decoded.room,
+        }));
+        setBlueprintKey((k) => k + 1);
+        initialItems = decoded.items;
+        setItemsState(decoded.items);
+        setMode("studio");
+        toast("เปิดห้อง 3D จากลิงก์แชร์/QR Code เรียบร้อย! 📱", { tone: "ok" });
+      }
+    } else {
+      try {
+        const raw = window.localStorage.getItem("cn-room-plan-v1");
+        if (raw) {
+          const saved = JSON.parse(raw) as { room?: RoomSize; items?: PlanItem[] };
+          if (saved?.room && typeof saved.room.w === "number") {
+            setRoom((prev) => ({
+              ...prev,
+              ...saved.room,
+            }));
+            setBlueprintKey((k) => k + 1);
+          }
+          if (Array.isArray(saved?.items) && saved.items.length > 0) {
+            initialItems = saved.items;
+            setItemsState(saved.items);
+          }
+        }
+      } catch {
+        // ignore
+      }
+      if (wantStudio) {
+        setMode("studio");
+      }
+    }
+    loadedFromStorageRef.current = true;
+
+    // ดึงรูปสินค้าจริงจากคลังมาเติมให้สิ่งของที่แชร์มาหรือโหลดมาจากเครื่อง
+    fetch("/api/planner/products?limit=150")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { products?: FoundProduct[] } | null) => {
+        if (!data?.products) return;
+        const byId = new Map<string, FoundProduct>();
+        for (const p of data.products) {
+          byId.set(p.id, p);
+          productsMap.current.set(p.id, p);
+        }
+        if (initialItems.length > 0) {
+          setItemsState((curr) =>
+            curr.map((it) => {
+              if (!it.productId || it.imageUrl) return it;
+              const found = byId.get(it.productId);
+              return found?.imageUrl ? { ...it, imageUrl: displayPhotoSrc(found.imageUrl) } : it;
+            })
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // บันทึกขนาดห้องและเฟอร์นิเจอร์ลง cn-room-plan-v1 อัตโนมัติ เพื่อให้เชื่อมกับหน้า /design ตลอดเวลา
+  useEffect(() => {
+    if (!loadedFromStorageRef.current || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "cn-room-plan-v1",
+        JSON.stringify({ room, roomSet: true, items, at: Date.now() })
+      );
+    } catch {
+      // ignore
+    }
+  }, [room, items]);
+
+  const handleApplyMeasuredRoom = useCallback((nextRoom: RoomSize, jumpTo3D?: boolean) => {
+    setRoom((prev) => ({
+      ...prev,
+      ...nextRoom,
+    }));
+    setBlueprintKey((k) => k + 1);
+    setItemsState((prev) => {
+      const cleaned = prev.filter((it) => it.category !== "door");
+      const safe: PlanItem[] = [];
+      for (const it of cleaned) {
+        safe.push(nudgeFree(clampToRoom(it, nextRoom), safe, nextRoom));
+      }
+      return safe;
+    });
+    if (jumpTo3D) {
+      setMeasureModalOpen(false);
+      setMode("studio");
+      toast(
+        `⚡ ปรับห้อง 3D เป็นขนาด ${(nextRoom.w / 100).toFixed(2)}×${(nextRoom.d / 100).toFixed(2)} ม. (สูง ${(nextRoom.h / 100).toFixed(1)} ม.) เรียบร้อย!`,
+        { tone: "ok" }
+      );
+    }
+  }, []);
+
+  const handleTogglePovView = () => {
+    if (!planner3DRef.current) return;
+    if (povMode) {
+      planner3DRef.current.resetView();
+      setPovMode(false);
+      toast("กลับสู่มุมมองภาพรวมทั้งห้อง (Orbit View)");
+    } else {
+      planner3DRef.current.focusDeskView();
+      setPovMode(true);
+      toast("👁️ สลับสู่มุมมองระดับสายตานั่งโต๊ะจริง (POV Desk View)");
+    }
+  };
+
+  const handleSend3DToAiPhoto = async () => {
+    if (!planner3DRef.current) return;
+    setSendingToAi(true);
+    try {
+      const snap = await planner3DRef.current.snapshot();
+      if (!snap?.blob) {
+        toast("ไม่สามารถถ่ายภาพห้อง 3D ได้ในขณะนี้", { tone: "error" });
+        setSendingToAi(false);
+        return;
+      }
+      const dataUrl = await new Promise<string>((resolve) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.readAsDataURL(snap.blob);
+      });
+      const productIds = [...new Set(items.map((i) => i.productId).filter((x): x is string => !!x))];
+      window.sessionStorage.setItem(
+        "cn-3d-to-ai-snapshot",
+        JSON.stringify({
+          dataUrl,
+          productIds,
+          spots: snap.spots,
+          room,
+        })
+      );
+      window.location.href = "/design?from3d=1";
+    } catch {
+      toast("ส่งภาพไปให้ AI ไม่สำเร็จ", { tone: "error" });
+      setSendingToAi(false);
+    }
+  };
+
+  // --- 2) AI 1-Click Auto-Furnish State & Handler ---
+  const [autoFurnishOpen, setAutoFurnishOpen] = useState(false);
+  const [autoFurnishPreset, setAutoFurnishPreset] = useState<AutoFurnishPreset["id"]>("gaming");
+  const [autoFurnishBudget, setAutoFurnishBudget] = useState<string>("38000");
+  const [autoFurnishing, setAutoFurnishing] = useState(false);
+
+  const handleRunAutoFurnish = async (presetId?: AutoFurnishPreset["id"]) => {
+    const targetPreset = presetId ?? autoFurnishPreset;
+    const parsedBudget = Number(autoFurnishBudget.replace(/,/g, "")) || null;
+    setAutoFurnishing(true);
+    try {
+      const res = await buildAutoFurnishLayout(targetPreset, parsedBudget, room);
+      for (const p of res.pickedProducts) {
+        productsMap.current.set(p.id, p);
+      }
+      setItems(() => res.items);
+      setSelectedUid(null);
+      setAutoFurnishOpen(false);
+      toast(
+        `✨ AI จัดวางเฟอร์นิเจอร์ ${res.items.length} ชิ้น (รวม ${formatTHB(res.totalPrice)}) ลงห้อง 3D เรียบร้อย!`,
+        { tone: "ok" }
+      );
+    } catch {
+      toast("จัดวางอัตโนมัติไม่สำเร็จ กรุณาลองใหม่", { tone: "error" });
+    } finally {
+      setAutoFurnishing(false);
+    }
+  };
+
+  // --- 3) แคปภาพห้อง 3D พร้อมรายการราคา (Shareable Setup Card PNG) ---
+  const [capturingCard, setCapturingCard] = useState(false);
+
+  const handleCaptureSetupCard = async () => {
+    if (!planner3DRef.current) return;
+    setCapturingCard(true);
+    try {
+      const snap = await planner3DRef.current.snapshot();
+      if (!snap?.blob) {
+        toast("ไม่สามารถแคปภาพห้อง 3D ได้ในขณะนี้", { tone: "error" });
+        return;
+      }
+      const cardBlob = await renderShareableSetupCard(snap.blob, room, items, totalRoomPrice);
+      const outBlob = cardBlob ?? snap.blob;
+      const url = URL.createObjectURL(outBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ComproNext-3D-Setup-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      toast("📸 บันทึกภาพห้อง 3D พร้อมรายการราคาเรียบร้อย!", { tone: "ok" });
+    } catch {
+      toast("เกิดข้อผิดพลาดในการสร้างการ์ดภาพ", { tone: "error" });
+    } finally {
+      setCapturingCard(false);
+    }
+  };
+
+  // --- 4) แชร์ QR Code ห้อง 3D นี้ให้สแกนดูบนมือถือทันที ---
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrSvg, setQrSvg] = useState<string>("");
+  const [shareUrl, setShareUrl] = useState<string>("");
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [powerModalOpen, setPowerModalOpen] = useState(false);
+
+  const ergonomicReport = useMemo(() => analyzeErgonomics(items, room), [items, room]);
+  const powerEstimate = useMemo(() => estimateRoomPower(items), [items]);
+
+  const handleExportPdf = async () => {
+    setToolsMenuOpen(false);
+    const snap = await planner3DRef.current?.snapshot();
+    await openPrintableQuotationPdf(snap?.blob ?? null, room, items, totalRoomPrice);
+  };
+
+  const handleOpenQrModal = async () => {
+    try {
+      const code = encodePlan(room, items);
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://compronext-web-rho.vercel.app";
+      const url = `${origin}/room-3d?setup=${encodeURIComponent(code)}`;
+      setShareUrl(url);
+      setCopiedLink(false);
+      setQrModalOpen(true);
+      const svg = await generateRoomQrSvg(url);
+      setQrSvg(svg);
+    } catch {
+      toast("ไม่สามารถสร้าง QR Code ได้", { tone: "error" });
+    }
+  };
+
   return (
     <div
       className={
@@ -603,6 +880,7 @@ export function Room3DStudioClient() {
       {mode === "blueprint" ? (
         <div className={isFullscreen ? "flex flex-1 min-h-0 w-full" : "w-full"}>
           <MyDreamSetupBlueprint
+            key={blueprintKey}
             room={room}
             doors={doors}
             windows={windows}
@@ -611,6 +889,7 @@ export function Room3DStudioClient() {
             onToggleFullscreen={toggleFullscreen}
             onChange={handleBlueprintChange}
             onProceedTo3D={handleProceedTo3D}
+            onOpenMeasure={() => setMeasureModalOpen(true)}
           />
         </div>
       ) : (
@@ -618,51 +897,65 @@ export function Room3DStudioClient() {
           className={`relative flex flex-col overflow-hidden bg-surface ${
             isFullscreen
               ? "h-full flex-1 rounded-none border-0"
-              : "h-[calc(100dvh-5.25rem)] min-h-[600px] rounded-2xl border border-ink-200 shadow-xl"
+              : "h-[calc(100dvh-7.75rem)] min-h-[560px] max-h-[680px] rounded-2xl border border-ink-200 shadow-card"
           }`}
         >
-          {/* Top 3D Control Bar */}
-          <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-surface/95 px-3.5 py-2 backdrop-blur-md sm:px-5">
-            <div className="flex items-center gap-2.5">
-              {/* Back to Blueprint Button */}
+          {/* Top 3D Control Bar แบบกะทัดรัด */}
+          <div className="relative z-30 flex flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 border-b border-ink-200 bg-surface/95 px-3 py-2 text-ink-950 shadow-xs backdrop-blur-md">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* 2-Step Mode Switcher Pill */}
+              <div className="inline-flex items-center rounded-lg border border-ink-200 bg-paper p-0.5 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setMode("blueprint")}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-ink-700 hover:bg-surface hover:text-info transition"
+                >
+                  <PenTool className="h-3 w-3" />
+                  <span>1. แปลน 2D</span>
+                </button>
+                <span className="inline-flex items-center gap-1 rounded-md bg-info px-2 py-0.5 font-bold text-white shadow-xs">
+                  <Box className="h-3 w-3" />
+                  <span>2. ห้อง 3D</span>
+                </span>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setMode("blueprint")}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-info/35 bg-info/10 px-3 py-1.5 text-xs font-bold text-info hover:bg-info hover:text-white transition-all"
+                onClick={() => setMeasureModalOpen(true)}
+                title="กดเพื่อกรอกขนาดห้อง หรือวัดขนาดห้องจริงด้วยกล้องมือถือ / นับกระเบื้อง / เทียบ A4 / วาดแปลน"
+                className="inline-flex h-7 items-center gap-1 rounded-lg border border-info/35 bg-info-bg/70 px-2 text-[11px] font-bold text-info hover:bg-info hover:text-white transition"
               >
-                <PenTool className="h-3.5 w-3.5" />
-                แก้แปลนห้อง
+                <Ruler className="h-3 w-3" />
+                <span>
+                  {Number((room.w / 100).toFixed(1))}×{Number((room.d / 100).toFixed(1))} ม.
+                </span>
               </button>
-
-              <span className="text-xs font-medium text-ink-500 hidden md:inline">
-                {Number((room.w / 100).toFixed(2))} × {Number((room.d / 100).toFixed(2))} ม. · สูง{" "}
-                {Number((room.h / 100).toFixed(2))} ม.
-              </span>
             </div>
 
-            {/* Quick Actions & Toggles */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Quick Actions & Toggles (Compact & Grouped) */}
+            <div className="flex flex-wrap items-center gap-1.5">
               {/* Sun & Compass Floating Popover Toggle */}
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setSun3DPanelOpen((v) => !v)}
+                  onClick={() => {
+                    setSun3DPanelOpen((v) => !v);
+                    setAutoFurnishOpen(false);
+                    setToolsMenuOpen(false);
+                  }}
                   title="ปรับทิศห้อง แสงแดด และอุณหภูมิ"
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2.5 text-xs font-semibold transition-colors ${
                     sun3DPanelOpen
-                      ? "bg-amber-400 text-slate-950 shadow-sm"
-                      : "bg-ink-100 text-ink-800 hover:bg-ink-200"
+                      ? "border-info bg-info-bg text-info shadow-xs"
+                      : "border-ink-200 bg-paper text-ink-800 hover:bg-ink-100"
                   }`}
                 >
-                  <Sun className="h-3.5 w-3.5 text-amber-600" />
-                  <span className="font-mono">
-                    {Math.floor(sunSettings.timeHour).toString().padStart(2, "0")}:
-                    {Math.round((sunSettings.timeHour % 1) * 60)
-                      .toString()
-                      .padStart(2, "0")}{" "}
-                    · {degToCardinal(sunSettings.orientationDeg).cardinal}{" "}
-                    {Number(sunSettings.orientationDeg.toFixed(1))}° · ~{sunAnalysis.roomTempC}°C
+                  <Compass className="h-3.5 w-3.5 text-info" />
+                  <span className="font-mono text-[11px]">
+                    {degToCardinal(sunSettings.orientationDeg).cardinal}
                   </span>
+                  <Sun className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="font-mono text-[11px]">~{sunAnalysis.roomTempC}°C</span>
                   <ChevronDown className={`h-3 w-3 transition-transform ${sun3DPanelOpen ? "rotate-180" : ""}`} />
                 </button>
 
@@ -706,7 +999,7 @@ export function Room3DStudioClient() {
                             onClick={() => setStudioOrientation01(deg)}
                             className={`rounded-lg py-1 text-[11px] font-semibold transition ${
                               Math.abs(((sunSettings.orientationDeg - deg + 540) % 360) - 180) < 22
-                                ? "bg-info text-white"
+                                ? "bg-info text-white font-bold"
                                 : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                             }`}
                           >
@@ -830,7 +1123,7 @@ export function Room3DStudioClient() {
                             }
                             className={`rounded-lg py-1 font-mono text-[11px] font-semibold transition ${
                               Math.abs(sunSettings.timeHour - hour) < 0.45
-                                ? "bg-amber-400 text-slate-950 font-bold"
+                                ? "bg-info text-white font-bold"
                                 : "bg-ink-100 text-ink-700 hover:bg-ink-200"
                             }`}
                           >
@@ -859,9 +1152,9 @@ export function Room3DStudioClient() {
                             colorTempK: parseInt(e.target.value, 10),
                           }))
                         }
-                        className="w-full accent-sky-500 cursor-pointer"
+                        className="w-full accent-info cursor-pointer"
                       />
-                      <div className="rounded-xl bg-ink-50 p-2.5 text-[11px] space-y-1">
+                      <div className="rounded-xl bg-paper border border-ink-100 p-2.5 text-[11px] space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="inline-flex items-center gap-1 text-ink-600">
                             <Thermometer className="h-3.5 w-3.5 text-amber-500" /> อุณหภูมิห้อง
@@ -887,17 +1180,16 @@ export function Room3DStudioClient() {
                   }));
                 }}
                 title={night ? "สลับเป็นโหมดกลางวัน" : "สลับเป็นโหมดกลางคืน (ไฟ RGB)"}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2 text-xs font-semibold transition-colors ${
                   night
-                    ? "bg-purple-900/60 text-purple-200 border border-purple-500/30"
-                    : "bg-amber-100 text-amber-800 border border-amber-300/40"
+                    ? "bg-[#0a192f] text-white border-[#0a192f]"
+                    : "bg-paper text-ink-800 border-ink-200 hover:bg-ink-100"
                 }`}
               >
-                {night ? <Moon className="h-3.5 w-3.5 text-purple-400" /> : <Sun className="h-3.5 w-3.5 text-amber-600" />}
-                <span className="hidden sm:inline">{night ? "กลางคืน" : "กลางวัน"}</span>
+                {night ? <Moon className="h-3.5 w-3.5 text-sky-300" /> : <Sun className="h-3.5 w-3.5 text-amber-500" />}
               </button>
 
-              {/* Undo Button */}
+              {/* Undo & Reset Camera */}
               <button
                 type="button"
                 disabled={!canUndo}
@@ -905,28 +1197,244 @@ export function Room3DStudioClient() {
                 title="ย้อนกลับ"
                 className="icon-btn h-8 w-8 disabled:opacity-40"
               >
-                <Undo2 className="h-4 w-4" />
+                <Undo2 className="h-3.5 w-3.5" />
               </button>
-
-              {/* Reset Camera */}
               <button
                 type="button"
-                onClick={() => planner3DRef.current?.resetView()}
+                onClick={() => {
+                  planner3DRef.current?.resetView();
+                  setPovMode(false);
+                }}
                 title="รีเซ็ตมุมกล้อง 3D"
                 className="icon-btn h-8 w-8"
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw className="h-3.5 w-3.5" />
               </button>
+
+              {/* POV Seated Desk View Toggle */}
+              <button
+                type="button"
+                onClick={handleTogglePovView}
+                title="สลับมุมมองระดับสายตาคนนั่งเก้าอี้หน้าโต๊ะคอมจริง + เช็กระยะสายตา (POV)"
+                className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2.5 text-xs font-bold transition-all ${
+                  povMode
+                    ? "border-info bg-info text-white shadow-xs"
+                    : "border-ink-200 bg-paper text-ink-800 hover:bg-ink-100"
+                }`}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>{povMode ? "ออก POV" : "POV นั่งโต๊ะ"}</span>
+              </button>
+
+              {/* 1-Click AI Auto-Furnish Popover */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoFurnishOpen((v) => !v);
+                    setSun3DPanelOpen(false);
+                    setToolsMenuOpen(false);
+                  }}
+                  title="ให้ AI เลือกและจัดวางเฟอร์นิเจอร์ลงห้อง 3D ให้อัตโนมัติตามงบ"
+                  className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2.5 text-xs font-bold transition-all ${
+                    autoFurnishOpen
+                      ? "border-info bg-info text-white shadow-sm"
+                      : "border-info/35 bg-info-bg text-info hover:bg-info hover:text-white"
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>AI จัดให้</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${autoFurnishOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {autoFurnishOpen && (
+                  <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 z-50 w-[300px] sm:w-[340px] space-y-2.5 rounded-2xl border border-ink-200 bg-surface p-3.5 text-xs text-ink-900 shadow-pop">
+                    <div className="flex items-center justify-between border-b border-ink-100 pb-2">
+                      <div>
+                        <p className="font-display text-xs font-bold text-ink-950 flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-info" /> AI จัดวางของลงห้อง 3D อัตโนมัติ
+                        </p>
+                        <p className="text-[10px] text-ink-600">
+                          เลือกสไตล์และงบ ระบบจะดึงสินค้าจริงมาวางให้ทันที
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAutoFurnishOpen(false)}
+                        className="rounded-lg p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-900"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      {AUTO_FURNISH_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setAutoFurnishPreset(p.id);
+                            setAutoFurnishBudget(String(p.defaultBudget));
+                          }}
+                          className={`flex w-full flex-col rounded-xl border p-2 text-left transition ${
+                            autoFurnishPreset === p.id
+                              ? "border-info bg-info-bg/70 shadow-xs"
+                              : "border-ink-200 bg-surface hover:bg-paper"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-ink-950">{p.label}</span>
+                            <span className="font-mono text-[11px] font-bold text-info">
+                              ~{formatTHB(p.defaultBudget)}
+                            </span>
+                          </div>
+                          <span className="mt-0.5 text-[10px] text-ink-600">{p.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 border-t border-ink-100 pt-2">
+                      <label className="flex-1 space-y-0.5">
+                        <span className="block text-[10px] font-semibold text-ink-700">งบรวม (บาท)</span>
+                        <input
+                          type="number"
+                          min={5000}
+                          max={300000}
+                          step={1000}
+                          value={autoFurnishBudget}
+                          onChange={(e) => setAutoFurnishBudget(e.target.value)}
+                          className="input h-8 w-full font-mono text-xs font-bold text-info"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={autoFurnishing}
+                        onClick={() => handleRunAutoFurnish()}
+                        className="btn btn-primary mt-3.5 h-8 rounded-xl px-3.5 text-xs font-bold shadow-sm disabled:opacity-50"
+                      >
+                        {autoFurnishing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        <span>จัดลงห้อง</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Grouped Tools & Export Popover (รวมเครื่องมือไว้ในปุ่มเดียว ไม่รกจอ) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToolsMenuOpen((v) => !v);
+                    setAutoFurnishOpen(false);
+                    setSun3DPanelOpen(false);
+                  }}
+                  className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2.5 text-xs font-bold transition-colors ${
+                    toolsMenuOpen
+                      ? "border-ink-900 bg-ink-900 text-white"
+                      : "border-ink-200 bg-paper text-ink-800 hover:bg-ink-100"
+                  }`}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span>เครื่องมือ & ส่งออก</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${toolsMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {toolsMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 z-50 w-64 space-y-1 rounded-2xl border border-ink-200 bg-surface p-2 text-xs text-ink-900 shadow-pop">
+                    <button
+                      type="button"
+                      disabled={sendingToAi || items.length === 0}
+                      onClick={() => {
+                        setToolsMenuOpen(false);
+                        void handleSend3DToAiPhoto();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-bold text-info hover:bg-info-bg/70 disabled:opacity-40"
+                    >
+                      <Wand2 className="h-4 w-4 shrink-0" />
+                      <div>
+                        <span className="block">✨ ให้ AI วาดเป็นภาพห้องจริง</span>
+                        <span className="text-[10px] font-normal text-ink-500">แปลงห้อง 3D นี้เป็นภาพถ่ายสมจริง</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={items.length === 0}
+                      onClick={handleExportPdf}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-ink-800 hover:bg-ink-100 disabled:opacity-40"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-info" />
+                      <div>
+                        <span className="block">📄 พิมพ์ใบเสนอราคา & แปลน PDF</span>
+                        <span className="text-[10px] font-normal text-ink-500">แปลน 2D + ภาพ 3D + ตารางราคา A4</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={capturingCard}
+                      onClick={() => {
+                        setToolsMenuOpen(false);
+                        void handleCaptureSetupCard();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-ink-800 hover:bg-ink-100 disabled:opacity-40"
+                    >
+                      <Camera className="h-4 w-4 shrink-0 text-info" />
+                      <div>
+                        <span className="block">📸 แคปการ์ดสรุปราคา (PNG)</span>
+                        <span className="text-[10px] font-normal text-ink-500">บันทึกภาพห้อง 3D พร้อมรายการของ</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsMenuOpen(false);
+                        void handleOpenQrModal();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-ink-800 hover:bg-ink-100"
+                    >
+                      <QrCode className="h-4 w-4 shrink-0 text-info" />
+                      <div>
+                        <span className="block">📱 สแกน QR เปิดบนมือถือ</span>
+                        <span className="text-[10px] font-normal text-ink-500">ส่งห้อง 3D นี้เข้ามือถือทันที</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsMenuOpen(false);
+                        setPowerModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-ink-800 hover:bg-ink-100"
+                    >
+                      <Zap className="h-4 w-4 shrink-0 text-amber-500" />
+                      <div>
+                        <span className="block">⚡ เช็กปลั๊กไฟ & กำลังวัตต์รวม</span>
+                        <span className="text-[10px] font-normal text-ink-500">
+                          ~{powerEstimate.totalWatts} W · ใช้ปลั๊ก {powerEstimate.plugCount} ช่อง
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Toggle Catalog Sidebar */}
               <button
                 type="button"
                 onClick={() => setDrawerOpen((v) => !v)}
-                title={drawerOpen ? "ซ่อนแถบสินค้าเพื่อดูห้อง 3D กว้างสุด" : "เปิดแถบเลือกสินค้า 2,100+ ชิ้น"}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                title={drawerOpen ? "ซ่อนแถบสินค้าเพื่อดูห้อง 3D กว้างสุด" : "เปิดแถบเลือกสินค้า"}
+                className={`inline-flex h-8 items-center gap-1 rounded-xl border px-2.5 text-xs font-semibold transition-colors ${
                   drawerOpen
-                    ? "bg-info/15 text-info border border-info/30"
-                    : "bg-ink-100 text-ink-800 hover:bg-ink-200"
+                    ? "bg-info-bg text-info border-info/30"
+                    : "bg-paper border-ink-200 text-ink-800 hover:bg-ink-100"
                 }`}
               >
                 {drawerOpen ? (
@@ -934,7 +1442,7 @@ export function Room3DStudioClient() {
                 ) : (
                   <PanelRightOpen className="h-3.5 w-3.5" />
                 )}
-                <span className="hidden sm:inline">{drawerOpen ? "ซ่อนคลังสินค้า" : "คลังสินค้า"}</span>
+                <span className="hidden sm:inline">{drawerOpen ? "ซ่อนคลัง" : "คลังสินค้า"}</span>
               </button>
             </div>
 
@@ -958,7 +1466,7 @@ export function Room3DStudioClient() {
                 type="button"
                 onClick={toggleFullscreen}
                 title={isFullscreen ? "ย่อออกจากเต็มจอ (กด Esc หรือ F)" : "เปิดเต็มจอนั่งจัดห้อง (กด F)"}
-                className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-ink-200 bg-ink-100 px-3 text-xs font-semibold text-ink-800 hover:bg-ink-200 transition-all"
+                className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-ink-200 bg-paper px-3 text-xs font-semibold text-ink-800 hover:bg-ink-100 transition-all"
               >
                 {isFullscreen ? (
                   <>
@@ -978,7 +1486,7 @@ export function Room3DStudioClient() {
           {/* Main Workspace Split: 3D Viewport (Left/Full) + Collapsible Product Catalog Dock (Right/Bottom) */}
           <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
             {/* 3D Viewport Canvas Container */}
-            <div className="relative flex-1 min-h-[360px] lg:min-h-0 h-full w-full bg-slate-950">
+            <div className="relative flex-1 min-h-[260px] lg:min-h-0 h-full w-full bg-slate-950">
               <RoomPlanner3D
                 ref={planner3DRef}
                 room={room}
@@ -1014,10 +1522,19 @@ export function Room3DStudioClient() {
                 checkDeleteZone={checkDeleteZone}
               />
 
-              {/* Instruction pill */}
-              <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-slate-900/80 px-3 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
-                🖱️ ลากเพื่อขยับ · ลากลูกศรสีเหลืองเพื่อหมุน (360°) · กด R หมุน 45° · ลากลงคลังสินค้าขวาเพื่อลบ · ลากพื้นว่างหมุนห้อง
-              </div>
+              {/* Instruction pill or Ergonomic POV Check HUD */}
+              {povMode ? (
+                <div className="pointer-events-none absolute left-4 top-4 z-20 max-w-lg rounded-2xl border border-info/40 bg-slate-900/90 px-3.5 py-2 text-xs text-white shadow-xl backdrop-blur-md">
+                  <p className="font-bold text-sky-300">{ergonomicReport.headline}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-200">
+                    {ergonomicReport.tips[0]} · {ergonomicReport.tips[1]}
+                  </p>
+                </div>
+              ) : (
+                <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-slate-900/75 px-2.5 py-1 text-[11px] font-semibold text-slate-300 backdrop-blur-md">
+                  🖱️ ลากเพื่อขยับ · กด R หมุน 45° · ลากพื้นว่างหมุนมุมกล้อง
+                </div>
+              )}
 
               {/* Floating button to reopen Catalog when hidden */}
               {!drawerOpen && (
@@ -1211,7 +1728,7 @@ export function Room3DStudioClient() {
               <aside
                 ref={catalogAsideRef}
                 data-catalog-sidebar="true"
-                className="relative flex h-[270px] lg:h-full lg:w-[360px] xl:w-[400px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface overflow-hidden"
+                className="relative flex h-[210px] lg:h-full lg:w-[270px] xl:w-[290px] shrink-0 flex-col border-t lg:border-t-0 lg:border-l border-ink-200 bg-surface overflow-hidden"
               >
                 {/* Drag-to-Delete Drop Zone Overlay directly on Catalog Sidebar */}
                 {dragDeleteState.isDragging && (
@@ -1314,7 +1831,7 @@ export function Room3DStudioClient() {
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-2">
                       {products.map((p) => {
                         const dims = p.dimensions;
-                        const dimStr = dims ? `${dims.width}×${dims.depth} ซม.` : "";
+                        const dimStr = dims?.width && dims?.depth ? `${dims.width}×${dims.depth} ซม.` : dims?.width ? `กว้าง ${dims.width} ซม.` : "";
                         const imgSrc = p.imageUrl ? displayPhotoSrc(p.imageUrl) : null;
 
                         return (
@@ -1364,6 +1881,198 @@ export function Room3DStudioClient() {
                 </div>
               </aside>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal สำหรับให้กรรมการหรือลูกค้าใช้มือถือสแกนเปิดห้อง 3D เดียวกันได้ทันที */}
+      {qrModalOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="แชร์ QR Code ห้อง 3D"
+        >
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={() => setQrModalOpen(false)}
+            className="absolute inset-0 bg-ink-950/60 backdrop-blur-xs"
+          />
+          <div className="relative z-10 w-full max-w-sm space-y-4 rounded-3xl border border-ink-200 bg-surface p-6 text-center shadow-pop">
+            <div className="flex items-center justify-between border-b border-ink-100 pb-3 text-left">
+              <div>
+                <h3 className="font-display text-base font-bold text-ink-950 flex items-center gap-2">
+                  <QrCode className="h-5 w-5 text-info" /> สแกนเปิดห้อง 3D บนมือถือ
+                </h3>
+                <p className="text-xs text-ink-600">
+                  ใช้กล้องมือถือสแกนเพื่อดูแปลนและเฟอร์นิเจอร์ชุดนี้แบบ 3D ทันที
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrModalOpen(false)}
+                className="icon-btn h-8 w-8 border-transparent p-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mx-auto flex h-64 w-64 items-center justify-center rounded-2xl border-2 border-info/25 bg-white p-3 shadow-inner">
+              {qrSvg ? (
+                <div
+                  className="h-full w-full [&>svg]:h-full [&>svg]:w-full"
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
+              ) : (
+                <Loader2 className="h-8 w-8 animate-spin text-info" />
+              )}
+            </div>
+
+            <div className="rounded-xl bg-paper border border-ink-100 px-3 py-2 text-xs text-ink-700">
+              <span className="font-semibold text-ink-950">
+                ขนาด {(room.w / 100).toFixed(2)}×{(room.d / 100).toFixed(2)} ม.
+              </span>{" "}
+              · สินค้า {productCount} ชิ้น · รวม{" "}
+              <span className="font-mono font-bold text-info">{formatTHB(totalRoomPrice)}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!shareUrl) return;
+                  navigator.clipboard.writeText(shareUrl);
+                  setCopiedLink(true);
+                  toast("คัดลอกลิงก์ห้อง 3D เรียบร้อย!", { tone: "ok" });
+                }}
+                className="btn btn-primary h-10 flex-1 rounded-full text-xs font-bold shadow-sm"
+              >
+                {copiedLink ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copiedLink ? "คัดลอกลิงก์แล้ว!" : "คัดลอกลิงก์ห้อง 3D"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCaptureSetupCard}
+                className="btn btn-outline h-10 rounded-full px-4 text-xs font-bold text-info"
+              >
+                <Download className="h-4 w-4" /> รูปราคา
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: 📏 ขนาดห้องที่วัดมา (วัดด้วยกล้องมือถือ 4 แบบ / นับกระเบื้อง / เทียบ A4 / วาดแปลนห้อง) */}
+      {measureModalOpen && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="ขนาดห้องที่วัดมา"
+        >
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={() => setMeasureModalOpen(false)}
+            className="absolute inset-0 bg-ink-950/60 backdrop-blur-xs"
+          />
+          <div className="relative z-10 w-full max-w-md space-y-3 rounded-3xl border border-ink-200 bg-surface p-5 shadow-pop">
+            <div className="flex items-center justify-between border-b border-ink-100 pb-2.5">
+              <div>
+                <h3 className="font-display text-base font-bold text-ink-950 flex items-center gap-2">
+                  <Ruler className="h-5 w-5 text-info" /> วัดขนาดห้องจริง & ตั้งค่าแปลน
+                </h3>
+                <p className="text-xs text-ink-600">
+                  กรอกขนาด หรือวัดด้วยกล้องมือถือ / นับกระเบื้อง / ใส่รูปแปลน เพื่อปรับห้อง 2D และ 3D ทันที
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMeasureModalOpen(false)}
+                className="icon-btn h-8 w-8 border-transparent p-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <RoomSizeInputs room={room} set={true} onChange={handleApplyMeasuredRoom} />
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ⚡ เช็กปลั๊กไฟ กำลังวัตต์รวม & สรีรศาสตร์ */}
+      {powerModalOpen && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="เช็กปลั๊กไฟและกำลังวัตต์รวม"
+        >
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={() => setPowerModalOpen(false)}
+            className="absolute inset-0 bg-ink-950/60 backdrop-blur-xs"
+          />
+          <div className="relative z-10 w-full max-w-md space-y-3 rounded-3xl border border-ink-200 bg-surface p-5 text-xs text-ink-900 shadow-pop">
+            <div className="flex items-center justify-between border-b border-ink-100 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600">
+                  <Zap className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="font-display text-sm font-bold text-ink-950">เช็กปลั๊กไฟ กำลังไฟ & สรีรศาสตร์</h3>
+                  <p className="text-[11px] text-ink-500">คำนวณจากอุปกรณ์ที่วางอยู่ในห้อง 3D ปัจจุบัน</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setPowerModalOpen(false)} className="icon-btn h-8 w-8 border-transparent p-0">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl border border-ink-200 bg-paper p-2.5">
+                <span className="block text-[10px] text-ink-500">กำลังไฟรวม</span>
+                <span className="font-mono text-base font-extrabold text-amber-600">~{powerEstimate.totalWatts} W</span>
+              </div>
+              <div className="rounded-xl border border-ink-200 bg-paper p-2.5">
+                <span className="block text-[10px] text-ink-500">ช่องปลั๊กไฟที่ใช้</span>
+                <span className="font-mono text-base font-extrabold text-info">{powerEstimate.plugCount} ช่อง</span>
+              </div>
+              <div className="rounded-xl border border-ink-200 bg-paper p-2.5">
+                <span className="block text-[10px] text-ink-500">ค่าไฟเฉลี่ย</span>
+                <span className="font-mono text-base font-extrabold text-ink-950">~{powerEstimate.monthlyCostThb} ฿/ด.</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] text-ink-900">
+              <p className="font-bold">🔌 คำแนะนำการเดินสายและรางปลั๊กไฟ:</p>
+              <p className="mt-0.5 text-ink-700">{powerEstimate.recommendation}</p>
+            </div>
+
+            <div className="rounded-xl border border-info/30 bg-info-bg/50 p-3 text-[11px] text-ink-900 space-y-1">
+              <p className="font-bold text-info">{ergonomicReport.headline}</p>
+              {ergonomicReport.tips.map((t) => (
+                <p key={t} className="text-ink-700">• {t}</p>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                className="btn btn-primary h-9 rounded-full px-4 text-xs font-bold"
+              >
+                <FileText className="h-3.5 w-3.5" /> พิมพ์ใบเสนอราคา & แปลน PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setPowerModalOpen(false)}
+                className="btn btn-outline h-9 rounded-full px-4 text-xs"
+              >
+                ปิด
+              </button>
+            </div>
           </div>
         </div>
       )}

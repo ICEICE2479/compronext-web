@@ -23,7 +23,7 @@ export function AdminLoginClient({ demoPasscodeHint }: { demoPasscodeHint: strin
   const [botPassToken, setBotPassToken] = useState<string | null>(null);
 
   const [username, setUsername] = useState("admin");
-  const [passcode, setPasscode] = useState(demoPasscodeHint || "COMPRO-ADMIN-2026");
+  const [passcode, setPasscode] = useState(demoPasscodeHint || "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -372,3 +372,4 @@ export function AdminLoginClient({ demoPasscodeHint }: { demoPasscodeHint: strin
     </div>
   );
 }
+

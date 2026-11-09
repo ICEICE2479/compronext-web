@@ -18,7 +18,7 @@ import { mirrorPending } from "@/lib/image-mirror";
 import { realImagePending } from "@/lib/real-image";
 import { roomPinsPending } from "@/lib/room-pins";
 import { extractDimensions } from "@/lib/dim-extract";
-import { detectRoomPinsNow, findRealImagesNow, decideCreditOrder, applyExtractedDims, decidePartnerApplication, mirrorImagesNow, hideProducts, backupNow, decideBoost, deleteChat, deleteReview, deleteUser, restoreNow, runPriceCheck, setPartnerActive, setPostStatus, setUserBan, testAlert } from "./actions";
+import { detectRoomPinsNow, findRealImagesNow, decideCreditOrder, applyExtractedDims, decidePartnerApplication, mirrorImagesNow, hideProducts, backupNow, decideBoost, deleteChat, deleteReview, deleteUser, restoreNow, runPriceCheck, setPartnerActive, setPostStatus, setUserBan, testAlert, saveAiConfig } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "ศูนย์ควบคุม — หลังบ้าน", description: "จัดการผู้ใช้ รีวิว ชุมชน และการดันสินค้า", robots: { index: false, follow: false } };
@@ -457,6 +457,12 @@ function ChatsTab() {
 
 async function SystemTab() {
   const [backups, ops] = await Promise.all([listBackups(), readOps(undefined, 80)]);
+  const db = readDb();
+  const aiCfg = db.aiConfig ?? {};
+  const hasGemini = !!(aiCfg.geminiApiKey || process.env.GEMINI_API_KEY);
+  const hasClaude = !!(aiCfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY);
+  const hasCf = !!((process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID) && (process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN));
+  const maskKey = (k?: string) => (k && k.length > 8 ? `${k.slice(0, 5)}••••••${k.slice(-4)}` : k ? "••••••" : "ยังไม่ได้ตั้ง");
   const env: Array<[string, boolean, string]> = [
     ["ฐานข้อมูลจริง (DATABASE_URL)", !!process.env.DATABASE_URL, "จำเป็น: ไม่ตั้ง = ข้อมูลหายทุกครั้งที่ Vercel รีสตาร์ท"],
     ["แจ้งลดราคาทาง LINE (LINE_MESSAGING_TOKEN)", !!process.env.LINE_MESSAGING_TOKEN, "สมาชิกที่ล็อกอินด้วย LINE + แอดเพื่อน OA จะได้ข้อความเมื่อของที่ติดตามลดราคา"],
@@ -465,7 +471,7 @@ async function SystemTab() {
     ["Cron (CRON_SECRET)", (process.env.CRON_SECRET ?? "").length >= 16, "เช็กราคา/สำรองข้อมูล/อีเมลรายสัปดาห์"],
     [
       "สร้างภาพ AI (CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN ฟรี / GEMINI_API_KEY)",
-      !!(process.env.GEMINI_API_KEY || ((process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID) && (process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN))),
+      hasGemini || hasCf,
       "ลูกค้าจะได้ภาพวางสินค้าลงรูปห้องแทนภาพ AI",
     ],
     [
@@ -487,6 +493,78 @@ async function SystemTab() {
   ];
   return (
     <div className="space-y-4">
+      <section className="card space-y-3 border-info/30 bg-gradient-to-r from-info-bg/60 via-surface to-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-display text-base font-bold text-ink-950">
+              ตั้งค่าคีย์ AI (สลับ FLUX → Gemini 2.5 Flash Image / Claude อัตโนมัติ)
+            </p>
+            <p className="text-xs text-ink-600">
+              เมื่อใส่ <code className="font-mono text-info">GEMINI_API_KEY</code> ระบบจะสลับจาก Cloudflare FLUX ไปใช้ Gemini 2.5 Flash Image ทันทีโดยไม่ต้องแก้โค้ด
+            </p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${hasGemini ? "bg-info text-white" : "bg-ok-bg text-ok"}`}>
+            โหมดปัจจุบัน: {hasGemini && aiCfg.preferredImageProvider !== "cloudflare" ? "✨ Gemini 2.5 Flash Image" : "⚡ Cloudflare FLUX.2 (ฟรี)"}
+          </span>
+        </div>
+
+        <form action={saveAiConfig} className="grid gap-3 sm:grid-cols-3">
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold text-ink-800">
+              GEMINI_API_KEY <span className="font-mono text-ink-500">({maskKey(aiCfg.geminiApiKey || process.env.GEMINI_API_KEY)})</span>
+            </span>
+            <input
+              name="geminiApiKey"
+              type="password"
+              placeholder="วางคีย์ AIza... เพื่อเปิดใช้ Gemini 2.5 Flash"
+              className="input h-9 w-full font-mono text-xs"
+            />
+          </label>
+
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold text-ink-800">
+              ANTHROPIC_API_KEY (Claude) <span className="font-mono text-ink-500">({maskKey(aiCfg.anthropicApiKey || process.env.ANTHROPIC_API_KEY)})</span>
+            </span>
+            <input
+              name="anthropicApiKey"
+              type="password"
+              placeholder="วางคีย์ sk-ant-... (ไม่ใส่ = วิเคราะห์ภาพในเครื่องฟรี)"
+              className="input h-9 w-full font-mono text-xs"
+            />
+          </label>
+
+          <label className="space-y-1 text-xs">
+            <span className="font-semibold text-ink-800">โหมดสร้างภาพห้อง AI</span>
+            <select
+              name="preferredImageProvider"
+              defaultValue={aiCfg.preferredImageProvider ?? "auto"}
+              className="input h-9 w-full text-xs font-semibold"
+            >
+              <option value="auto">อัตโนมัติ (มีคีย์ใช้ Gemini 2.5 · ไม่มีใช้ FLUX ฟรี)</option>
+              <option value="gemini">บังคับใช้ Gemini 2.5 Flash Image เท่านั้น</option>
+              <option value="cloudflare">บังคับใช้ Cloudflare FLUX.2 (โควตาฟรี) เท่านั้น</option>
+            </select>
+          </label>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-3 pt-1">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-ink-600">
+              <label className="inline-flex items-center gap-1.5">
+                <input type="checkbox" name="clearGemini" value="1" className="accent-info" />
+                ล้างคีย์ Gemini ที่บันทึกไว้
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <input type="checkbox" name="clearAnthropic" value="1" className="accent-info" />
+                ล้างคีย์ Claude ที่บันทึกไว้
+              </label>
+              <span>สถานะวิเคราะห์ห้อง: {hasClaude ? "Claude Sonnet" : "Sharp Tone Analyzer (ฟรี)"}</span>
+            </div>
+            <button type="submit" className="btn btn-primary h-9 rounded-full px-5 text-xs font-bold shadow-xs">
+              บันทึกคีย์ AI ทันที
+            </button>
+          </div>
+        </form>
+      </section>
+
       <section className="card space-y-2 p-4">
         <p className="font-semibold text-ink-950">การตั้งค่า</p>
         <ul className="grid gap-1.5 text-sm sm:grid-cols-2">

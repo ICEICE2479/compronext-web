@@ -22,6 +22,7 @@ import { ChatStoreButton } from "@/components/chat/ChatStoreButton";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { AffiliateNote } from "@/components/AffiliateNote";
 import { WorthIt } from "@/components/WorthIt";
+import { TryIn3DRoomButton } from "@/components/design/TryIn3DRoomButton";
 import { jsonLdHtml, productJsonLd, shareMeta } from "@/lib/seo";
 import { sameModelOffers } from "@/lib/price-compare";
 
@@ -135,24 +136,38 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           {product.priceHistory && <PriceHistoryChart history={product.priceHistory} current={product.price} />}
 
           {available && (
-            <div className="flex gap-2">
-              <AddToCartButton item={productToCartInput(product)} category={product.category} label="ใส่ตะกร้า" className="flex-1 h-12" />
-              <PriceWatchButton productId={product.id} />
-              {isComparable(product.category) && <CompareProductButton productId={product.id} />}
-              {store?.partner && (
-                <ChatStoreButton storeKey={store.key} storeName={store.name} productId={product.id} productName={product.name} compact />
-              )}
-              {isSafeHttpUrl(product.buyUrl) && (
-                <a
-                  href={`/go/${encodeURIComponent(product.id)}`}
-                  target="_blank"
-                  rel="noopener noreferrer sponsored"
-                  className="icon-btn h-12 px-3"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span className="text-sm font-semibold">ซื้อที่ร้าน</span>
-                </a>
-              )}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <AddToCartButton item={productToCartInput(product)} category={product.category} label="ใส่ตะกร้า" className="flex-1 h-12" />
+                <PriceWatchButton productId={product.id} />
+                {isComparable(product.category) && <CompareProductButton productId={product.id} />}
+                {store?.partner && (
+                  <ChatStoreButton storeKey={store.key} storeName={store.name} productId={product.id} productName={product.name} compact />
+                )}
+                {isSafeHttpUrl(product.buyUrl) && (
+                  <a
+                    href={`/go/${encodeURIComponent(product.id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer sponsored"
+                    className="icon-btn h-12 px-3"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span className="text-sm font-semibold">ซื้อที่ร้าน</span>
+                  </a>
+                )}
+              </div>
+              <TryIn3DRoomButton
+                product={{
+                  id: product.id,
+                  name: product.name,
+                  category: product.category,
+                  price: product.price,
+                  imageUrl: product.imageUrl,
+                  dimensions: product.dimensions,
+                  colors: product.colors,
+                }}
+                className="btn h-11 w-full rounded-full border border-info/35 bg-info-bg/85 text-xs font-bold text-info hover:bg-info hover:text-white"
+              />
             </div>
           )}
           {available && <AffiliateNote />}

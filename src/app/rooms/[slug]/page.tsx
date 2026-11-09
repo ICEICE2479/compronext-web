@@ -13,6 +13,7 @@ import { evaluateRoomCompatibility } from "@/lib/compatibility";
 import { formatTHB, formatThaiDate, STYLE_LABELS } from "@/lib/format";
 import { WishlistButton } from "@/components/WishlistButton";
 import { BuyAllRoomModal } from "@/components/BuyAllRoomModal";
+import { CopyRoomTo3DButton } from "@/components/design/CopyRoomTo3DButton";
 import { RoomGallery } from "@/components/RoomGallery";
 import { RoomSizePlanner } from "@/components/RoomSizePlanner";
 import { ProductTile, productToCartInput } from "@/components/ProductTile";
@@ -91,6 +92,18 @@ export default async function RoomDetailPage({
             <BuyAllRoomModal roomName={room.name} items={resolvedItems} availableTotal={totals.availableTotal} />
             <WishlistButton roomId={room.id} variant="full" />
           </div>
+          <CopyRoomTo3DButton
+            roomName={room.name}
+            products={available.map((it) => ({
+              id: it.product.id,
+              name: it.product.name,
+              category: it.product.category,
+              price: it.product.price,
+              imageUrl: it.product.imageUrl,
+              dimensions: it.product.dimensions,
+              colors: it.product.colors,
+            }))}
+          />
           <p className="text-[11px] text-ink-500">
             ราคา ณ {formatThaiDate(totals.newestPriceDate)} · ซื้อและชำระเงินที่ร้านค้าแต่ละร้านโดยตรง
           </p>

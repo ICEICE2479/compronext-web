@@ -233,7 +233,8 @@ export async function POST(request: Request) {
   if (mode === "regenerate" && requestedIds.length > 0) {
     products = pickRegenerated(requestedIds, byId, owned, budget);
   } else {
-    const raw = (await claudeAnalysis(photoB64, roomPrompt, budget, candidates)) ?? heuristicAnalysis(candidates, prompt, budget);
+    const lockedProducts = String(form.get("lockedIds") ?? "").split(",").map((id) => byId.get(id.trim())).filter((p): p is Product => !!p && !owned.has(p.category)).slice(0, 5);
+    const raw = (await claudeAnalysis(photoB64, roomPrompt, budget, candidates, lockedProducts)) ?? heuristicAnalysis(candidates, prompt, budget, lockedProducts);
     products = capToBudget(
       raw.picks.map((x) => byId.get(x.id)).filter((p): p is Product => !!p && !owned.has(p.category)),
       budget
@@ -243,7 +244,7 @@ export async function POST(request: Request) {
   }
 
   const aiSpots = new Map(analysis?.picks.map((x) => [x.id, x.spot]) ?? []);
-  const spots = placeSpots(products.map((p) => ({ id: p.id, category: p.category, spot: aiSpots.get(p.id) })));
+  const spots = placeSpots(products.map((p) => ({ id: p.id, category: p.category, spot: aiSpots.get(p.id) })), roomPrompt);
 
   const results = await Promise.all(
     Array.from({ length: variants }, (_, i) => generateRoomImage(photoB64, roomPrompt, products, i, spots))

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, startTransition, useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
-import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Camera, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 import { MACRO_CATEGORIES, type MacroCategorySlug } from "@/lib/catalog-taxonomy";
 import { formatTHB } from "@/lib/format";
 import { ProductTile, type TileProduct } from "@/components/ProductTile";
@@ -9,6 +9,7 @@ import { ProductTileSkeleton } from "@/components/ProductTileSkeleton";
 import Reveal from "@/components/Reveal";
 import EmptyState from "@/components/EmptyState";
 import { PageIntro } from "@/components/PageIntro";
+import { VisualSearchModal } from "@/components/VisualSearchModal";
 
 type SortMode = "popular" | "price_asc" | "price_desc" | "newest";
 type Card = TileProduct & { roomSlug?: string };
@@ -76,6 +77,7 @@ export function CategoriesCatalogClient({
   const [maxPrice, setMaxPrice] = useState(0);
   const [sort, setSort] = useState<SortMode>("popular");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [visualSearchOpen, setVisualSearchOpen] = useState(false);
 
   const [items, setItems] = useState<Card[]>(initialItems);
   const [total, setTotal] = useState(initialTotal);
@@ -248,6 +250,16 @@ export function CategoriesCatalogClient({
               className="input rounded-full pl-10"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setVisualSearchOpen(true)}
+            className="icon-btn relative h-11 shrink-0 border-info/35 bg-info-bg/80 text-info hover:bg-info hover:text-white"
+            aria-label="ค้นหาด้วยรูปภาพ"
+            title="อัปโหลดรูปเพื่อค้นหาสินค้าที่คล้ายกัน"
+          >
+            <Camera className="h-4 w-4" />
+            <span className="hidden text-sm font-bold sm:inline">ค้นด้วยรูป</span>
+          </button>
           <button type="button" onClick={() => setSheetOpen(true)} className="icon-btn relative h-11 shrink-0 bg-white" aria-label="ตัวกรอง">
             <SlidersHorizontal className="h-4 w-4" />
             <span className="hidden text-sm font-semibold sm:inline">ตัวกรอง</span>
@@ -322,6 +334,21 @@ export function CategoriesCatalogClient({
             {maxPrice > 0 && <p className="mt-2 text-center text-[11px] text-ink-500">ไม่เกิน {formatTHB(maxPrice)} ต่อชิ้น</p>}
           </div>
         </div>
+      )}
+      {visualSearchOpen && (
+        <VisualSearchModal
+          onClose={() => setVisualSearchOpen(false)}
+          onApplyFilter={(pickedCat, keyword) => {
+            startTransition(() => {
+              if (pickedCat !== "all") {
+                setMacro("all");
+                setCat(pickedCat);
+                setSub("all");
+              }
+              setQuery(keyword);
+            });
+          }}
+        />
       )}
     </div>
   );

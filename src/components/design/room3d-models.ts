@@ -199,7 +199,10 @@ function disc(
 /**
  * สร้างโมเดล 3 มิติ สมจริงระดับสูงตามประเภท ข้อมูล และสเปกสินค้าจริง
  */
-export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
+/** รูปจริงของสินค้า (ครอปเฉพาะตัวของ) — ใช้เป็นลายพรม / หน้ากรอบรูป */
+export type ItemPhoto = THREE.Texture | null | undefined;
+
+export function buildItem(it: PlanItem, M: Mats, night: boolean, photo?: ItemPhoto): THREE.Group {
   const g = new THREE.Group();
   const { w, d, h } = it;
   const nameLower = (it.name || "").toLowerCase();
@@ -1591,6 +1594,12 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
         rbox(g, M.black, w, h, depth, 0, h / 2, 0, 0.4);
         rbox(g, M.white, w - frameT * 2, h - frameT * 2, 0.4, 0, h / 2, depth / 2 + 0.1, 0.2);
         rbox(g, mk(it.color, 0.9), w - frameT * 3.5, h - frameT * 3.5, 0.4, 0, h / 2, depth / 2 + 0.2, 0.2);
+        // หน้ากรอบ = รูปสินค้าจริง (กรอบ + ภาพในกรอบตามที่ขายจริง)
+        if (photo) {
+          const face = new THREE.Mesh(new THREE.PlaneGeometry(w * CM, h * CM), tex(photo, 0.6));
+          face.position.set(0, (h / 2) * CM, (depth / 2 + 0.3) * CM);
+          g.add(face);
+        }
         rbox(g, M.glass, w - frameT * 1.5, h - frameT * 1.5, 0.2, 0, h / 2, depth / 2 + 0.4, 0.1);
       } else {
         // ของแต่งห้องมินิมอล (Sculptural Desk Clock / Minimalist Ornament)
@@ -1954,6 +1963,13 @@ export function buildItem(it: PlanItem, M: Mats, night: boolean): THREE.Group {
     case "rug": {
       const rugMat = tex(rugTex(it.color === "#9aa6b2" ? "#64748b" : it.color), 0.98, [1, 1]);
       rbox(g, rugMat, w, 1.2, d, 0, 0.6, 0, 2.5);
+      // ลายจริงของพรมจากรูปสินค้า วางบนผิวบน
+      if (photo) {
+        const top = new THREE.Mesh(new THREE.PlaneGeometry((w - 1) * CM, (d - 1) * CM).rotateX(-Math.PI / 2), tex(photo, 0.97));
+        top.position.y = 1.25 * CM;
+        top.receiveShadow = true;
+        g.add(top);
+      }
       break;
     }
 

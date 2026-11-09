@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: process.env.DOCKER_BUILD ? "standalone" : undefined,
   allowedDevOrigins: ["*.trycloudflare.com"],
   // ให้ไฟล์ข้อมูลตั้งต้นติดไปกับ serverless function (ใช้ย้ายข้อมูลขึ้น Postgres ครั้งแรก)
   outputFileTracingIncludes: {

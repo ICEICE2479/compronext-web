@@ -48,7 +48,7 @@ const loginAttempts = new Map<string, { count: number; lockUntil: number }>();
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const DEV_SECRET = "compronext-local-dev-secret-key-2026";
-const DEV_ADMIN_PASSCODE = "COMPRO-ADMIN-2026";
+const DEV_ADMIN_PASSCODE = "";
 
 /**
  * Secret สำหรับเซ็น/เข้ารหัส cookie — บน production ต้องตั้ง ADMIN_SESSION_SECRET (≥32 ตัวอักษร) เสมอ
@@ -501,3 +501,4 @@ export async function verifyClerkRealEmailOtp(params: {
     return { ok: false, error: "ไม่สามารถตรวจสอบรหัส OTP ได้" };
   }
 }
+

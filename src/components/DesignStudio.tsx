@@ -16,15 +16,18 @@ import {
   ImagePlus,
   Lightbulb,
   Loader2,
+  Moon,
   RefreshCw,
   Repeat2,
   ShoppingCart,
   Sparkles,
+  Sun,
   Wand2,
   X,
+  Zap,
 } from "lucide-react";
 import type { Product } from "@/lib/types";
-import { formatTHB } from "@/lib/format";
+import { formatTHB, CATEGORY_LABELS } from "@/lib/format";
 import { ProductTile, productToCartInput } from "@/components/ProductTile";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { ShareButton } from "@/components/ShareButton";
@@ -43,10 +46,11 @@ import { BuyPlanView } from "@/components/design/BuyPlanView";
 import { RoomPlanStudio } from "@/components/design/RoomPlanStudio";
 import { RoomSizeInputs } from "@/components/design/RoomSizeInputs";
 import { PlanCloud } from "@/components/design/PlanCloud";
-import { autoLayout, decodePlan, encodePlan, DEFAULT_ROOM, itemFromProduct, type PlanItem, type RoomSize } from "@/lib/room-planner";
+import { autoLayout, decodePlan, encodePlan, DEFAULT_ROOM, itemFromProduct, ROOM_TEMPLATES, type PlanItem, type RoomSize } from "@/lib/room-planner";
 import { adviseFromStats, enhancePhoto, measurePhoto } from "@/lib/photo-quality";
 
 const PLAN_KEY = "cn-room-plan-v1";
+const CATEGORY_LABEL: Record<string, string> = { ...(CATEGORY_LABELS as Record<string, string>), door: "ประตู" };
 type SavedPlan = { room: RoomSize; roomSet: boolean; items: PlanItem[]; at?: number };
 function loadPlan(): SavedPlan | null {
   try {
@@ -77,7 +81,39 @@ const EXAMPLES = [
   "อยากให้ห้องดูอบอุ่น มีต้นไม้ ไม่รก",
 ];
 
-const REFINE_EXAMPLES = ["เปลี่ยนผนังเป็นสีเขียวอ่อน", "เอาพรมออก", "ให้แสงอุ่นขึ้นแบบตอนเย็น"];
+const REFINE_EXAMPLES = ["เปลี่ยนผนังเป็นสีเขียวอ่อน", "เอาพรมออก", "ให้แสงอุ่นขึ้นแบบตอนเย็น", "จัดสายไฟบนโต๊ะให้โล่งขึ้น"];
+
+const BRIEF_ZONES = [
+  { id: "center", label: "🧱 ชิดผนังกลางห้อง", phrase: "วางโต๊ะชิดผนังกลางห้อง" },
+  { id: "window-right", label: "🪟 ริมหน้าต่างขวา", phrase: "วางโต๊ะริมหน้าต่างขวา" },
+  { id: "window-left", label: "📐 ชิดซ้าย / เข้ามุม", phrase: "วางโต๊ะริมหน้าต่างซ้าย เข้ามุม" },
+  { id: "bedroom", label: "🛏️ ห้องนอน+มุมคอม", phrase: "ห้องนอนมีเตียงและมุมโต๊ะคอม" },
+] as const;
+
+const BRIEF_PALETTES = [
+  { id: "white-oak", label: "🤍🪵 ขาว-ไม้โอ๊ค", phrase: "โทนขาว-ไม้โอ๊คธรรมชาติ" },
+  { id: "dark", label: "🖤 ดำด้าน-เทาเข้ม", phrase: "โทนดำด้าน-เทาเข้ม" },
+  { id: "walnut", label: "🤎 ไม้วอลนัทอบอุ่น", phrase: "โทนไม้วอลนัทน้ำตาลอบอุ่น" },
+  { id: "clean-white", label: "✨ ขาวคลีนล้วน", phrase: "โทนขาวคลีนล้วน" },
+] as const;
+
+const BRIEF_LIGHTING = [
+  { id: "daylight", label: "☀️ แสงธรรมชาติ", phrase: "แสงธรรมชาติกลางวันสว่างโปร่ง" },
+  { id: "warm", label: "🌅 ไฟอุ่นยามเย็น", phrase: "ไฟอุ่นโทนส้มยามเย็น" },
+  { id: "rgb", label: "🌈 มืดเปิดไฟ RGB", phrase: "ห้องโทนมืดเปิดไฟ RGB หลังจอ" },
+  { id: "studio", label: "💡 สว่างคมชัด", phrase: "ไฟสตูดิโอสว่างคมชัด" },
+] as const;
+
+const BRIEF_EXTRAS = [
+  { id: "dual-monitor", label: "🖥️ จอคู่ 2 จอ", phrase: "จัดจอคู่ 2 จอ" },
+  { id: "l-desk", label: "📐 โต๊ะตัวแอล", phrase: "โต๊ะตัวแอลเข้ามุม" },
+  { id: "standing", label: "⬆️ โต๊ะปรับระดับ", phrase: "โต๊ะปรับระดับไฟฟ้า" },
+  { id: "outlet-near", label: "⚡ ชิดเต้ารับปลั๊กไฟ", phrase: "วางโต๊ะชิดผนังฝั่งที่มีเต้ารับปลั๊กไฟเพื่อซ่อนสายไฟเนี๊ยบ" },
+  { id: "storage", label: "📚 มีชั้นวางโชว์ของ", phrase: "มีชั้นวางเก็บของข้างโต๊ะ" },
+  { id: "plant", label: "🌿 เพิ่มต้นไม้", phrase: "มีต้นไม้ประดับในร่ม" },
+  { id: "clean-cable", label: "🔌 ซ่อนสายไฟเนี๊ยบ", phrase: "ซ่อนสายไฟเนี๊ยบไม่รก" },
+  { id: "no-rug", label: "🚫 ไม่เอาพรม", phrase: "ไม่เอาพรมพื้นโล่ง" },
+] as const;
 
 
 const STYLE_CARDS = [
@@ -128,6 +164,11 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
   const [preview, setPreview] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(demo ? DEMO_PROMPT : "");
   const [style, setStyle] = useState<string | null>(demo ? "cozy" : null);
+  const [briefZone, setBriefZone] = useState<string | null>("center");
+  const [briefPalette, setBriefPalette] = useState<string | null>(null);
+  const [briefLight, setBriefLight] = useState<string | null>(null);
+  const [briefExtras, setBriefExtras] = useState<string[]>([]);
+  const [lockedIds, setLockedIds] = useState<string[]>([]);
   const [budget, setBudget] = useState(demo ? 30000 : 0);
   const [step, setStep] = useState(0);
   const [spots, setSpots] = useState<Record<string, Spot>>({});
@@ -166,23 +207,34 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
   const [planItems, setPlanItemsState] = useState<PlanItem[]>([]);
   const [photoTips, setPhotoTips] = useState<{ tips: string[]; original: Blob | null; blurry: boolean } | null>(null);
   const [fromPlan, setFromPlan] = useState(false);
+  const [initialTool, setInitialTool] = useState<"measure" | "shape" | null>(null);
   const planLoaded = useRef(false);
 
   // ห้อง 3D ที่จัดไว้ + ขนาดห้อง จำไว้ในเครื่อง
   useEffect(() => {
     // ลิงก์แชร์ห้อง (?plan=...) มาก่อนห้องที่จำไว้ในเครื่อง
-    const shared = new URLSearchParams(window.location.search).get("plan");
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get("plan");
+    const wantPlan = params.get("mode") === "plan";
+    const toolParam = params.get("tool");
     const fromLink = shared ? decodePlan(shared) : null;
     const saved = fromLink ? { room: fromLink.room, roomSet: true, items: fromLink.items } : loadPlan();
     queueMicrotask(() => {
       if (fromLink) {
         setMode("plan");
         toast("เปิดห้อง 3D จากลิงก์แชร์แล้ว");
+      } else if (wantPlan) {
+        setMode("plan");
+      }
+      if (toolParam === "measure" || toolParam === "shape") {
+        setInitialTool(toolParam);
       }
       if (saved) {
         setRoom(saved.room);
         setRoomSet(saved.roomSet);
-        setPlanItemsState(saved.items);
+        setPlanItemsState(saved.items.length ? saved.items : (wantPlan && ROOM_TEMPLATES[0] ? autoLayout(ROOM_TEMPLATES[0].items.map((c) => ({ ...itemFromProduct({ id: "", name: CATEGORY_LABEL[c] ?? c, category: c }), productId: null })), saved.room) : []));
+      } else if (wantPlan && ROOM_TEMPLATES[0]) {
+        setPlanItemsState(autoLayout(ROOM_TEMPLATES[0].items.map((c) => ({ ...itemFromProduct({ id: "", name: CATEGORY_LABEL[c] ?? c, category: c }), productId: null })), DEFAULT_ROOM));
       }
       planLoaded.current = true;
     });
@@ -227,9 +279,17 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     toast("เปิดห้องแล้ว");
   }
   const setPlanItems = useCallback((fn: (prev: PlanItem[]) => PlanItem[]) => setPlanItemsState(fn), []);
-  function changeRoom(r: RoomSize) {
+  function changeRoom(r: RoomSize, jumpTo3D?: boolean) {
     setRoom(r);
     setRoomSet(true);
+    if (r.shape || jumpTo3D) {
+      openPlan(r);
+      toast(
+        r.shape
+          ? "แปลงรูปแปลนเป็นห้อง 3D เรียบร้อยแล้ว!"
+          : `สร้างห้อง 3D ขนาด ${(r.w / 100).toFixed(2)}×${(r.d / 100).toFixed(2)} ม. เรียบร้อยแล้ว!`
+      );
+    }
   }
 
   const hasResult = analysis !== null || products.length > 0;
@@ -240,7 +300,13 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
   const photoBoxRef = useRef<HTMLDivElement>(null);
   const toBox = useCoverMap(photoBoxRef, shownImage);
   const stylePhrase = STYLE_CARDS.find((c) => c.id === style)?.phrase ?? "";
-  const fullPrompt = [stylePhrase, prompt.trim()].filter(Boolean).join(" · ");
+  const zonePhrase = BRIEF_ZONES.find((z) => z.id === briefZone)?.phrase ?? "";
+  const palettePhrase = BRIEF_PALETTES.find((p) => p.id === briefPalette)?.phrase ?? "";
+  const lightPhrase = BRIEF_LIGHTING.find((l) => l.id === briefLight)?.phrase ?? "";
+  const extraPhrases = BRIEF_EXTRAS.filter((e) => briefExtras.includes(e.id)).map((e) => e.phrase);
+  const fullPrompt = [stylePhrase, zonePhrase, palettePhrase, lightPhrase, ...extraPhrases, prompt.trim()]
+    .filter(Boolean)
+    .join(" · ");
   const generating = busy === "design" || busy === "regenerate";
 
   useEffect(() => {
@@ -284,23 +350,36 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     };
   }, [demo]);
 
-  /** วางสินค้าลงในรูปห้อง (ใช้ตอน AI สร้างภาพไม่ได้) */
-  async function addComposite(list: Product[], sp: Record<string, Spot>, replace = false): Promise<boolean> {
-    if (!preview) return false;
+  /** วางสินค้าจริง 100% ลงในรูปห้อง (ใช้ทั้งตอนเทียบกับภาพ AI และตอน AI สร้างภาพไม่ได้) */
+  async function addComposite(
+    list: Product[],
+    sp: Record<string, Spot>,
+    replace = false,
+    appendBehindAi = false,
+    baseUrlOverride?: string
+  ): Promise<boolean> {
+    const basePhotoUrl = baseUrlOverride ?? preview;
+    if (!basePhotoUrl) return false;
     const url = await composeRoomPreview(
-      preview,
+      basePhotoUrl,
       list.map((p) => ({ id: p.id, category: p.category, imageUrl: p.imageUrl })),
       sp
     );
     if (!url) return false;
     setComposites((c) => [url, ...c]);
-    setImages((prev) => (replace ? [url, ...prev.filter((x) => !composites.includes(x))] : [url, ...prev]));
-    setSelected(0);
+    setImages((prev) => {
+      const withoutOldComposites = prev.filter((x) => !composites.includes(x));
+      if (appendBehindAi && withoutOldComposites.length > 0) {
+        return [...withoutOldComposites, url];
+      }
+      return replace ? [url, ...withoutOldComposites] : [url, ...prev];
+    });
+    if (!appendBehindAi) setSelected(0);
     return true;
   }
 
   /** ห้อง 3D → ส่งให้ AI วาดเป็นห้องจริง (ทางออกของคนที่ไม่มีรูป/กล้องไม่ชัด) */
-  async function usePlanAsPhoto(blob: Blob, planSpots: Record<string, Spot>) {
+  async function usePlanAsPhoto(blob: Blob, planSpots: Record<string, Spot>, explicitIds?: string[], customBrief?: string) {
     if (preview) URL.revokeObjectURL(preview);
     const url = URL.createObjectURL(blob);
     const snapshotUrl = await new Promise<string>((resolve) => {
@@ -313,15 +392,64 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     setPhotoTips(null);
     setFromPlan(true);
     setMode("photo");
-    const ids = [...new Set(planItems.map((i) => i.productId).filter((x): x is string => !!x))];
-    await design({ photo: blob, productIds: ids, snapshotUrl, spots: planSpots });
+    if (customBrief && customBrief.trim()) {
+      setPrompt(customBrief.trim());
+    }
+    const ids = explicitIds && explicitIds.length > 0
+      ? explicitIds
+      : [...new Set(planItems.map((i) => i.productId).filter((x): x is string => !!x))];
+    await design({ photo: blob, productIds: ids, snapshotUrl, spots: planSpots, customPrompt: customBrief });
   }
 
+  // รับภาพห้อง 3D ที่ส่งมาจากหน้า /room-3d (?from3d=1) เพื่อให้ AI วาดเป็นห้องจริงทันที
+  const handledFrom3dRef = useRef(false);
+  useEffect(() => {
+    if (handledFrom3dRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("from3d") !== "1") return;
+    const raw = window.sessionStorage.getItem("cn-3d-to-ai-snapshot");
+    if (!raw) return;
+    handledFrom3dRef.current = true;
+    window.sessionStorage.removeItem("cn-3d-to-ai-snapshot");
+    void (async () => {
+      try {
+        const parsed = JSON.parse(raw) as {
+          dataUrl: string;
+          spots?: Record<string, Spot>;
+          productIds?: string[];
+          room?: RoomSize;
+          prompt?: string;
+        };
+        if (parsed.room) {
+          setRoom(parsed.room);
+          setRoomSet(true);
+        }
+        const blob = await dataUrlToBlob(parsed.dataUrl);
+        toast("รับภาพห้อง 3D และบรีฟแล้ว — กำลังให้ AI วาดเป็นห้องจริง…");
+        await usePlanAsPhoto(blob, parsed.spots ?? {}, parsed.productIds ?? [], parsed.prompt);
+      } catch {
+        toast("ไม่สามารถโหลดภาพจากห้อง 3D ได้", { tone: "error" });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** เปิดโหมดห้อง 3D — ถ้ายังว่างและมีผล AI แล้ว ใส่ของที่ AI เลือกให้เลย */
-  function openPlan() {
+  function openPlan(customRoom?: RoomSize) {
+    const targetRoom = (customRoom && "w" in customRoom && typeof (customRoom as RoomSize).w === "number") ? customRoom : room;
     setMode("plan");
-    if (!planItems.length && products.length) setPlanItems(() => autoLayout(products.map((p) => itemFromProduct(p)), room));
+    if (!planItems.length) {
+      if (products.length) {
+        setPlanItems(() => autoLayout(products.map((p) => itemFromProduct(p)), targetRoom));
+      } else {
+        const t = ROOM_TEMPLATES[0];
+        if (t) {
+          setPlanItems(() => autoLayout(t.items.map((c: string) => ({ ...itemFromProduct({ id: "", name: CATEGORY_LABEL[c] ?? c, category: c }), productId: null })), targetRoom));
+        }
+      }
+    }
   }
+
 
   function applyResult(r: DemoCache) {
     setAnalysis(r.analysis);
@@ -384,6 +512,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     setError(null);
     setAnalysis(null);
     setProducts([]);
+    setLockedIds([]);
     setImages([]);
     setImageError(null);
     setShareUrl(null);
@@ -414,10 +543,13 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
    * plan = มาจากห้อง 3D: ใช้ภาพห้อง 3D เป็นรูปอ้างอิง + ของในห้อง 3D (ถ้าเป็นสินค้าจริง)
    * ถ้า AI วาดภาพไม่ได้ ใช้ภาพห้อง 3D นั้นแสดงแทน
    */
-  async function design(plan?: { photo: Blob; productIds: string[]; snapshotUrl: string; spots: Record<string, Spot> }) {
+  async function design(plan?: { photo: Blob; productIds: string[]; snapshotUrl: string; spots: Record<string, Spot>; customPrompt?: string }) {
     const ph = plan?.photo ?? photo;
     if (!ph) return setError("ถ่ายหรือเลือกรูปห้องก่อนนะ");
-    if (fullPrompt.length < 3 && !plan) return setError("เลือกสไตล์ หรือบอก AI หน่อยว่าอยากได้ห้องแบบไหน");
+    const effectivePrompt = plan?.customPrompt?.trim()
+      ? [stylePhrase, zonePhrase, palettePhrase, lightPhrase, ...extraPhrases, plan.customPrompt.trim()].filter(Boolean).join(" · ")
+      : fullPrompt;
+    if (effectivePrompt.length < 3 && !plan) return setError("เลือกสไตล์ หรือบอก AI หน่อยว่าอยากได้ห้องแบบไหน");
     setStep(0);
     setBusy("design");
     setError(null);
@@ -431,8 +563,11 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
         fd.append("mode", "regenerate");
         fd.append("productIds", plan.productIds.join(","));
       }
-    } else if (fromPlan) fd.append("source", "plan3d");
-    fd.append("prompt", fullPrompt.length >= 3 ? fullPrompt : "ห้องที่จัดตามภาพ 3D ให้สวยและใช้งานได้จริง");
+    } else {
+      if (fromPlan) fd.append("source", "plan3d");
+      if (lockedIds.length > 0) fd.append("lockedIds", lockedIds.join(","));
+    }
+    fd.append("prompt", effectivePrompt.length >= 3 ? effectivePrompt : "ห้องที่จัดตามภาพ 3D ให้สวยและใช้งานได้จริง");
     fd.append("variants", twoVariants ? "2" : "1");
     if (budget > 0) fd.append("budget", String(budget));
     if (owned.length > 0) fd.append("owned", owned.join(","));
@@ -460,6 +595,9 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
           setImages([plan.snapshotUrl]);
           setSelected(0);
         } else await addComposite(result.products, result.spots);
+      } else if (!plan && !fromPlan && preview) {
+        // สร้างภาพวางสินค้าจริง 100% เพิ่มไว้เป็นตัวเลือกที่ 2 ให้ลูกค้ากดเทียบกับภาพเรนเดอร์ AI ได้ทันที
+        void addComposite(result.products, result.spots, false, true, preview);
       }
       haptic([10, 40, 10]);
       if (demo && result.images.length > 0) {
@@ -495,12 +633,13 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     try {
       const data = await callApi(fd);
       setAlternatives(data.alternatives ?? alternatives);
-      setImages((prev) => [...(data.images ?? []), ...prev]);
+      setImages((prev) => [...(data.images ?? []), ...prev.filter((x) => !composites.includes(x))]);
       if (data.spots) setSpots(data.spots);
       setImgSpots((m) => ({ ...m, ...spotsByImage(data.images ?? [], data.imageSpots) }));
       if (data.plan) setPlan(data.plan as BuyPlan);
       setImageError(data.imageError);
       if (!data.images?.length) await addComposite(products, data.spots ?? spots, true);
+      else if (!fromPlan && preview) void addComposite(products, data.spots ?? spots, false, true, preview);
       setSelected(0);
       setView("shop");
       setDirty(false);
@@ -513,6 +652,12 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
 
   async function refine() {
     if (!currentImage || refineText.trim().length < 2) return;
+    await refineWithInstruction(refineText.trim());
+    setRefineText("");
+  }
+
+  async function refineWithInstruction(instruction: string) {
+    if (!currentImage || !instruction.trim()) return;
     setBusy("refine");
     setError(null);
     setShareUrl(null);
@@ -520,13 +665,12 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
     fd.append("mode", "refine");
     const base = await dataUrlToBlob(currentImage);
     fd.append("photo", await resizeImageFile(new File([base], "base.png", { type: base.type || "image/png" })), "base.jpg");
-    fd.append("instruction", refineText.trim());
+    fd.append("instruction", instruction.trim());
     try {
       const data = await callApi(fd);
       if (data.images?.length) {
         setImages((prev) => [data.images[0], ...prev]);
         setSelected(0);
-        setRefineText("");
       }
       setImageError(data.imageError);
     } catch (e) {
@@ -539,6 +683,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
   function swap(oldId: string, next: Product) {
     setPlan(null);
     setProducts((list) => list.map((p) => (p.id === oldId ? next : p)));
+    setLockedIds((ids) => ids.map((id) => (id === oldId ? next.id : id)));
     setSpots(({ [oldId]: spot, ...rest }) => (spot ? { ...rest, [next.id]: spot } : rest));
     setAlternatives((alts) => {
       const old = products.find((p) => p.id === oldId);
@@ -548,12 +693,16 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
       return { ...rest, [next.id]: old ? [old, ...pool] : pool };
     });
     setSwapFor(null);
+    const list = products.map((p) => (p.id === oldId ? next : p));
+    const { [oldId]: spot, ...rest } = spots;
+    const nextSpots = spot ? { ...rest, [next.id]: spot } : rest;
     if (isComposite && !fromPlan) {
       // ภาพแบบวางสินค้า: วาดใหม่ทันที ไม่ต้องรอ AI
-      const list = products.map((p) => (p.id === oldId ? next : p));
-      const { [oldId]: spot, ...rest } = spots;
-      void addComposite(list, spot ? { ...rest, [next.id]: spot } : rest, true);
+      void addComposite(list, nextSpots, true);
       return;
+    }
+    if (!fromPlan && preview) {
+      void addComposite(list, nextSpots, false, true, preview);
     }
     setDirty(true);
   }
@@ -582,24 +731,32 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
   return (
     <div className="space-y-4">
       {/* เลือกโหมด: รูปห้องจริง หรือ ห้อง 3D จัดเอง (ใช้ร่วมกัน: ของที่ AI เลือก ↔ ห้อง 3D ↔ ภาพ AI) */}
-      <div className="inline-flex rounded-full bg-ink-100 p-1" role="tablist" aria-label="วิธีจัดห้อง">
-        {(
-          [
-            ["photo", "รูปห้อง + AI", Camera],
-            ["plan", "ห้อง 3D จัดเอง", Box],
-          ] as const
-        ).map(([k, label, Icon]) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            aria-selected={mode === k}
-            onClick={() => (k === "plan" ? openPlan() : setMode("photo"))}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors ${mode === k ? "bg-surface text-ink-950 shadow-sm" : "text-ink-600 hover:text-ink-900"}`}
-          >
-            <Icon className="h-4 w-4" /> {label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-full bg-ink-100 p-1" role="tablist" aria-label="วิธีจัดห้อง">
+          {(
+            [
+              ["photo", "รูปห้อง + AI", Camera],
+              ["plan", "ห้อง 3D จัดเอง", Box],
+            ] as const
+          ).map(([k, label, Icon]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={mode === k}
+              onClick={() => (k === "plan" ? openPlan() : setMode("photo"))}
+              className={`inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-colors ${mode === k ? "bg-surface text-ink-950 shadow-sm" : "text-ink-600 hover:text-ink-900"}`}
+            >
+              <Icon className="h-4 w-4" /> {label}
+            </button>
+          ))}
+        </div>
+        <Link
+          href="/room-3d?mode=studio"
+          className="inline-flex h-10 items-center gap-1.5 rounded-full border border-info/30 bg-info-bg/70 px-4 text-xs font-bold text-info hover:brightness-95"
+        >
+          <Box className="h-4 w-4" /> เปิดสตูดิโอ 3D เต็มจอ (2D + 3D + วัดห้อง)
+        </Link>
       </div>
 
     <div className="grid items-start gap-6 lg:grid-cols-12">
@@ -612,6 +769,37 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
           </>
         ) : (
         <>
+        {currentImage && preview && !busy && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-info/25 bg-info-bg/50 px-3 py-2">
+            <span className="text-xs font-bold text-ink-900">
+              {view === "compare"
+                ? "↔️ ลากเส้นแบ่งซ้าย-ขวาบนรูปเพื่อเทียบ ห้องจริง (ก่อน) vs ห้องที่แต่งด้วย AI (หลัง)"
+                : "🔍 แตะจุดตัวเลขบนภาพเพื่อดูราคาและสั่งซื้อ หรือสลับไปโหมดเทียบก่อน/หลัง"}
+            </span>
+            <div className="inline-flex rounded-full bg-surface p-0.5 shadow-xs ring-1 ring-ink-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSpot(null);
+                  setView("shop");
+                }}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition-colors ${view === "shop" ? "bg-info text-white" : "text-ink-700 hover:text-ink-950"}`}
+              >
+                <ScanSearch className="h-3.5 w-3.5" /> แตะดูของในภาพ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSpot(null);
+                  setView("compare");
+                }}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition-colors ${view === "compare" ? "bg-info text-white" : "text-ink-700 hover:text-ink-950"}`}
+              >
+                <Columns2 className="h-3.5 w-3.5" /> เทียบก่อน/หลัง (Before/After)
+              </button>
+            </div>
+          </div>
+        )}
         <div ref={photoBoxRef} className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-ink-200 bg-ink-50">
           {shownImage ? (
             <>
@@ -694,7 +882,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
                   <ImagePlus className="h-4 w-4" /> เลือกจากเครื่อง
                 </button>
               </div>
-              <button type="button" onClick={openPlan} className="inline-flex items-center gap-1.5 rounded-full bg-info-bg px-3.5 py-2 text-xs font-semibold text-info hover:brightness-95">
+              <button type="button" onClick={() => openPlan()} className="inline-flex items-center gap-1.5 rounded-full bg-info-bg px-3.5 py-2 text-xs font-semibold text-info hover:brightness-95">
                 <Box className="h-4 w-4" /> กล้องไม่ชัด / ไม่มีรูป? สร้างห้อง 3D จากขนาดที่วัดได้
               </button>
               <div className="space-y-1.5">
@@ -765,7 +953,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
                 </button>
               )}
               {photoTips.blurry && (
-                <button type="button" onClick={openPlan} className="rounded-full bg-info px-3 py-1.5 font-semibold text-white">
+                <button type="button" onClick={() => openPlan()} className="rounded-full bg-info px-3 py-1.5 font-semibold text-white">
                   ใช้ห้อง 3D แทน
                 </button>
               )}
@@ -776,22 +964,28 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
         <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(e) => onPick(e.target.files?.[0])} />
 
         {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {images.map((src, i) => (
-              <button
-                key={src.slice(-40) + i}
-                type="button"
-                onClick={() => {
-                  setSelected(i);
-                  setActiveSpot(null);
-                }}
-                className={`h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 ${i === selected ? "border-info" : "border-transparent"}`}
-                aria-label={`ภาพแบบที่ ${i + 1}`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" width={400} height={300} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1">
+            {images.map((src, i) => {
+              const isCompThumb = composites.includes(src);
+              return (
+                <button
+                  key={src.slice(-40) + i}
+                  type="button"
+                  onClick={() => {
+                    setSelected(i);
+                    setActiveSpot(null);
+                  }}
+                  className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 transition-all ${i === selected ? "border-info ring-2 ring-info/25" : "border-ink-200 opacity-85 hover:opacity-100"}`}
+                  aria-label={isCompThumb ? "ภาพวางสินค้าจริง 100%" : `ภาพ AI แบบที่ ${i + 1}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" width={400} height={300} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  <span className={`absolute inset-x-0 bottom-0 px-1 py-0.5 text-center text-[9px] font-bold text-white ${isCompThumb ? "bg-ink-950/85" : "bg-info/90"}`}>
+                    {isCompThumb ? "🛋️ สินค้าจริง 100%" : `✨ ภาพ AI ${images.filter((x) => !composites.includes(x)).length > 1 ? i + 1 : ""}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -813,16 +1007,49 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
             {isComposite
               ? fromPlan
                 ? "ภาพจากห้อง 3D ที่คุณจัด (ยังไม่ได้ให้ AI วาดเป็นภาพจริง) · แตะตัวเลขบนภาพเพื่อดูสินค้า"
-                : "ภาพจำลองวางสินค้าลงในรูปห้องของคุณ (ขนาด/มุมโดยประมาณ) · แตะตัวเลขบนภาพเพื่อดูสินค้า · กดเปลี่ยนชิ้นแล้วภาพอัปเดตทันที"
-              : `${fromCache ? "ผลลัพธ์สาธิตที่บันทึกไว้ครั้งก่อน · " : ""}ภาพจำลองโดย AI ของจริงอาจต่างเล็กน้อย · แตะตัวเลขบนภาพเพื่อดูสินค้า`}
+                : "🛋️ ภาพวางรูปสินค้าจริง 100% ลงในห้องของคุณ · กดเปลี่ยนชิ้นด้านล่างแล้วภาพอัปเดตทันที · สลับดูภาพเรนเดอร์ AI ได้จากรูปย่อด้านบน"
+              : `${fromCache ? "ผลลัพธ์สาธิตที่บันทึกไว้ครั้งก่อน · " : ""}✨ ภาพเรนเดอร์โดย AI อ้างอิงรูปทรงและสีจากสินค้าจริง · สลับดู "🛋️ สินค้าจริง 100%" จากรูปย่อด้านบนได้`}
           </p>
         )}
 
         {/* แก้ภาพต่อ (เฉพาะภาพจาก AI) */}
         {currentImage && !isComposite && (
-          <div className="card space-y-2 p-4">
+          <div className="card space-y-3 p-4">
+            {/* สลับบรรยากาศแสง Day / Night ในคลิกเดียว */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-2.5">
+              <span className="text-xs font-semibold text-ink-700">สลับบรรยากาศแสงในคลิกเดียว:</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() =>
+                    refineWithInstruction(
+                      "สลับเป็นโหมดกลางวัน แสงแดดธรรมชาตินุ่มนวลเข้ามาทางหน้าต่าง สว่างสดใส คมชัด"
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800 shadow-xs transition-all hover:bg-amber-100 disabled:opacity-50"
+                  title="เปลี่ยนบรรยากาศเป็นกลางวัน แสงแดดธรรมชาติสว่างสดใส"
+                >
+                  <Sun className="h-3.5 w-3.5 text-amber-600" /> กลางวัน (Daylight)
+                </button>
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() =>
+                    refineWithInstruction(
+                      "สลับเป็นโหมดกลางคืน บรรยากาศอบอุ่น Cozy Night ไฟโคมไฟโต๊ะสีส้ม 2700K แสงไฟแอมเบียนต์หลังจอ นอกหน้าต่างเป็นกลางคืน"
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 shadow-xs transition-all hover:bg-indigo-100 disabled:opacity-50"
+                  title="เปลี่ยนบรรยากาศเป็นกลางคืน แสงไฟอบอุ่น Cozy Night & Ambient Glow"
+                >
+                  <Moon className="h-3.5 w-3.5 text-indigo-600" /> กลางคืน (Cozy Night)
+                </button>
+              </div>
+            </div>
+
             <label htmlFor="refine" className="flex items-center gap-1.5 text-sm font-bold text-ink-950">
-              <Wand2 className="h-4 w-4 text-info" /> อยากให้แก้อะไรในภาพนี้?
+              <Wand2 className="h-4 w-4 text-info" /> บรีฟแก้ภาพนี้เพิ่มเติม (AI Edit)
             </label>
             <div className="flex gap-2">
               <input
@@ -831,7 +1058,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
                 maxLength={300}
                 onChange={(e) => setRefineText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && refine()}
-                placeholder="เช่น เปลี่ยนผนังเป็นสีเขียวอ่อน"
+                placeholder="เช่น เปลี่ยนผนังเป็นสีเขียวอ่อน, ให้แสงอุ่นขึ้น, เอาพรมออก"
                 className="input flex-1"
               />
               <button type="button" disabled={!!busy || cooling || refineText.trim().length < 2} onClick={refine} className="icon-btn icon-btn-primary h-11">
@@ -851,11 +1078,14 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
         )}
       </section>
 
-      {/* ขวา: บอกความต้องการ */}
+      {/* ขวา: บอกความต้องการ & บรีฟจัดห้อง */}
       <section className="min-w-0 space-y-4 lg:col-span-5">
-        <div className="card space-y-3 p-5">
+        <div className="card space-y-3.5 p-5">
           <QuotaBadge quota={quota} guest={!loggedIn} />
-          <p className="font-display text-lg font-bold text-ink-950">อยากได้ห้องแบบไหน?</p>
+          <div>
+            <p className="font-display text-lg font-bold text-ink-950">1. เลือกสไตล์หลักของห้อง</p>
+            <p className="text-xs text-ink-500">เลือกแนวห้อง แล้วบรีฟตำแหน่งวางโต๊ะ โทนสี และโจทย์พิเศษด้านล่างได้เลย</p>
+          </div>
           <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible">
             {STYLE_CARDS.map((c) => {
               const on = style === c.id;
@@ -883,15 +1113,120 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
               );
             })}
           </div>
+
+          {/* บรีฟจัดห้องแบบละเอียด (Layout Zone + Palette + Lighting + Extras) */}
+          <div className="space-y-3 rounded-2xl border border-ink-200/80 bg-ink-50/60 p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-ink-950">🎯 2. บรีฟจัดห้องให้เป๊ะตามใจคุณ</p>
+              {(briefZone !== "center" || briefPalette || briefLight || briefExtras.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBriefZone("center");
+                    setBriefPalette(null);
+                    setBriefLight(null);
+                    setBriefExtras([]);
+                  }}
+                  className="text-[11px] font-semibold text-ink-500 hover:text-ink-900"
+                >
+                  ล้างค่าบรีฟ
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold text-ink-700">ตำแหน่งวางโต๊ะในห้อง</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BRIEF_ZONES.map((z) => {
+                  const on = briefZone === z.id;
+                  return (
+                    <button
+                      key={z.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setBriefZone(on ? null : z.id)}
+                      className={`rounded-xl border px-2.5 py-1.5 text-left text-xs transition-colors ${on ? "border-info bg-info-bg font-bold text-info" : "border-ink-200 bg-surface text-ink-700 hover:border-info"}`}
+                    >
+                      {z.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold text-ink-700">คุมโทนสีเฟอร์นิเจอร์ (เลือกของเข้าชุดกัน)</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BRIEF_PALETTES.map((pal) => {
+                  const on = briefPalette === pal.id;
+                  return (
+                    <button
+                      key={pal.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setBriefPalette(on ? null : pal.id)}
+                      className={`rounded-xl border px-2.5 py-1.5 text-left text-xs transition-colors ${on ? "border-info bg-info-bg font-bold text-info" : "border-ink-200 bg-surface text-ink-700 hover:border-info"}`}
+                    >
+                      {pal.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold text-ink-700">บรรยากาศแสงไฟ</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BRIEF_LIGHTING.map((lt) => {
+                  const on = briefLight === lt.id;
+                  return (
+                    <button
+                      key={lt.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setBriefLight(on ? null : lt.id)}
+                      className={`rounded-xl border px-2.5 py-1.5 text-left text-xs transition-colors ${on ? "border-info bg-info-bg font-bold text-info" : "border-ink-200 bg-surface text-ink-700 hover:border-info"}`}
+                    >
+                      {lt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold text-ink-700">โจทย์พิเศษ (เลือกได้หลายข้อ)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {BRIEF_EXTRAS.map((ex) => {
+                  const on = briefExtras.includes(ex.id);
+                  return (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setBriefExtras((list) => (on ? list.filter((x) => x !== ex.id) : [...list, ex.id]))}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${on ? "border-info bg-info-bg font-bold text-info" : "border-ink-200 bg-surface text-ink-700 hover:border-info"}`}
+                    >
+                      {on && <Check className="h-3 w-3" />}
+                      {ex.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div className="relative">
-            <label htmlFor="design-prompt" className="sr-only">รายละเอียดเพิ่มเติม</label>
+            <label htmlFor="design-prompt" className="mb-1 block text-xs font-semibold text-ink-800">
+              บรีฟเพิ่มเติมให้ AI (พิมพ์หรือพูดสั่งได้เลย)
+            </label>
             <textarea
               id="design-prompt"
-              rows={3}
+              rows={2}
               maxLength={500}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder={voice.supported ? "พิมพ์หรือกดไมค์พูด เช่น อยากได้ที่เก็บของเยอะๆ" : "เช่น อยากได้ที่เก็บของเยอะๆ มีต้นไม้"}
+              placeholder={voice.supported ? "พิมพ์หรือกดไมค์พูด เช่น อยากให้โต๊ะหันรับแสงหน้าต่าง มีลำโพงคู่..." : "เช่น อยากให้โต๊ะหันรับแสงหน้าต่าง มีลำโพงคู่..."}
               className="input resize-none pr-14"
             />
             {voice.supported && (
@@ -906,7 +1241,14 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
               </button>
             )}
           </div>
-          <RoomSizeInputs room={room} set={roomSet} onChange={changeRoom} />
+          {fullPrompt && (
+            <div className="rounded-xl border border-info/25 bg-info-bg/40 px-3 py-2 text-[11px] text-ink-700">
+              <span className="font-bold text-info">สรุปบรีฟ AI: </span>
+              {fullPrompt}
+              {lockedIds.length > 0 && <span className="ml-1 font-bold text-ok">· ล็อกสินค้าไว้ {lockedIds.length} ชิ้น</span>}
+            </div>
+          )}
+          <RoomSizeInputs room={room} set={roomSet} onChange={changeRoom} initialTool={initialTool} />
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
               <label htmlFor="budget" className="font-semibold text-ink-800">งบรวม</label>
@@ -971,7 +1313,17 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
           {error && <p className="rounded-lg bg-bad-bg p-3 text-xs font-semibold text-bad">{error}</p>}
           <button type="button" disabled={!!busy || cooling || (quota !== null && quota.remaining <= 0 && !(quota.credits ?? 0))} onClick={() => design()} className="btn btn-primary w-full py-3">
             {busy === "design" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            <span>{busy === "design" ? "กำลังจัดห้อง..." : cooling ? "รอสักครู่…" : hasResult ? "จัดใหม่ทั้งหมด" : "ให้ AI จัดห้อง"}</span>
+            <span>
+              {busy === "design"
+                ? "กำลังจัดห้องตามบรีฟ..."
+                : cooling
+                  ? "รอสักครู่…"
+                  : hasResult
+                    ? lockedIds.length > 0
+                      ? `จัดใหม่ตามบรีฟ (เก็บของที่ล็อก ${lockedIds.length} ชิ้น)`
+                      : "จัดใหม่ตามบรีฟ"
+                    : "ให้ AI จัดห้องตามบรีฟ"}
+            </span>
           </button>
           <p className="text-[11px] text-ink-500">รูปห้องใช้เพื่อสร้างภาพครั้งนี้เท่านั้น ไม่ถูกเก็บไว้ (ยกเว้นคุณกดบันทึกเอง)</p>
         </div>
@@ -1022,9 +1374,14 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
       {hasResult && (
         <section className="space-y-4 lg:col-span-12">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-xl font-bold text-ink-950">
-              ของในห้องนี้ ({products.length} ชิ้น) · {formatTHB(total)}
-            </h2>
+            <div>
+              <h2 className="font-display text-xl font-bold text-ink-950">
+                ของในห้องนี้ ({products.length} ชิ้น) · {formatTHB(total)}
+              </h2>
+              <p className="text-xs text-ink-500">
+                กด <strong>📌 ล็อกไว้</strong> ชิ้นที่ชอบ แล้วกดจัดใหม่ตามบรีฟเพื่อให้ AI เปลี่ยนเฉพาะชิ้นอื่น หรือกด <strong>เปลี่ยน</strong> เพื่อสลับรุ่นทันที
+              </p>
+            </div>
             {mode === "photo" && (
               <button
                 type="button"
@@ -1047,7 +1404,7 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
                 {dirty && (
                   <button type="button" disabled={!!busy || cooling} onClick={regenerate} className="icon-btn h-11 px-4">
                     {busy === "regenerate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    <span className="text-sm font-semibold">สร้างภาพใหม่ด้วยของที่เลือก</span>
+                    <span className="text-sm font-semibold">สร้างภาพ AI ใหม่ด้วยของที่เลือก</span>
                   </button>
                 )}
                 <AddToCartButton item={products.map((p) => cartInput(p))} label="ใส่ตะกร้าทั้งชุด" className="h-11" />
@@ -1070,34 +1427,49 @@ export function DesignStudio({ loggedIn, demo = false }: { loggedIn: boolean; de
             <p className="text-sm text-ink-600">ยังหาสินค้าที่ตรงไม่เจอ ลองพิมพ์รายละเอียดเพิ่ม หรือขยายงบ</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
-              {products.map((p, i) => (
-                <div key={p.id} className="relative space-y-1.5">
-                  {spots[p.id] && currentImage && (
-                    <span className="pointer-events-none absolute left-2 top-2 z-[1] flex h-6 w-6 items-center justify-center rounded-full bg-ink-950 text-[11px] font-bold text-white">{i + 1}</span>
-                  )}
-                  <ProductTile product={p} />
-                  <div className="flex items-start justify-between gap-2 px-1">
-                    <p className="text-[11px] text-ink-500">{reasons.get(p.id) ?? ""}</p>
-                    {(alternatives[p.id]?.length ?? 0) > 0 && (
-                      <button type="button" onClick={() => setSwapFor(swapFor === p.id ? null : p.id)} className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-info">
-                        <Repeat2 className="h-3.5 w-3.5" /> เปลี่ยน
-                      </button>
+              {products.map((p, i) => {
+                const isLocked = lockedIds.includes(p.id);
+                return (
+                  <div key={p.id} className={`relative space-y-1.5 rounded-2xl transition-all ${isLocked ? "ring-2 ring-info/60" : ""}`}>
+                    {spots[p.id] && currentImage && (
+                      <span className="pointer-events-none absolute left-2 top-2 z-[1] flex h-6 w-6 items-center justify-center rounded-full bg-ink-950 text-[11px] font-bold text-white">{i + 1}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLockedIds((ids) => (ids.includes(p.id) ? ids.filter((id) => id !== p.id) : [...ids, p.id]))
+                      }
+                      className={`absolute right-2 top-2 z-[2] inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold shadow-xs transition-colors ${
+                        isLocked ? "bg-info text-white" : "bg-white/95 text-ink-700 hover:bg-info-bg hover:text-info"
+                      }`}
+                      title="ล็อกสินค้าชิ้นนี้ไว้เมื่อกดจัดใหม่ตามบรีฟ"
+                    >
+                      {isLocked ? "📌 ล็อกไว้แล้ว" : "📌 ล็อกชิ้นนี้"}
+                    </button>
+                    <ProductTile product={p} />
+                    <div className="flex items-start justify-between gap-2 px-1">
+                      <p className="text-[11px] text-ink-500">{reasons.get(p.id) ?? ""}</p>
+                      {(alternatives[p.id]?.length ?? 0) > 0 && (
+                        <button type="button" onClick={() => setSwapFor(swapFor === p.id ? null : p.id)} className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-info">
+                          <Repeat2 className="h-3.5 w-3.5" /> เปลี่ยน
+                        </button>
+                      )}
+                    </div>
+                    {swapFor === p.id && (
+                      <ul className="space-y-1 rounded-xl border border-ink-200 bg-white p-2">
+                        {alternatives[p.id].map((alt) => (
+                          <li key={alt.id}>
+                            <button type="button" onClick={() => swap(p.id, alt)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-ink-50">
+                              <span className="line-clamp-1 text-ink-800">{alt.name}</span>
+                              <span className="shrink-0 font-semibold text-ink-950">{formatTHB(alt.price)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                  {swapFor === p.id && (
-                    <ul className="space-y-1 rounded-xl border border-ink-200 bg-white p-2">
-                      {alternatives[p.id].map((alt) => (
-                        <li key={alt.id}>
-                          <button type="button" onClick={() => swap(p.id, alt)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-ink-50">
-                            <span className="line-clamp-1 text-ink-800">{alt.name}</span>
-                            <span className="shrink-0 font-semibold text-ink-950">{formatTHB(alt.price)}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

@@ -5,7 +5,7 @@ import type { Product } from "@/lib/types";
 export function siteUrl(): string {
   const raw = (process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "").trim().replace(/\/+$/, "");
   if (!raw) return "http://localhost:3000";
-  // ใส่ https:// ให้ถ้าพิมพ์มาแค่โดเมน (เช่น compronext-web.vercel.app) — ไม่งั้น new URL() พังตอน build
+  // ใส่ https:// ให้ถ้าพิมพ์มาแค่โดเมน (เช่น your-app.vercel.app) — ไม่งั้น new URL() พังตอน build
   const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
     return new URL(url).origin;
@@ -72,3 +72,4 @@ export function productJsonLd(p: Product, extra: { brand?: string; storeName: st
 export function jsonLdHtml(data: unknown): { __html: string } {
   return { __html: JSON.stringify(data).replace(/</g, "\\u003c") };
 }
+
