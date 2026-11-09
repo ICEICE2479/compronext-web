@@ -679,7 +679,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         e.preventDefault();
         e.stopPropagation();
         controls.enabled = false;
-        renderer.domElement.setPointerCapture(e.pointerId);
+        try {
+          renderer.domElement.setPointerCapture(e.pointerId);
+        } catch {}
         plane.constant = -selItem.y * CM;
         if (!ray.ray.intersectPlane(plane, hit)) return;
 
@@ -708,7 +710,9 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         e.stopPropagation();
         propsRef.current.onSelect(uid);
         controls.enabled = false;
-        renderer.domElement.setPointerCapture(e.pointerId);
+        try {
+          renderer.domElement.setPointerCapture(e.pointerId);
+        } catch {}
         plane.constant = -it.y * CM;
         if (!ray.ray.intersectPlane(plane, hit)) return;
 
@@ -729,10 +733,12 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         return;
       }
 
-      // ง. หากคลิกซ้ายที่ตัวสิ่งของ → โหมดเลื่อนตำแหน่ง
+      // ง. หากคลิกซ้ายหรือแตะสัมผัสที่ตัวสิ่งของ → โหมดเลื่อนตำแหน่ง
       if (!uid) return;
       const it = propsRef.current.items.find((i) => i.uid === uid);
       if (!it) return;
+      e.preventDefault();
+      e.stopPropagation();
       plane.constant = -it.y * CM;
       if (!ray.ray.intersectPlane(plane, hit)) return;
 
@@ -760,13 +766,17 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         isOverDelete: false,
       };
       controls.enabled = false;
-      renderer.domElement.setPointerCapture(e.pointerId);
+      try {
+        renderer.domElement.setPointerCapture(e.pointerId);
+      } catch {}
       propsRef.current.onSelect(uid);
       propsRef.current.onDragStateChange?.(true, false, uid);
     };
     const onMoveEv = (e: PointerEvent) => {
       // 1) โหมดหมุนด้วยเมาส์ (Mouse Rotation)
       if (rotDrag) {
+        e.preventDefault();
+        e.stopPropagation();
         toNdc(e);
         plane.constant = -rotDrag.itemY * CM;
         if (!ray.ray.intersectPlane(plane, hit)) return;
@@ -844,6 +854,8 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
       }
 
       // 3) โหมดเลื่อนตำแหน่งสิ่งของ (Move Drag)
+      e.preventDefault();
+      e.stopPropagation();
       const isOverDelete = Boolean(
         propsRef.current.checkDeleteZone?.(e.clientX, e.clientY) ||
         (typeof document !== "undefined" &&
@@ -992,6 +1004,11 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
             }
           }
         }
+        if (renderer.domElement.hasPointerCapture(e.pointerId)) {
+          try {
+            renderer.domElement.releasePointerCapture(e.pointerId);
+          } catch {}
+        }
         rotDrag = null;
         downAt = null;
         controls.enabled = true;
@@ -1017,6 +1034,11 @@ export const RoomPlanner3D = forwardRef<RoomPlanner3DHandle, Props>(function Roo
         if (isOverDelete) {
           // ลากตัวสินค้ามาปล่อยที่คลังสินค้า/ขอบขวาเพื่อลบทันที!
           const deletedUid = d.uid;
+          if (renderer.domElement.hasPointerCapture(e.pointerId)) {
+            try {
+              renderer.domElement.releasePointerCapture(e.pointerId);
+            } catch {}
+          }
           drag = null;
           downAt = null;
           controls.enabled = true;
