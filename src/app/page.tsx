@@ -13,12 +13,16 @@ import {
   Armchair,
   Sofa,
   Store,
+  Sparkles,
+  Flame,
+  CheckCircle2,
 } from "lucide-react";
 import { getAllArticles, getAllBanners, getAllCatalogProducts, getAllProducts, getAllRooms, getSiteSettings } from "@/lib/data/store";
 import { enrichRoom } from "@/lib/pricing";
 import { RoomCard } from "@/components/RoomCard";
 import { ProductTile } from "@/components/ProductTile";
 import { HomeHero } from "@/components/home/HomeHero";
+import { Home3DTeaser } from "@/components/home/Home3DTeaser";
 import { StartPaths } from "@/components/home/StartPaths";
 import { WhyUs } from "@/components/home/WhyUs";
 import { FirstVisitGuide } from "@/components/home/FirstVisitGuide";
@@ -42,13 +46,13 @@ export function generateMetadata(): Metadata {
 
 const CATEGORY_SHORTCUTS = [
   { href: "/categories?cat=bed", label: "ห้องนอน", icon: BedDouble },
-  { href: "/categories?cat=desk", label: "โต๊ะ", icon: Monitor },
+  { href: "/categories?cat=desk", label: "โต๊ะทำงาน", icon: Monitor },
   { href: "/categories?cat=chair", label: "เก้าอี้", icon: Armchair },
-  { href: "/categories?cat=lighting", label: "โคมไฟ", icon: Lamp },
+  { href: "/categories?cat=lighting", label: "โคมไฟ & RGB", icon: Lamp },
   { href: "/categories?cat=storage", label: "ชั้นเก็บของ", icon: Library },
-  { href: "/categories?cat=decor", label: "ของแต่ง", icon: Sofa },
+  { href: "/categories?cat=decor", label: "ของตกแต่ง", icon: Sofa },
   { href: "/categories?cat=fake_plant", label: "ต้นไม้", icon: Leaf },
-  { href: "/categories?macro=gaming-gear", label: "เกมมิ่ง", icon: Gamepad2 },
+  { href: "/categories?macro=gaming-gear", label: "เกมมิ่งเกียร์", icon: Gamepad2 },
 ];
 
 const HOME_CATEGORIES = ["desk", "chair", "lighting", "bed", "decor", "rug", "fake_plant", "storage", "monitor", "keyboard"];
@@ -79,60 +83,112 @@ export default function HomePage() {
   const articles = getAllArticles(false).slice(0, 3);
 
   return (
-    <div className="space-y-16 pb-16 sm:space-y-20 sm:pb-20">
+    <div className="space-y-16 pb-16 sm:space-y-24 sm:pb-24">
+      {/* 1. Next-Gen Hero */}
       <HomeHero />
+
+      {/* 2. Interactive 3D Setup Teaser */}
+      <Home3DTeaser />
+
+      {/* 3. Bento Grid - วันนี้อยากทำอะไร */}
       <StartPaths />
+
+      {/* First visit modal guide */}
       <FirstVisitGuide />
 
-      {/* หมวดแบบไอคอน */}
+      {/* 4. Quick Category Navigation */}
       <nav className="container-page" aria-label="หมวดสินค้ายอดนิยม">
-        <Reveal stagger={40} className="grid grid-cols-4 gap-x-1 gap-y-3 sm:grid-cols-8 sm:gap-3">
-          {CATEGORY_SHORTCUTS.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className="group flex min-h-11 flex-col items-center gap-2 rounded-2xl p-2 text-center text-xs font-semibold text-ink-800 transition-colors hover:bg-ink-100 hover:text-ink-950">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-info-bg text-info transition-transform group-hover:scale-105 group-active:scale-95" aria-hidden="true">
-                <Icon className="h-6 w-6" />
-              </span>
-              {label}
+        <div className="rounded-3xl border border-ink-200/80 bg-surface p-4 sm:p-6 shadow-sm dark:border-white/10">
+          <div className="mb-4 flex items-center justify-between px-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-ink-500">
+              หมวดหมู่ไอเทมยอดนิยม
+            </span>
+            <Link
+              href="/categories"
+              className="text-xs font-semibold text-info hover:underline"
+            >
+              ดูทั้งหมด 28 หมวด →
             </Link>
-          ))}
-        </Reveal>
+          </div>
+          <Reveal stagger={30} className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-3">
+            {CATEGORY_SHORTCUTS.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="group flex min-h-12 flex-col items-center gap-2 rounded-2xl p-2.5 text-center text-xs font-semibold text-ink-800 transition-all hover:bg-ink-100 hover:text-ink-950 dark:hover:bg-ink-800 dark:text-ink-200"
+              >
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-info-bg text-info transition-transform group-hover:scale-110 group-active:scale-95 shadow-sm"
+                  aria-hidden="true"
+                >
+                  <Icon className="h-6 w-6" />
+                </span>
+                <span className="line-clamp-1">{label}</span>
+              </Link>
+            ))}
+          </Reveal>
+        </div>
       </nav>
 
-      {/* ไอเดียห้อง */}
-      <Reveal as="section" className="container-page space-y-5" aria-labelledby="home-rooms-title">
-        <div className="flex items-end justify-between gap-4">
-          <h2 id="home-rooms-title" className="text-h2 text-ink-950">ไอเดียห้องยอดนิยม</h2>
-          <Link href="/rooms" className="-mr-2 inline-flex min-h-11 shrink-0 items-center gap-1 px-2 text-sm font-semibold text-info hover:underline" aria-label="ดูไอเดียห้องทั้งหมด">
-            ทั้งหมด <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      {/* 5. ไอเดียห้องยอดนิยม */}
+      <Reveal as="section" className="container-page space-y-6" aria-labelledby="home-rooms-title">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-info">
+              <Flame className="h-3.5 w-3.5 text-amber-500" />
+              <span>แรงบันดาลใจแต่งห้อง</span>
+            </div>
+            <h2 id="home-rooms-title" className="text-h2 text-ink-950">
+              ไอเดียห้องคอมยอดนิยม
+            </h2>
+          </div>
+          <Link
+            href="/rooms"
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-info hover:underline"
+            aria-label="ดูไอเดียห้องทั้งหมด"
+          >
+            ดูไอเดียทั้งหมด ({rooms.length} ห้อง) <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
-        <Reveal stagger={60} className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
+        <Reveal stagger={50} className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
           {featuredRooms.map((room) => (
             <RoomCard key={room.id} room={room} />
           ))}
         </Reveal>
       </Reveal>
 
-      {/* สินค้า */}
-      <Reveal as="section" className="container-page space-y-5" aria-labelledby="home-products-title">
-        <div className="flex items-end justify-between gap-4">
-          <h2 id="home-products-title" className="text-h2 text-ink-950">ของแต่งห้องแนะนำ</h2>
-          <Link href="/categories" className="-mr-2 inline-flex min-h-11 shrink-0 items-center gap-1 px-2 text-sm font-semibold text-info hover:underline" aria-label="ดูสินค้าทั้งหมด">
-            ทั้งหมด <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      {/* 6. ของแต่งห้องแนะนำ */}
+      <Reveal as="section" className="container-page space-y-6" aria-labelledby="home-products-title">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-info">
+              <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+              <span>ขนาดจริง 1:1 พร้อมโมเดล 3D</span>
+            </div>
+            <h2 id="home-products-title" className="text-h2 text-ink-950">
+              ของแต่งห้อง & เกมมิ่งเกียร์แนะนำ
+            </h2>
+          </div>
+          <Link
+            href="/categories"
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-info hover:underline"
+            aria-label="ดูสินค้าทั้งหมด"
+          >
+            แคตตาล็อกทั้งหมด (1,600+ ชิ้น) <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
-        <Reveal stagger={60} className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
+        <Reveal stagger={50} className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
           {products.map((p) => (
             <ProductTile key={p.id} product={p} />
           ))}
         </Reveal>
       </Reveal>
 
-      {/* โปรโมชั่นจากร้านพาร์ตเนอร์ (แก้ได้ในหลังบ้าน) */}
+      {/* 7. โปรโมชั่นจากร้านพาร์ตเนอร์ */}
       {banners.length > 0 && (
         <section className="container-page space-y-5" aria-labelledby="home-promo-title">
           <h2 id="home-promo-title" className="text-h2 flex items-center gap-2 text-ink-950">
-            <Tag className="h-5 w-5 text-info" aria-hidden="true" /> โปรโมชั่น
+            <Tag className="h-5 w-5 text-info" aria-hidden="true" /> สิทธิพิเศษและโปรโมชั่น
           </h2>
           <Reveal stagger={60} className="grid gap-3 sm:gap-4 md:grid-cols-3">
             {banners.map((b) => {
@@ -155,11 +211,11 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* บทความ (แก้ได้ในหลังบ้าน) */}
+      {/* 8. บทความ */}
       {articles.length > 0 && (
         <section className="container-page space-y-5" aria-labelledby="home-articles-title">
           <h2 id="home-articles-title" className="text-h2 flex items-center gap-2 text-ink-950">
-            <BookOpen className="h-5 w-5 text-info" aria-hidden="true" /> บทความแนะนำ
+            <BookOpen className="h-5 w-5 text-info" aria-hidden="true" /> บทความและคำแนะนำการจัดโต๊ะคอม
           </h2>
           <Reveal stagger={60} className="grid gap-3 sm:gap-4 md:grid-cols-3">
             {articles.map((a) => (
@@ -174,18 +230,19 @@ export default function HomePage() {
         </section>
       )}
 
+      {/* 9. จุดเด่นบริการ */}
       <WhyUs />
 
-      {/* ร้านพาร์ตเนอร์ */}
+      {/* 10. ร้านพาร์ตเนอร์ */}
       <Reveal as="section" className="container-page" aria-labelledby="home-partner-title">
-        <div className="flex flex-col items-start justify-between gap-5 rounded-3xl border border-ink-200 bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:p-10">
+        <div className="flex flex-col items-start justify-between gap-5 rounded-3xl border border-ink-200/80 bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:p-10 dark:border-white/10">
           <div className="flex items-start gap-4">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-info-bg text-info" aria-hidden="true">
               <Store className="h-6 w-6" />
             </span>
             <div className="space-y-1">
-              <h2 id="home-partner-title" className="text-h3 text-ink-950">มีร้านแต่งห้อง? มาเป็นพาร์ตเนอร์กัน</h2>
-              <p className="text-sm leading-relaxed text-ink-600">ลงสินค้าพร้อมโมเดล 3D ให้ AI หยิบไปจัดห้องให้ลูกค้า</p>
+              <h2 id="home-partner-title" className="text-h3 text-ink-950">มีร้านค้าหรือแบรนด์เฟอร์นิเจอร์? มาเป็นพาร์ตเนอร์กับเรา</h2>
+              <p className="text-sm leading-relaxed text-ink-600">ลงสินค้าพร้อมโมเดล 3D อัตโนมัติ ให้ลูกค้าหยิบไปจำลองจัดห้องจริงก่อนซื้อ</p>
             </div>
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
@@ -195,7 +252,7 @@ export default function HomePage() {
               </a>
             )}
             <Link href="/partner" className="btn btn-outline min-h-11 flex-1 px-5 sm:flex-none">
-              หลังร้าน
+              ศูนย์พาร์ตเนอร์
             </Link>
           </div>
         </div>
