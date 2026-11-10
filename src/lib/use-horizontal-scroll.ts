@@ -11,14 +11,21 @@ interface UseHorizontalScrollOptions {
 export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
   options: UseHorizontalScrollOptions = {}
 ) {
-  const { wheelSpeed = 1.2, dragSpeed = 1, dragThreshold = 4 } = options;
-  const elRef = useRef<T | null>(null);
+  const { wheelSpeed = 1, dragSpeed = 1.1, dragThreshold = 3 } = options;
+  const [element, setElement] = useState<T | null>(null);
+  const elementRef = useRef<T | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Check scroll bounds
+  // Callback ref guarantees attachment even when element is conditionally mounted/unmounted
+  const ref = useCallback((node: T | null) => {
+    elementRef.current = node;
+    setElement(node);
+  }, []);
+
+  // Update bounds
   const updateScrollBounds = useCallback(() => {
-    const el = elRef.current;
+    const el = elementRef.current;
     if (!el) return;
     const { scrollLeft, scrollWidth, clientWidth } = el;
     setCanScrollLeft(scrollLeft > 2);
@@ -26,62 +33,59 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
   }, []);
 
   const scrollByAmount = useCallback((amount: number) => {
-    const el = elRef.current;
+    const el = elementRef.current;
     if (!el) return;
     el.scrollBy({ left: amount, behavior: "smooth" });
   }, []);
 
   useEffect(() => {
-    const el = elRef.current;
+    const el = element;
     if (!el) return;
 
-    // Check initial bounds
+    // Initial check
     updateScrollBounds();
 
-    // 1) Wheel handling
+    // 1) Wheel handling: translate wheel deltaY/deltaX to horizontal scrollLeft
     const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+
       const absY = Math.abs(e.deltaY);
       const absX = Math.abs(e.deltaX);
       const delta = (absY >= absX ? e.deltaY : e.deltaX) * wheelSpeed;
       if (delta === 0) return;
 
-      const canLeft = el.scrollLeft > 0;
-      const canRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
-
-      // Only prevent default and scroll horizontally if scrollable
-      if ((delta > 0 && canRight) || (delta < 0 && canLeft)) {
-        e.preventDefault();
-        e.stopPropagation();
-        el.scrollLeft += delta;
-        updateScrollBounds();
-      }
+      e.preventDefault();
+      e.stopPropagation();
+      el.scrollLeft += delta;
+      updateScrollBounds();
     };
 
     // 2) Mouse Click-and-Drag handling
     let isDown = false;
     let startX = 0;
     let initialScrollLeft = 0;
-    let isDragging = false;
-    let dragSuppressTimeout: ReturnType<typeof setTimeout> | null = null;
+    let hasMoved = false;
+    let suppressClick = false;
+    let suppressTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onMouseDown = (e: MouseEvent) => {
-      // Primary (left) click only
+      // Primary left click only
       if (e.button !== 0) return;
       isDown = true;
-      isDragging = false;
+      hasMoved = false;
       startX = e.clientX;
       initialScrollLeft = el.scrollLeft;
       el.style.cursor = "grabbing";
-      el.style.userSelect = "none";
     };
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDown) return;
       const dx = (e.clientX - startX) * dragSpeed;
       if (Math.abs(dx) > dragThreshold) {
-        isDragging = true;
+        hasMoved = true;
+        suppressClick = true;
       }
-      if (isDragging) {
+      if (hasMoved) {
         e.preventDefault();
         el.scrollLeft = initialScrollLeft - dx;
         updateScrollBounds();
@@ -92,19 +96,19 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       if (!isDown) return;
       isDown = false;
       el.style.cursor = "grab";
-      el.style.removeProperty("user-select");
 
-      if (isDragging) {
-        // Keep isDragging active briefly so any click event triggered this frame is cancelled
-        if (dragSuppressTimeout) clearTimeout(dragSuppressTimeout);
-        dragSuppressTimeout = setTimeout(() => {
-          isDragging = false;
+      if (hasMoved) {
+        if (suppressTimer) clearTimeout(suppressTimer);
+        suppressTimer = setTimeout(() => {
+          suppressClick = false;
+          hasMoved = false;
         }, 80);
       }
     };
 
+    // Intercept click in capture phase if user dragged
     const onClickCapture = (e: MouseEvent) => {
-      if (isDragging) {
+      if (suppressClick || hasMoved) {
         e.stopPropagation();
         e.preventDefault();
       }
@@ -118,7 +122,6 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       e.preventDefault();
     };
 
-    // Set initial cursor
     el.style.cursor = "grab";
 
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -148,12 +151,12 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       window.removeEventListener("blur", onMouseUp);
 
       ro.disconnect();
-      if (dragSuppressTimeout) clearTimeout(dragSuppressTimeout);
+      if (suppressTimer) clearTimeout(suppressTimer);
     };
-  }, [wheelSpeed, dragSpeed, dragThreshold, updateScrollBounds]);
+  }, [element, wheelSpeed, dragSpeed, dragThreshold, updateScrollBounds]);
 
   return {
-    ref: elRef,
+    ref,
     canScrollLeft,
     canScrollRight,
     scrollBy: scrollByAmount,
