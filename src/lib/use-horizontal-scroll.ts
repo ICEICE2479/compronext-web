@@ -4,14 +4,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 interface UseHorizontalScrollOptions {
   wheelSpeed?: number;
-  friction?: number; // 0.90 - 0.95 for kinetic momentum glide
-  springDamping?: number; // 0.18 - 0.25 for smooth spring interpolation
+  friction?: number; // 0.78 - 0.82 for fast, crisp stopping on drag release
+  springDamping?: number; // 0.38 - 0.42 for snappy, responsive, smooth wheel gliding
 }
 
 export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
   options: UseHorizontalScrollOptions = {}
 ) {
-  const { wheelSpeed = 1, friction = 0.93, springDamping = 0.22 } = options;
+  const { wheelSpeed = 1, friction = 0.8, springDamping = 0.4 } = options;
   const [element, setElement] = useState<T | null>(null);
   const elementRef = useRef<T | null>(null);
 
@@ -98,10 +98,13 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
     const el = element;
     if (!el) return;
 
+    // Enforce instant direct scroll behavior on element
+    el.style.scrollBehavior = "auto";
+
     // Initial check
     updateScrollBounds();
 
-    // 1) Smooth Wheel with Spring Lerp (No jerky jumps)
+    // 1) Fast, Snappy, Smooth Wheel with Spring Lerp (No sluggish delay)
     const onWheel = (e: WheelEvent) => {
       if (el.scrollWidth <= el.clientWidth) return;
 
@@ -115,8 +118,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
 
       const current = targetScrollLeftRef.current ?? el.scrollLeft;
       const maxScroll = el.scrollWidth - el.clientWidth;
-      // Scale wheel delta nicely
-      const nextTarget = Math.max(0, Math.min(current + delta * 1.1, maxScroll));
+      const nextTarget = Math.max(0, Math.min(current + delta, maxScroll));
       targetScrollLeftRef.current = nextTarget;
 
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
@@ -127,13 +129,14 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
         if (tgt === null) return;
 
         const diff = tgt - cur;
-        if (Math.abs(diff) < 0.6) {
+        if (Math.abs(diff) < 0.5) {
           el.scrollLeft = tgt;
           targetScrollLeftRef.current = null;
           updateScrollBounds();
           return;
         }
 
+        // Fast spring lerp: 40% per frame reaches destination cleanly in ~80-100ms
         el.scrollLeft = cur + diff * springDamping;
         updateScrollBounds();
         rafIdRef.current = requestAnimationFrame(loop);
@@ -142,7 +145,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       rafIdRef.current = requestAnimationFrame(loop);
     };
 
-    // 2) Kinetic Mouse Drag with Inertia Momentum Gliding
+    // 2) Kinetic Mouse Drag with Instant 1:1 Tracking & Fast-Stopping Momentum
     let isDown = false;
     let startX = 0;
     let initialScroll = 0;
@@ -158,7 +161,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       // Primary left click only
       if (e.button !== 0) return;
 
-      // Stop any active smooth wheel or inertia coasting
+      // Stop any active smooth wheel or inertia coasting immediately
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -188,12 +191,12 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
 
       if (hasMoved) {
         e.preventDefault();
+        // 1:1 direct real-time movement (zero lag / zero delay)
         el.scrollLeft = initialScroll - dx;
 
-        // Calculate moving average velocity for natural flick
         if (dt > 8) {
           const moveDelta = e.clientX - lastClientX;
-          velocity = velocity * 0.4 + (moveDelta / dt) * 0.6;
+          velocity = velocity * 0.3 + (moveDelta / dt) * 0.7;
           lastClientX = e.clientX;
           lastTime = now;
         }
@@ -214,22 +217,24 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
           hasMoved = false;
         }, 100);
 
-        // Kinetic Inertia Momentum Coasting
+        // Fast-Stopping Kinetic Inertia Momentum
         const now = performance.now();
-        if (now - lastTime < 90 && Math.abs(velocity) > 0.12) {
-          let currentVelocity = velocity * 16;
-          const maxVelocity = 45;
+        // If user paused before releasing (> 60ms), stop immediately without gliding
+        if (now - lastTime < 60 && Math.abs(velocity) > 0.15) {
+          let currentVelocity = velocity * 14;
+          const maxVelocity = 30; // Limit flick speed to prevent runaway sliding
           currentVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, currentVelocity));
 
           const inertiaStep = () => {
             if (isDown) return;
-            if (Math.abs(currentVelocity) < 0.3) {
+            // Stop quickly when velocity decays
+            if (Math.abs(currentVelocity) < 0.6) {
               updateScrollBounds();
               return;
             }
 
             el.scrollLeft -= currentVelocity;
-            currentVelocity *= friction;
+            currentVelocity *= friction; // Fast friction braking (0.80)
             updateScrollBounds();
             rafIdRef.current = requestAnimationFrame(inertiaStep);
           };

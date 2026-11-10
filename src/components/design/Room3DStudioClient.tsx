@@ -1939,7 +1939,7 @@ export function Room3DStudioClient() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          catScroll.scrollBy(-220);
+                          catScroll.scrollBy(-180);
                         }}
                         className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
                         title="เลื่อนซ้าย"
@@ -1951,7 +1951,7 @@ export function Room3DStudioClient() {
 
                     <div
                       ref={catScroll.ref}
-                      className="no-scrollbar flex items-center gap-1.5 overflow-x-auto py-0.5 select-none cursor-grab active:cursor-grabbing will-change-scroll transform-gpu"
+                      className="no-scrollbar flex items-center gap-1.5 overflow-x-auto py-0.5 select-none cursor-grab active:cursor-grabbing touch-pan-x [scroll-behavior:auto]"
                     >
                       {CATEGORIES.map((c) => (
                         <button
@@ -1978,7 +1978,7 @@ export function Room3DStudioClient() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          catScroll.scrollBy(220);
+                          catScroll.scrollBy(180);
                         }}
                         className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
                         title="เลื่อนขวา"
