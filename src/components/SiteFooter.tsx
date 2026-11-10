@@ -108,10 +108,16 @@ export function SiteFooter({ siteSettings }: { siteSettings?: SiteSettingsRecord
         </div>
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr] lg:gap-8">
           <div className="space-y-4 sm:col-span-2 lg:col-span-1">
-            <Link href="/" className="inline-flex items-center gap-2.5" aria-label="ComproNext หน้าแรก">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-info font-display font-bold text-white" aria-hidden="true">
-                {siteSettings?.logoText || "CN"}
-              </span>
+            <Link href="/" className="group inline-flex items-center gap-2.5" aria-label="ComproNext หน้าแรก">
+              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full transition-transform duration-200 group-hover:scale-105" aria-hidden="true">
+                <img
+                  src="/compronext-logo.png"
+                  alt="ComproNext Logo"
+                  className="h-full w-full object-contain"
+                  width={36}
+                  height={36}
+                />
+              </div>
               <span className="font-display text-lg font-bold text-ink-950" aria-hidden="true">
                 {siteSettings?.siteName && siteSettings.siteName !== "ComproNext" ? (
                   siteSettings.siteName

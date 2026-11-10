@@ -145,10 +145,16 @@ export function SiteHeader({
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-          <Link href="/" className="flex min-h-11 min-w-0 shrink-0 items-center gap-2" aria-label="ComproNext หน้าแรก">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-info font-display text-sm font-bold text-white" aria-hidden="true">
-              {siteSettings?.logoText || "CN"}
-            </span>
+          <Link href="/" className="group flex min-h-11 min-w-0 shrink-0 items-center gap-2.5" aria-label="ComproNext หน้าแรก">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full transition-transform duration-200 group-hover:scale-105" aria-hidden="true">
+              <img
+                src="/compronext-logo.png"
+                alt="ComproNext Logo"
+                className="h-full w-full object-contain"
+                width={36}
+                height={36}
+              />
+            </div>
             <span className="font-display text-lg font-bold tracking-tight text-ink-950" aria-hidden="true">
               Compro<span className="text-info">Next</span>
             </span>
