@@ -1266,7 +1266,29 @@ html[data-theme="dark"] .chip[data-active="true"] {
 }
 .chat-bubble { animation: bubble-in 220ms var(--ease-out, ease-out) backwards; }
 @media (prefers-reduced-motion: reduce) { .chat-bubble { animation: none; } }
-.thin-scroll { scrollbar-width: thin; scrollbar-color: var(--color-ink-300) transparent; }
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-300, #cbd5e1) transparent;
+}
+.thin-scroll::-webkit-scrollbar {
+  height: 5px;
+  width: 5px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-ink-300, #cbd5e1);
+  border-radius: 9999px;
+}
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-400, #94a3b8);
+}
+.thin-scroll::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
 
 /* =====================================================================
    ระบบการเคลื่อนไหว v16 — ลื่นแบบแอปมือโปร (ใช้แค่ transform/opacity)
