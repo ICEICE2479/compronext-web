@@ -637,10 +637,11 @@ export function MyDreamSetupBlueprint({
 
   // เริ่มลากปลายกำแพงในห้อง (แยกออกมาจาก JSX: อ่าน ref ตอนกดเมาส์เท่านั้น ไม่อ่านตอน render)
   const startInteriorEndDrag = useCallback(
-    (e: React.MouseEvent<SVGGElement>) => {
+    (e: React.MouseEvent<SVGGElement> | React.PointerEvent<SVGGElement>) => {
       const wallId = e.currentTarget.dataset.wall ?? "";
       const end = e.currentTarget.dataset.end === "2" ? 2 : 1;
-      if (e.button !== 0 || !wallId) return;
+      if (e.button !== 0 && "pointerType" in e && (e as any).pointerType === "mouse") return;
+      if (!wallId) return;
       e.stopPropagation();
       const pt = clientToSvgAndCm(e.clientX, e.clientY);
       if (!pt) return;
@@ -657,6 +658,59 @@ export function MyDreamSetupBlueprint({
     },
     [clientToSvgAndCm, selectInteriorWall, canvasPolyCm, interiorWalls, isBlankCanvas]
   );
+
+  // เริ่มลากจุดมุมห้อง (Corner Vertex Handle) รองรับทั้งเมาส์ สัมผัส Touch และ Pointer บนมือถือ
+  const startVertexDrag = useCallback(
+    (index: number, clientX: number, clientY: number) => {
+      const pt = clientToSvgAndCm(clientX, clientY);
+      if (!pt) return;
+      setPolyHistory((h) => [
+        ...h.slice(-19),
+        { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+      ]);
+      setHandleDrag({
+        kind: "vertex",
+        index,
+        startMouseCm: [pt.xCm, pt.zCm],
+        basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+        baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
+      });
+    },
+    [clientToSvgAndCm, canvasPolyCm, interiorWalls, isBlankCanvas]
+  );
+
+  // เริ่มลากขอบผนัง (Wall Edge Midpoint Handle)
+  const startEdgeDrag = useCallback(
+    (index: number, clientX: number, clientY: number) => {
+      const pt = clientToSvgAndCm(clientX, clientY);
+      if (!pt) return;
+      setPolyHistory((h) => [
+        ...h.slice(-19),
+        { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
+      ]);
+      setHandleDrag({
+        kind: "edge",
+        index,
+        startMouseCm: [pt.xCm, pt.zCm],
+        basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+        baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
+      });
+    },
+    [clientToSvgAndCm, canvasPolyCm, interiorWalls, isBlankCanvas]
+  );
+
+  // เริ่มหมุนเข็มทิศ (Compass Dial Drag) รองรับทั้งเมาส์และการกดค้างลากนิ้วบนมือถือ
+  const startCompassDrag = useCallback((clientX: number, clientY: number) => {
+    const dialEl = compassDialRef.current;
+    if (dialEl) {
+      const rect = dialEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const angleRad = Math.atan2(clientX - cx, -(clientY - cy));
+      compassDragRef.current = { prevAngleRad: angleRad };
+    }
+    setDraggingCompass(true);
+  }, []);
 
   // จัดระเบียบตำแหน่งหน้าต่างและประตูไม่ให้ชิดมุมกำแพง ทะลุกำแพงกั้นในห้อง หรือซ้อนทับกันอัตโนมัติ (ทั้งตอนโหลดห้องเดิมและเมื่อปรับผนัง/กั้นกำแพงใหม่)
   // (ทำตอน render เมื่อรูปห้อง/กำแพงเปลี่ยน แทน useEffect → ไม่ render ซ้ำ 2 รอบ)
@@ -1217,20 +1271,18 @@ export function MyDreamSetupBlueprint({
     deleteSelectedInteriorWall,
   ]);
 
-  // คลิกหรือเริ่มลากบนพื้นกระดาษพิมพ์เขียว
-  const handleCanvasMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+  // คลิกหรือเริ่มลากบนพื้นกระดาษพิมพ์เขียว (รองรับทั้งเมาส์ สัมผัส Touch และ Pointer บนมือถือ)
+  const handleCanvasInteractionStart = useCallback((clientX: number, clientY: number, button = 0, shiftKey = false, altKey = false) => {
     setSunPanelOpen(false);
     setShapeMenuOpen(false);
 
-    // คลิกขวา = ยกเลิกและลบเส้นที่กำลังวาดอยู่ทันที
-    if (e.button === 2) {
-      e.preventDefault();
+    if (button === 2) {
       cancelActiveDrawing();
       return;
     }
-    if (e.button !== 0) return;
+    if (button !== 0) return;
 
-    const pt = clientToSvgAndCm(e.clientX, e.clientY);
+    const pt = clientToSvgAndCm(clientX, clientY);
     if (!pt) return;
 
     // 1) โหมดวางหน้าต่าง หรือ ประตู: คลิกใกล้ผนังนอกหรือกำแพงในห้องเพื่อวางทันที (ล็อกระยะกันทะลุกำแพงอัตโนมัติ)
@@ -1280,7 +1332,7 @@ export function MyDreamSetupBlueprint({
         interiorWalls,
         prevPt,
         isBlankCanvas,
-        e.shiftKey
+        shiftKey
       );
       const [sx, sz] = snapInfo.pt;
 
@@ -1292,7 +1344,7 @@ export function MyDreamSetupBlueprint({
         }
       }
 
-      // กรณีเริ่มคลิกจากผนัง/ในห้องหลัก -> ลากออกไปนอกห้อง (เช่น วาดครึ่งสามเหลี่ยม) -> คลิกกลับมาแตะผนังห้องหลักอีกครั้ง: เชื่อมรวมเข้ากับห้องหลักทันที!
+      // กรณีเริ่มคลิกจากผนัง/ในห้องหลัก -> ลากออกไปนอกห้อง -> คลิกกลับมาแตะผนังห้องหลักอีกครั้ง: เชื่อมรวมเข้ากับห้องหลักทันที!
       if (!isBlankCanvas && canvasPolyCm.length >= 3 && draftPointsCm.length >= 2) {
         const [fx, fz] = draftPointsCm[0];
         const startNearWall = minDistToPolyBoundary(fx, fz, canvasPolyCm).distCm <= 28;
@@ -1329,7 +1381,7 @@ export function MyDreamSetupBlueprint({
       if (pt.xCm < -25 || pt.xCm > GRID_COLS * GRID_CELL_CM + 25 || pt.zCm < -25 || pt.zCm > GRID_ROWS * GRID_CELL_CM + 25) {
         return;
       }
-      const dragMode: "add" | "erase" = penMode === "paint-erase" || e.altKey ? "erase" : "add";
+      const dragMode: "add" | "erase" = penMode === "paint-erase" || altKey ? "erase" : "add";
       setSelectedElement(null);
       setSelectedInteriorWallId(null);
       setEditingWallIndex(null);
@@ -1341,16 +1393,62 @@ export function MyDreamSetupBlueprint({
         curGz: gz,
         startRawCm: [pt.xCm, pt.zCm],
         curRawCm: [pt.xCm, pt.zCm],
-        shiftKey: e.shiftKey,
+        shiftKey,
       });
+    }
+  }, [
+    activeTool,
+    penMode,
+    isBlankCanvas,
+    findClosestTargetWall,
+    draftPointsCm,
+    canvasPolyCm,
+    interiorWalls,
+    finishPointPenPolygon,
+    mergePointPenExtension,
+    clientToSvgAndCm,
+    cancelActiveDrawing,
+  ]);
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      cancelActiveDrawing();
+      return;
+    }
+    handleCanvasInteractionStart(e.clientX, e.clientY, e.button, e.shiftKey, e.altKey);
+  };
+
+  const handleCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    if (e.pointerType === "touch" || e.pointerType === "pen") {
+      handleCanvasInteractionStart(e.clientX, e.clientY, 0, e.shiftKey, e.altKey);
     }
   };
 
-  // Global Pointer/Mouse Move สำหรับการลากทุกชนิดแบบลื่นไหล ไม่กระตุก
+  // Global Pointer/Touch/Mouse Move สำหรับการลากทุกชนิดแบบลื่นไหล ไม่กระตุก ทั้งบนคอมและมือถือ
   useEffect(() => {
     if (!boxDrag && !handleDrag && !draggingOpening && !draggingCompass) return;
 
-    const onMouseMove = (e: MouseEvent) => {
+    const handleMove = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      let clientX = 0;
+      let clientY = 0;
+      let isShiftKey = false;
+
+      if ("touches" in e) {
+        if (e.touches.length === 0) return;
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = (e as MouseEvent).clientX;
+        clientY = (e as MouseEvent).clientY;
+        isShiftKey = (e as MouseEvent).shiftKey;
+      }
+
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
       // A. หมุนเข็มทิศแบบละเอียดทีละ 0.1° (0.0° - 359.9°)
       if (draggingCompass && compassDragRef.current) {
         const dialEl = compassDialRef.current;
@@ -1358,14 +1456,14 @@ export function MyDreamSetupBlueprint({
           const rect = dialEl.getBoundingClientRect();
           const cx = rect.left + rect.width / 2;
           const cy = rect.top + rect.height / 2;
-          const curAngleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
+          const curAngleRad = Math.atan2(clientX - cx, -(clientY - cy));
           let stepRad = curAngleRad - compassDragRef.current.prevAngleRad;
           while (stepRad > Math.PI) stepRad -= 2 * Math.PI;
           while (stepRad <= -Math.PI) stepRad += 2 * Math.PI;
           compassDragRef.current.prevAngleRad = curAngleRad;
 
           const stepDeg = (stepRad * 180) / Math.PI;
-          // ลากเมาส์ตามเข็มนาฬิกา (stepDeg > 0) -> หน้าปัดเข็มทิศหมุนตามเข็มนาฬิกาไปตามเมาส์ 1:1
+          // ลากเมาส์ตามเข็มนาฬิกา (stepDeg > 0) -> หน้าปัดเข็มทิศหมุนตามเข็มนาฬิกาไปตามเมาส์/นิ้ว 1:1
           // เนื่องจากหน้าปัดแสดงผลด้วย rotate(-sun.orientationDeg) ดังนั้นค่า orientationDeg จะลดลงตาม stepDeg
           const newOrientation = (((sunOrientationRef.current - stepDeg) % 360) + 360) % 360;
           sunOrientationRef.current = newOrientation;
@@ -1374,7 +1472,7 @@ export function MyDreamSetupBlueprint({
         return;
       }
 
-      const pt = clientToSvgAndCm(e.clientX, e.clientY);
+      const pt = clientToSvgAndCm(clientX, clientY);
       if (!pt) return;
 
       // B. ลากย้ายหน้าต่างหรือประตูไปตามผนังทุกด้านของห้อง (กันทะลุกำแพงมุมห้องและกำแพงกั้นในห้องอัตโนมัติ)
@@ -1438,7 +1536,7 @@ export function MyDreamSetupBlueprint({
                 curGx: gx,
                 curGz: gz,
                 curRawCm: [pt.xCm, pt.zCm],
-                shiftKey: e.shiftKey,
+                shiftKey: isShiftKey,
               }
             : null
         );
@@ -1468,7 +1566,7 @@ export function MyDreamSetupBlueprint({
             otherOtherWalls,
             20
           );
-          if (!e.shiftKey) {
+          if (!isShiftKey) {
             if (Math.abs(nx - anchorX) < 15) nx = anchorX;
             if (Math.abs(nz - anchorZ) < 15) nz = anchorZ;
           }
@@ -1556,7 +1654,7 @@ export function MyDreamSetupBlueprint({
       }
     };
 
-    const onMouseUp = () => {
+    const handleUp = () => {
       if (boxDrag) {
         // กรณีวาดเข้าไปในตัวห้องที่มีอยู่แล้ว -> เพิ่มกำแพงกั้นภายในห้องแทน!
         if (boxDrag.mode === "add" && !isBlankCanvas && canvasPolyCm.length >= 3) {
@@ -1634,11 +1732,23 @@ export function MyDreamSetupBlueprint({
       compassDragRef.current = null;
     };
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleUp);
+    window.addEventListener("touchcancel", handleUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
+      window.removeEventListener("touchcancel", handleUp);
     };
   }, [
     boxDrag,
@@ -2811,26 +2921,36 @@ export function MyDreamSetupBlueprint({
           </button>
         </div>
 
-        {/* เข็มทิศแบบหมุนได้ 0.1° แบบกะทัดรัด (มุมขวาบน) */}
+        {/* เข็มทิศแบบหมุนได้ 0.1° แบบกะทัดรัด (มุมขวาบน) — รองรับทั้งเมาส์และสัมผัส Touch บนมือถือ */}
         <div
-          className="absolute right-2.5 top-2.5 z-20 flex flex-col items-center rounded-xl border border-white/20 bg-slate-900/65 px-1.5 py-1.5 shadow-xl backdrop-blur-md"
+          className="absolute right-2.5 top-2.5 z-20 flex flex-col items-center rounded-2xl border border-white/20 bg-slate-900/80 px-2 py-2 shadow-xl backdrop-blur-md touch-none select-none"
+          style={{ touchAction: "none" }}
           onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
           <svg
             ref={compassDialRef}
             viewBox="0 0 80 80"
-            className="h-[48px] w-[48px] cursor-grab active:cursor-grabbing select-none"
+            className="h-[54px] w-[54px] cursor-grab active:cursor-grabbing select-none touch-none"
+            style={{ touchAction: "none" }}
             onMouseDown={(e) => {
+              if (e.button !== 0) return;
               e.stopPropagation();
-              const dialEl = compassDialRef.current;
-              if (dialEl) {
-                const rect = dialEl.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const angleRad = Math.atan2(e.clientX - cx, -(e.clientY - cy));
-                compassDragRef.current = { prevAngleRad: angleRad };
+              startCompassDrag(e.clientX, e.clientY);
+            }}
+            onPointerDown={(e) => {
+              if (e.button !== 0 && e.pointerType === "mouse") return;
+              e.stopPropagation();
+              if (e.cancelable) e.preventDefault();
+              (e.currentTarget as SVGElement)?.setPointerCapture?.(e.pointerId);
+              startCompassDrag(e.clientX, e.clientY);
+            }}
+            onTouchStart={(e) => {
+              if (e.touches.length > 0) {
+                e.stopPropagation();
+                if (e.cancelable) e.preventDefault();
+                startCompassDrag(e.touches[0].clientX, e.touches[0].clientY);
               }
-              setDraggingCompass(true);
             }}
             onWheel={(e) => {
               e.preventDefault();
@@ -2874,20 +2994,26 @@ export function MyDreamSetupBlueprint({
             <circle cx={40} cy={40} r={3} fill="#fbbf24" />
           </svg>
 
-          <span className="mt-0.5 font-mono text-[10px] font-bold text-amber-300">
-            ทิศ {degToCardinal(sun.orientationDeg).cardinal}
-          </span>
+          <button
+            type="button"
+            onClick={() => setSunPanelOpen((v) => !v)}
+            title="แตะเพื่อเลือกทิศห้องอย่างละเอียด (เหนือ, ใต้, ออก, ตก)"
+            className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] font-bold text-amber-300 hover:text-amber-200 active:scale-95 transition"
+          >
+            <span>ทิศ {degToCardinal(sun.orientationDeg).cardinal}</span>
+            <span className="text-[10px] text-amber-400/80">({sun.orientationDeg.toFixed(0)}°)</span>
+          </button>
 
-          {/* ช่องเขียนตัวเลขด้านล่างเข็มทิศ ปรับละเอียดทีละ 0.1° */}
+          {/* ช่องเขียนตัวเลขด้านล่างเข็มทิศ ปรับละเอียดทีละ 0.1° / 1° พร้อมปุ่มขนาดใหญ่สำหรับมือถือ */}
           <div
-            className="mt-1 flex items-center gap-0.5 rounded-lg border border-white/20 bg-slate-950/80 px-1 py-0.5"
+            className="mt-1 flex items-center gap-0.5 rounded-lg border border-white/20 bg-slate-950/85 px-1 py-0.5"
             title="หมุนเข็มทิศด้านบน หรือพิมพ์ตัวเลของศาละเอียด 0.1° ลงในช่องนี้ได้ทันที"
           >
             <button
               type="button"
-              onClick={() => setOrientationDeg01(sun.orientationDeg - 0.1)}
-              className="flex h-5 w-4 items-center justify-center rounded text-[11px] font-bold text-slate-300 hover:bg-white/15 hover:text-white"
-              aria-label="ลดมุมเข็มทิศ 0.1 องศา"
+              onClick={() => setOrientationDeg01(sun.orientationDeg - 1)}
+              className="flex h-7 w-6.5 sm:h-5 sm:w-4 items-center justify-center rounded text-sm sm:text-[11px] font-black text-slate-200 hover:bg-white/15 active:bg-white/30"
+              aria-label="ลดมุมเข็มทิศ 1 องศา"
             >
               -
             </button>
@@ -2906,14 +3032,14 @@ export function MyDreamSetupBlueprint({
                   (e.target as HTMLInputElement).blur();
                 }
               }}
-              className="w-11 bg-transparent text-center font-mono text-[11px] font-bold text-white focus:text-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-12 bg-transparent text-center font-mono text-xs sm:text-[11px] font-bold text-white focus:text-amber-300 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="font-mono text-[10px] text-white/75">°</span>
             <button
               type="button"
-              onClick={() => setOrientationDeg01(sun.orientationDeg + 0.1)}
-              className="flex h-5 w-4 items-center justify-center rounded text-[11px] font-bold text-slate-300 hover:bg-white/15 hover:text-white"
-              aria-label="เพิ่มมุมเข็มทิศ 0.1 องศา"
+              onClick={() => setOrientationDeg01(sun.orientationDeg + 1)}
+              className="flex h-7 w-6.5 sm:h-5 sm:w-4 items-center justify-center rounded text-sm sm:text-[11px] font-black text-slate-200 hover:bg-white/15 active:bg-white/30"
+              aria-label="เพิ่มมุมเข็มทิศ 1 องศา"
             >
               +
             </button>
@@ -3015,15 +3141,22 @@ export function MyDreamSetupBlueprint({
           ref={svgRef}
           viewBox={`${computedViewBox.x} ${computedViewBox.y} ${computedViewBox.w} ${computedViewBox.h}`}
           preserveAspectRatio="xMidYMid meet"
-          className={`w-full cursor-crosshair touch-none ${
+          className={`w-full cursor-crosshair touch-none select-none ${
             isFullscreen ? "h-full max-h-full" : "h-full min-h-[260px]"
           }`}
+          style={{ touchAction: "none" }}
           onMouseDown={handleCanvasMouseDown}
+          onPointerDown={handleCanvasPointerDown}
           onMouseMove={(e) => {
             const pt = clientToSvgAndCm(e.clientX, e.clientY);
             if (pt) setCursorCm([pt.xCm, pt.zCm]);
           }}
+          onPointerMove={(e) => {
+            const pt = clientToSvgAndCm(e.clientX, e.clientY);
+            if (pt) setCursorCm([pt.xCm, pt.zCm]);
+          }}
           onMouseLeave={() => setCursorCm(null)}
+          onPointerLeave={() => setCursorCm(null)}
           onDoubleClick={() => {
             if (activeTool === "pencil" && penMode === "point-pen") {
               if (isDraftInsideRoom && draftPointsCm.length >= 2) {
@@ -3439,11 +3572,27 @@ export function MyDreamSetupBlueprint({
               return (
                 <g
                   key={w.id}
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing touch-none select-none"
+                  style={{ touchAction: "none" }}
                   onMouseEnter={() => setHoveredHandle(`win-${w.id}`)}
                   onMouseLeave={() => setHoveredHandle(null)}
                   onMouseDown={(e) => {
                     if (e.button !== 0) return;
+                    e.stopPropagation();
+                    setSelectedInteriorWallId(null);
+                    setSelectedElement({ type: "window", id: w.id });
+                    setDraggingOpening({ type: "window", id: w.id });
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0 && e.pointerType === "mouse") return;
+                    e.stopPropagation();
+                    if (e.cancelable) e.preventDefault();
+                    (e.currentTarget as SVGElement)?.setPointerCapture?.(e.pointerId);
+                    setSelectedInteriorWallId(null);
+                    setSelectedElement({ type: "window", id: w.id });
+                    setDraggingOpening({ type: "window", id: w.id });
+                  }}
+                  onTouchStart={(e) => {
                     e.stopPropagation();
                     setSelectedInteriorWallId(null);
                     setSelectedElement({ type: "window", id: w.id });
@@ -3523,11 +3672,27 @@ export function MyDreamSetupBlueprint({
               return (
                 <g
                   key={d.id}
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-grab active:cursor-grabbing touch-none select-none"
+                  style={{ touchAction: "none" }}
                   onMouseEnter={() => setHoveredHandle(`door-${d.id}`)}
                   onMouseLeave={() => setHoveredHandle(null)}
                   onMouseDown={(e) => {
                     if (e.button !== 0) return;
+                    e.stopPropagation();
+                    setSelectedInteriorWallId(null);
+                    setSelectedElement({ type: "door", id: d.id });
+                    setDraggingOpening({ type: "door", id: d.id });
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0 && e.pointerType === "mouse") return;
+                    e.stopPropagation();
+                    if (e.cancelable) e.preventDefault();
+                    (e.currentTarget as SVGElement)?.setPointerCapture?.(e.pointerId);
+                    setSelectedInteriorWallId(null);
+                    setSelectedElement({ type: "door", id: d.id });
+                    setDraggingOpening({ type: "door", id: d.id });
+                  }}
+                  onTouchStart={(e) => {
                     e.stopPropagation();
                     setSelectedInteriorWallId(null);
                     setSelectedElement({ type: "door", id: d.id });
@@ -3578,14 +3743,33 @@ export function MyDreamSetupBlueprint({
                     return (
                       <g
                         key={hid}
-                        className="cursor-move"
+                        className="cursor-move select-none touch-none"
+                        style={{ touchAction: "none" }}
                         onMouseEnter={() => setHoveredHandle(hid)}
                         onMouseLeave={() => setHoveredHandle(null)}
                         data-wall={iw.id}
                         data-end={end}
                         onMouseDown={startInteriorEndDrag}
+                        onPointerDown={startInteriorEndDrag}
+                        onTouchStart={(e) => {
+                          if (e.touches.length > 0) {
+                            e.stopPropagation();
+                            selectInteriorWall(iw.id);
+                            setPolyHistory((h) => [...h.slice(-19), { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas }]);
+                            const pt = clientToSvgAndCm(e.touches[0].clientX, e.touches[0].clientY);
+                            if (!pt) return;
+                            setHandleDrag({
+                              kind: "interior-end",
+                              wallId: iw.id,
+                              end,
+                              startMouseCm: [pt.xCm, pt.zCm],
+                              basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
+                              baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
+                            });
+                          }
+                        }}
                       >
-                        <circle cx={hx} cy={hy} r={14} fill="transparent" />
+                        <circle cx={hx} cy={hy} r={28} fill="transparent" />
                         {(isHov || isSel) && (
                           <circle
                             cx={hx}
@@ -3643,98 +3827,139 @@ export function MyDreamSetupBlueprint({
                   return (
                     <g
                       key={hid}
-                      className={isHoriz ? "cursor-ns-resize" : "cursor-ew-resize"}
+                      className={`${isHoriz ? "cursor-ns-resize" : "cursor-ew-resize"} select-none touch-none`}
+                      style={{ touchAction: "none" }}
                       onMouseEnter={() => setHoveredHandle(hid)}
                       onMouseLeave={() => setHoveredHandle(null)}
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         e.stopPropagation();
-                        const pt = clientToSvgAndCm(e.clientX, e.clientY);
-                        if (!pt) return;
-                        setPolyHistory((h) => [
-                          ...h.slice(-19),
-                          { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
-                        ]);
-                        setHandleDrag({
-                          kind: "edge",
-                          index: i,
-                          startMouseCm: [pt.xCm, pt.zCm],
-                          basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
-                          baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
-                        });
+                        startEdgeDrag(i, e.clientX, e.clientY);
+                      }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0 && e.pointerType === "mouse") return;
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        (e.currentTarget as SVGElement)?.setPointerCapture?.(e.pointerId);
+                        startEdgeDrag(i, e.clientX, e.clientY);
+                      }}
+                      onTouchStart={(e) => {
+                        if (e.touches.length > 0) {
+                          e.stopPropagation();
+                          if (e.cancelable) e.preventDefault();
+                          startEdgeDrag(i, e.touches[0].clientX, e.touches[0].clientY);
+                        }
                       }}
                     >
-                      {/* วงรับเมาส์โปร่งใสขนาดใหญ่ 18px */}
-                      <circle cx={mx} cy={my} r={18} fill="transparent" />
+                      {/* วงรับสัมผัสขนาดใหญ่ 30px สำหรับนิ้วบนมือถือ */}
+                      <circle cx={mx} cy={my} r={30} fill="transparent" />
                       {isHov && (
                         <circle
                           cx={mx}
                           cy={my}
-                          r={12}
+                          r={14}
                           fill="rgba(56, 189, 248, 0.35)"
+                          stroke="rgba(56, 189, 248, 0.75)"
+                          strokeWidth={1.5}
                           pointerEvents="none"
                         />
                       )}
                       <circle
                         cx={mx}
+                        cy={my + 1}
+                        r={isHov ? 9.5 : 8}
+                        fill="rgba(0,0,0,0.35)"
+                        pointerEvents="none"
+                      />
+                      <circle
+                        cx={mx}
                         cy={my}
-                        r={isHov ? 8 : 6.5}
+                        r={isHov ? 9 : 7.5}
                         fill="#38bdf8"
                         stroke="#ffffff"
-                        strokeWidth={2.5}
+                        strokeWidth={2.8}
                         pointerEvents="none"
                       />
                     </g>
                   );
                 })}
 
-                {/* จุดสีส้มที่มุมห้องทุกมุม (ลากปรับมุมห้องได้โดยไม่กระพริบ/ไม่เด้งหนีเมาส์) */}
+                {/* จุดสีส้มที่มุมห้องทุกมุม (ขยายให้ใหญ่ขึ้น ชัดเจน และแตะ/กดค้างลากบนมือถือได้ลื่นไหล 100%) */}
                 {canvasPolyCm.map(([vxCm, vzCm], i) => {
                   const [vx, vy] = cmToSvg(vxCm, vzCm);
                   const hid = `vert-${i}`;
                   const isHov = hoveredHandle === hid;
+                  const isDraggingThis = handleDrag?.kind === "vertex" && handleDrag.index === i;
 
                   return (
                     <g
                       key={hid}
-                      className="cursor-move"
+                      className="cursor-move select-none touch-none"
+                      style={{ touchAction: "none" }}
                       onMouseEnter={() => setHoveredHandle(hid)}
                       onMouseLeave={() => setHoveredHandle(null)}
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         e.stopPropagation();
-                        const pt = clientToSvgAndCm(e.clientX, e.clientY);
-                        if (!pt) return;
-                        setPolyHistory((h) => [
-                          ...h.slice(-19),
-                          { poly: canvasPolyCm, interiorWalls, isBlank: isBlankCanvas },
-                        ]);
-                        setHandleDrag({
-                          kind: "vertex",
-                          index: i,
-                          startMouseCm: [pt.xCm, pt.zCm],
-                          basePoly: canvasPolyCm.map((p) => [p[0], p[1]]),
-                          baseInteriorWalls: interiorWalls.map((w) => ({ ...w })),
-                        });
+                        startVertexDrag(i, e.clientX, e.clientY);
+                      }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0 && e.pointerType === "mouse") return;
+                        e.stopPropagation();
+                        if (e.cancelable) e.preventDefault();
+                        (e.currentTarget as SVGElement)?.setPointerCapture?.(e.pointerId);
+                        startVertexDrag(i, e.clientX, e.clientY);
+                      }}
+                      onTouchStart={(e) => {
+                        if (e.touches.length > 0) {
+                          e.stopPropagation();
+                          if (e.cancelable) e.preventDefault();
+                          startVertexDrag(i, e.touches[0].clientX, e.touches[0].clientY);
+                        }
                       }}
                     >
-                      <circle cx={vx} cy={vy} r={20} fill="transparent" />
-                      {isHov && (
+                      {/* วงรับสัมผัสขนาดใหญ่พิเศษ 38px สำหรับนิ้วมือบนสมาร์ทโฟน/แท็บเล็ต */}
+                      <circle cx={vx} cy={vy} r={38} fill="transparent" />
+
+                      {/* วงแหวนรัศมีภายนอกแสดงประกายแสงสีส้มเมื่อวางเมาส์หรือกำลังแตะค้างลาก */}
+                      {(isHov || isDraggingThis) && (
                         <circle
                           cx={vx}
                           cy={vy}
-                          r={14}
-                          fill="rgba(245, 158, 11, 0.38)"
+                          r={isDraggingThis ? 26 : 22}
+                          fill="rgba(245, 158, 11, 0.32)"
+                          stroke="rgba(245, 158, 11, 0.85)"
+                          strokeWidth={2}
                           pointerEvents="none"
                         />
                       )}
+
+                      {/* วงเงาด้านหลังเพิ่มมิติความนูน */}
+                      <circle
+                        cx={vx}
+                        cy={vy + 1.5}
+                        r={isDraggingThis ? 17 : isHov ? 15 : 13.5}
+                        fill="rgba(0,0,0,0.40)"
+                        pointerEvents="none"
+                      />
+
+                      {/* จุดกลมสีส้มหลัก: ใหญ่ขึ้น ชัดเจน ขอบขาวหนา สำหรับลากขยายห้องบนมือถือ */}
                       <circle
                         cx={vx}
                         cy={vy}
-                        r={isHov ? 9.5 : 8}
+                        r={isDraggingThis ? 16 : isHov ? 14 : 13}
                         fill="#f59e0b"
                         stroke="#ffffff"
-                        strokeWidth={2.8}
+                        strokeWidth={3.5}
+                        pointerEvents="none"
+                      />
+
+                      {/* จุดศูนย์กลางสีขาว (Center Cross/Dot) เพื่อความแม่นยำในการเล็งขยายห้อง */}
+                      <circle
+                        cx={vx}
+                        cy={vy}
+                        r={4}
+                        fill="#ffffff"
                         pointerEvents="none"
                       />
                     </g>
