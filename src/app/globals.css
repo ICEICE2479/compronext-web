@@ -1458,9 +1458,7 @@ a, button, [role="button"], label, summary { -webkit-tap-highlight-color: transp
 
 /* มือถือ: ปิดเบลอพื้นหลังของแถบบน/ล่าง (กินเครื่องตอนเลื่อน) — ใช้พื้นทึบแทน เลื่อนลื่นขึ้น */
 @media (max-width: 1023px) {
-  .site-header, .bottom-nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .site-header { background-color: var(--color-surface) !important; }
-  .bottom-nav { background-color: var(--color-surface) !important; }
+  .bottom-nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-color: var(--color-surface) !important; }
 }
 
 /* =====================================================================

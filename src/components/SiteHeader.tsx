@@ -122,7 +122,7 @@ export function SiteHeader({
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="ค้นหาสินค้า แบรนด์ หรือไอเดียห้อง"
         aria-label="ค้นหา"
-        className="input min-h-11 rounded-full bg-ink-50 pl-10"
+        className="input min-h-11 rounded-full bg-ink-100/60 dark:bg-ink-800/50 border border-ink-200/50 pl-10 focus:bg-surface/90 focus:border-info/60 transition-all"
         autoComplete="off"
       />
       <SearchSuggest query={searchQuery} onPick={() => setSearchQuery("")} />
@@ -133,7 +133,7 @@ export function SiteHeader({
     <>
       {user && <CartSync />}
       {user && <SavedSync />}
-      <header className="site-header sticky top-0 z-40 border-b border-ink-200 bg-surface/95 backdrop-blur-md">
+      <header className="site-header sticky top-0 z-40 border-b border-ink-200/50 bg-surface/65 backdrop-blur-xl backdrop-saturate-150 shadow-xs transition-colors">
         {/* แถวบน: โลโก้ / ค้นหา / ไอคอน */}
         <div className="container-page flex h-16 items-center gap-2 sm:gap-3">
           <button
@@ -205,7 +205,7 @@ export function SiteHeader({
         </div>
 
         {/* แถวล่าง (คอม): หมวดสินค้า + เมนูหลัก */}
-        <nav aria-label="เมนูหลัก" className="hidden border-t border-ink-100 lg:block">
+        <nav aria-label="เมนูหลัก" className="hidden border-t border-ink-200/35 lg:block">
           <div className="container-page flex items-center gap-1 py-1.5">
             <Link
               href="/"

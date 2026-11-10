@@ -997,8 +997,8 @@ export function Room3DStudioClient() {
               : "h-[calc(100dvh-7.75rem)] min-h-[560px] max-h-[680px] rounded-2xl border border-ink-200 shadow-card"
           }`}
         >
-          {/* Top 3D Control Bar แบบกะทัดรัด */}
-          <div className="relative z-30 flex flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 border-b border-ink-200 bg-surface/95 px-3 py-2 text-ink-950 shadow-xs backdrop-blur-md">
+          {/* Top 3D Control Bar แบบกะทัดรัด (Frosted Glass Translucent) */}
+          <div className="relative z-30 flex flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 border-b border-ink-200/60 bg-surface/80 px-3 py-2 text-ink-950 shadow-xs backdrop-blur-xl">
             <div className="flex flex-wrap items-center gap-1.5">
               {/* 2-Step Mode Switcher Pill */}
               <div className="inline-flex items-center rounded-lg border border-ink-200 bg-paper p-0.5 text-[11px]">
