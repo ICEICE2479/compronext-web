@@ -24,7 +24,6 @@ import {
   Undo2,
   X,
   Compass,
-  Smartphone,
   Clock,
   Thermometer,
   ChevronDown,
@@ -281,26 +280,7 @@ export function Room3DStudioClient() {
     return false;
   }, []);
 
-  
-  // Mobile Portrait detection & Landscape guidance prompt
-  const [isPortraitMobile, setIsPortraitMobile] = useState(false);
-  const [dismissedRotatePrompt, setDismissedRotatePrompt] = useState(false);
 
-  useEffect(() => {
-    const checkOrientation = () => {
-      if (typeof window === "undefined") return;
-      const isMobile = window.innerWidth <= 840 || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
-      const isPortrait = window.innerHeight > window.innerWidth;
-      setIsPortraitMobile(isMobile && isPortrait);
-    };
-    checkOrientation();
-    window.addEventListener("resize", checkOrientation);
-    window.addEventListener("orientationchange", checkOrientation);
-    return () => {
-      window.removeEventListener("resize", checkOrientation);
-      window.removeEventListener("orientationchange", checkOrientation);
-    };
-  }, []);
 
   // Update items with undo history
   const setItems = useCallback((fn: (prev: PlanItem[]) => PlanItem[]) => {
@@ -2219,55 +2199,7 @@ export function Room3DStudioClient() {
         </div>
       )}
 
-      {/* Mobile Landscape Orientation Prompt Overlay */}
-      {isPortraitMobile && !dismissedRotatePrompt && (
-        <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-slate-950/92 p-6 text-center text-white backdrop-blur-md animate-in fade-in duration-300">
-          <div className="relative mb-5 flex h-24 w-24 items-center justify-center rounded-3xl bg-blue-600/20 border border-blue-400/30 shadow-lift">
-            <Smartphone className="h-12 w-12 text-cyan-400 animate-pulse transition-transform duration-700" />
-            <RotateCw className="absolute -bottom-1 -right-1 h-7 w-7 text-amber-400 animate-spin [animation-duration:5s]" />
-          </div>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 border border-blue-400/30 px-3 py-1 text-xs font-bold text-cyan-300 mb-2">
-            📐 แนะนำหมุนหน้าจอ
-          </span>
-
-          <h3 className="font-display text-xl sm:text-2xl font-bold text-white tracking-tight">
-            หมุนโทรศัพท์เป็นแนวนอน
-          </h3>
-          <p className="mt-2 max-w-xs text-xs sm:text-sm leading-relaxed text-slate-300">
-            การจัดห้อง 3D ในแนวนอนจะช่วยให้คุณเห็นห้องกว้างเต็มตา และแตะลากวางสินค้าได้แม่นยำที่สุด
-          </p>
-
-          <div className="mt-6 flex flex-col w-full max-w-xs gap-2.5">
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  if (document.documentElement.requestFullscreen) {
-                    await document.documentElement.requestFullscreen();
-                  }
-                  if ((screen.orientation as any)?.lock) {
-                    await (screen.orientation as any).lock("landscape");
-                  }
-                } catch {}
-                setDismissedRotatePrompt(true);
-              }}
-              className="btn btn-primary h-12 w-full rounded-2xl text-xs sm:text-sm font-bold shadow-lift"
-            >
-              <Maximize2 className="h-4 w-4" />
-              <span>หมุนจอ & เริ่มจัดห้อง 3D</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDismissedRotatePrompt(true)}
-              className="h-9 text-xs font-semibold text-slate-400 hover:text-white transition"
-            >
-              จัดในแนวตั้งต่อไป
-            </button>
-          </div>
-        </div>
-      )}
 
     </div>
   );
