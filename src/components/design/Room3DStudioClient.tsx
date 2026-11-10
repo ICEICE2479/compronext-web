@@ -1930,26 +1930,28 @@ export function Room3DStudioClient() {
 
                   {/* Category Filter Chips */}
                   <div className="relative group/cats">
-                    {catScroll.canScrollLeft && (
-                      <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center pr-3 bg-gradient-to-r from-surface via-surface/90 to-transparent pointer-events-auto">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            catScroll.scrollBy(-180);
-                          }}
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
-                          title="เลื่อนซ้าย"
-                          aria-label="เลื่อนหมวดหมู่ซ้าย"
-                        >
-                          <ChevronLeft className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
+                    <div
+                      className={`absolute left-0 top-0 bottom-0 z-10 flex items-center pr-3 bg-gradient-to-r from-surface via-surface/90 to-transparent transition-opacity duration-200 ${
+                        catScroll.canScrollLeft ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          catScroll.scrollBy(-220);
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
+                        title="เลื่อนซ้าย"
+                        aria-label="เลื่อนหมวดหมู่ซ้าย"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
 
                     <div
                       ref={catScroll.ref}
-                      className="no-scrollbar flex items-center gap-1.5 overflow-x-auto py-0.5 select-none cursor-grab active:cursor-grabbing"
+                      className="no-scrollbar flex items-center gap-1.5 overflow-x-auto py-0.5 select-none cursor-grab active:cursor-grabbing will-change-scroll transform-gpu"
                     >
                       {CATEGORIES.map((c) => (
                         <button
@@ -1967,22 +1969,24 @@ export function Room3DStudioClient() {
                       ))}
                     </div>
 
-                    {catScroll.canScrollRight && (
-                      <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center pl-3 bg-gradient-to-l from-surface via-surface/90 to-transparent pointer-events-auto">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            catScroll.scrollBy(180);
-                          }}
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
-                          title="เลื่อนขวา"
-                          aria-label="เลื่อนหมวดหมู่ขวา"
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
+                    <div
+                      className={`absolute right-0 top-0 bottom-0 z-10 flex items-center pl-3 bg-gradient-to-l from-surface via-surface/90 to-transparent transition-opacity duration-200 ${
+                        catScroll.canScrollRight ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          catScroll.scrollBy(220);
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-ink-800 shadow-md border border-ink-200 text-ink-700 hover:text-ink-950 hover:scale-105 active:scale-95 transition"
+                        title="เลื่อนขวา"
+                        aria-label="เลื่อนหมวดหมู่ขวา"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 

@@ -4,18 +4,27 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 interface UseHorizontalScrollOptions {
   wheelSpeed?: number;
-  dragSpeed?: number;
-  dragThreshold?: number;
+  friction?: number; // 0.90 - 0.95 for kinetic momentum glide
+  springDamping?: number; // 0.18 - 0.25 for smooth spring interpolation
 }
 
 export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
   options: UseHorizontalScrollOptions = {}
 ) {
-  const { wheelSpeed = 1, dragSpeed = 1.1, dragThreshold = 3 } = options;
+  const { wheelSpeed = 1, friction = 0.93, springDamping = 0.22 } = options;
   const [element, setElement] = useState<T | null>(null);
   const elementRef = useRef<T | null>(null);
+
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Use refs to avoid re-rendering parent components when values haven't changed
+  const canLeftRef = useRef(false);
+  const canRightRef = useRef(false);
+
+  // Animation frame and target refs
+  const targetScrollLeftRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   // Callback ref guarantees attachment even when element is conditionally mounted/unmounted
   const ref = useCallback((node: T | null) => {
@@ -23,20 +32,67 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
     setElement(node);
   }, []);
 
-  // Update bounds
+  // Update bounds with guard to prevent React render loops
   const updateScrollBounds = useCallback(() => {
     const el = elementRef.current;
     if (!el) return;
     const { scrollLeft, scrollWidth, clientWidth } = el;
-    setCanScrollLeft(scrollLeft > 2);
-    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 2);
+    const nextLeft = scrollLeft > 2;
+    const nextRight = scrollLeft < scrollWidth - clientWidth - 2;
+
+    if (nextLeft !== canLeftRef.current) {
+      canLeftRef.current = nextLeft;
+      setCanScrollLeft(nextLeft);
+    }
+    if (nextRight !== canRightRef.current) {
+      canRightRef.current = nextRight;
+      setCanScrollRight(nextRight);
+    }
   }, []);
 
-  const scrollByAmount = useCallback((amount: number) => {
-    const el = elementRef.current;
-    if (!el) return;
-    el.scrollBy({ left: amount, behavior: "smooth" });
-  }, []);
+  // Smooth lerp scrolling helper (for buttons and wheel)
+  const smoothScrollTo = useCallback(
+    (target: number) => {
+      const el = elementRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      const clamped = Math.max(0, Math.min(target, maxScroll));
+      targetScrollLeftRef.current = clamped;
+
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+
+      const step = () => {
+        const current = el.scrollLeft;
+        const targetVal = targetScrollLeftRef.current;
+        if (targetVal === null) return;
+
+        const diff = targetVal - current;
+        if (Math.abs(diff) < 0.6) {
+          el.scrollLeft = targetVal;
+          targetScrollLeftRef.current = null;
+          updateScrollBounds();
+          return;
+        }
+
+        el.scrollLeft = current + diff * springDamping;
+        updateScrollBounds();
+        rafIdRef.current = requestAnimationFrame(step);
+      };
+
+      rafIdRef.current = requestAnimationFrame(step);
+    },
+    [springDamping, updateScrollBounds]
+  );
+
+  const scrollByAmount = useCallback(
+    (amount: number) => {
+      const el = elementRef.current;
+      if (!el) return;
+      const current = targetScrollLeftRef.current ?? el.scrollLeft;
+      smoothScrollTo(current + amount);
+    },
+    [smoothScrollTo]
+  );
 
   useEffect(() => {
     const el = element;
@@ -45,7 +101,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
     // Initial check
     updateScrollBounds();
 
-    // 1) Wheel handling: translate wheel deltaY/deltaX to horizontal scrollLeft
+    // 1) Smooth Wheel with Spring Lerp (No jerky jumps)
     const onWheel = (e: WheelEvent) => {
       if (el.scrollWidth <= el.clientWidth) return;
 
@@ -56,38 +112,92 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
 
       e.preventDefault();
       e.stopPropagation();
-      el.scrollLeft += delta;
-      updateScrollBounds();
+
+      const current = targetScrollLeftRef.current ?? el.scrollLeft;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      // Scale wheel delta nicely
+      const nextTarget = Math.max(0, Math.min(current + delta * 1.1, maxScroll));
+      targetScrollLeftRef.current = nextTarget;
+
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+
+      const loop = () => {
+        const cur = el.scrollLeft;
+        const tgt = targetScrollLeftRef.current;
+        if (tgt === null) return;
+
+        const diff = tgt - cur;
+        if (Math.abs(diff) < 0.6) {
+          el.scrollLeft = tgt;
+          targetScrollLeftRef.current = null;
+          updateScrollBounds();
+          return;
+        }
+
+        el.scrollLeft = cur + diff * springDamping;
+        updateScrollBounds();
+        rafIdRef.current = requestAnimationFrame(loop);
+      };
+
+      rafIdRef.current = requestAnimationFrame(loop);
     };
 
-    // 2) Mouse Click-and-Drag handling
+    // 2) Kinetic Mouse Drag with Inertia Momentum Gliding
     let isDown = false;
     let startX = 0;
-    let initialScrollLeft = 0;
+    let initialScroll = 0;
     let hasMoved = false;
     let suppressClick = false;
     let suppressTimer: ReturnType<typeof setTimeout> | null = null;
 
+    let lastTime = 0;
+    let lastClientX = 0;
+    let velocity = 0; // px / ms
+
     const onMouseDown = (e: MouseEvent) => {
       // Primary left click only
       if (e.button !== 0) return;
+
+      // Stop any active smooth wheel or inertia coasting
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      targetScrollLeftRef.current = null;
+
       isDown = true;
       hasMoved = false;
       startX = e.clientX;
-      initialScrollLeft = el.scrollLeft;
+      lastClientX = e.clientX;
+      lastTime = performance.now();
+      initialScroll = el.scrollLeft;
+      velocity = 0;
       el.style.cursor = "grabbing";
     };
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDown) return;
-      const dx = (e.clientX - startX) * dragSpeed;
-      if (Math.abs(dx) > dragThreshold) {
+      const now = performance.now();
+      const dt = now - lastTime;
+      const dx = e.clientX - startX;
+
+      if (Math.abs(dx) > 3) {
         hasMoved = true;
         suppressClick = true;
       }
+
       if (hasMoved) {
         e.preventDefault();
-        el.scrollLeft = initialScrollLeft - dx;
+        el.scrollLeft = initialScroll - dx;
+
+        // Calculate moving average velocity for natural flick
+        if (dt > 8) {
+          const moveDelta = e.clientX - lastClientX;
+          velocity = velocity * 0.4 + (moveDelta / dt) * 0.6;
+          lastClientX = e.clientX;
+          lastTime = now;
+        }
+
         updateScrollBounds();
       }
     };
@@ -102,7 +212,30 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
         suppressTimer = setTimeout(() => {
           suppressClick = false;
           hasMoved = false;
-        }, 80);
+        }, 100);
+
+        // Kinetic Inertia Momentum Coasting
+        const now = performance.now();
+        if (now - lastTime < 90 && Math.abs(velocity) > 0.12) {
+          let currentVelocity = velocity * 16;
+          const maxVelocity = 45;
+          currentVelocity = Math.max(-maxVelocity, Math.min(maxVelocity, currentVelocity));
+
+          const inertiaStep = () => {
+            if (isDown) return;
+            if (Math.abs(currentVelocity) < 0.3) {
+              updateScrollBounds();
+              return;
+            }
+
+            el.scrollLeft -= currentVelocity;
+            currentVelocity *= friction;
+            updateScrollBounds();
+            rafIdRef.current = requestAnimationFrame(inertiaStep);
+          };
+
+          rafIdRef.current = requestAnimationFrame(inertiaStep);
+        }
       }
     };
 
@@ -140,6 +273,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
     ro.observe(el);
 
     return () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("mousedown", onMouseDown);
       el.removeEventListener("dragstart", onDragStart);
@@ -153,7 +287,7 @@ export function useHorizontalScroll<T extends HTMLElement = HTMLDivElement>(
       ro.disconnect();
       if (suppressTimer) clearTimeout(suppressTimer);
     };
-  }, [element, wheelSpeed, dragSpeed, dragThreshold, updateScrollBounds]);
+  }, [element, wheelSpeed, friction, springDamping, updateScrollBounds]);
 
   return {
     ref,
