@@ -54,7 +54,14 @@ export function generateMetadata(): Metadata {
     // Google Search Console: ตั้ง GOOGLE_SITE_VERIFICATION = รหัสจากแท็ก meta ที่ Google ให้มา
     verification: process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : undefined,
     appleWebApp: { capable: true, title: "ComproNext", statusBarStyle: "default" },
-    icons: { apple: "/icons/apple-icon.png" },
+    icons: {
+      icon: [
+        { url: "/favicon.ico" },
+        { url: "/icon.png", sizes: "192x192", type: "image/png" },
+      ],
+      shortcut: "/favicon.ico",
+      apple: "/icons/apple-icon.png",
+    },
     openGraph: {
       type: "website",
       locale: "th_TH",
